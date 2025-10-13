@@ -1,7 +1,7 @@
 ---
 title: Markdown 教程
 published: 1970-01-01
-pinned: true
+pinned: false
 description: 一个简明的 Markdown 博客示例。
 tags: [文章示例]
 category: 文章示例
