@@ -83,7 +83,7 @@ function renderComponent(component: any, index: number, _components: any[]) {
     stickyComponents.length > 0 && (
       <div
         id="sidebar-sticky"
-        class="transition-all duration-700 flex flex-col w-full gap-4 top-4 sticky top-4"
+        class="transition-all duration-700 flex flex-col w-full gap-4 sticky top-4"
       >
         {stickyComponents.map((component, index) => {
           const renderData = renderComponent(
