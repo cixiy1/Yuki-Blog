@@ -66,6 +66,25 @@ import { Badge, StepItem, Steps, TabGroup, Timeline, TimelineItem } from '@compo
 | `icon` | 否 | 内置图标名，显示在圆点内：star / rocket / git / flag / book / heart / zap / bug / tag / calendar / code / edit |
 | 正文 | 否 | `<TimelineItem>` 标签内的内容，支持 Markdown |
 
+```mdx
+<Timeline>
+  <TimelineItem date="2026-08-16" title="新版本发布" icon="rocket">
+    发布了全新版本，带来以下更新：
+
+    - 新增时间线组件
+    - 改进暗色主题
+
+    正文里支持 **Markdown** 内容。
+  </TimelineItem>
+  <TimelineItem date="2025-11-02" title="站点上线" type="tip" icon="flag">
+    欢迎来到我的博客。
+  </TimelineItem>
+  <TimelineItem date="2025-06-15" title="项目立项" type="note">
+    开始规划 Firefly 主题。
+  </TimelineItem>
+</Timeline>
+```
+
 <Timeline>
   <TimelineItem date="2026-08-16" title="新版本发布" icon="rocket">
     发布了全新版本，带来以下更新：
