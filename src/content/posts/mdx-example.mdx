@@ -8,8 +8,7 @@ image: api
 slug: mdx-example
 ---
 
-import { Icon } from 'astro-icon/components'
-import { TabGroup, Timeline, TimelineItem } from '@components/firefly-mdx';
+import { Badge, StepItem, Steps, TabGroup, Timeline, TimelineItem } from '@components/firefly-mdx';
 
 :::tip
 [Firefly](https://github.com/CuteLeaf/Firefly) 支持 `MDX` 和 `Markdown` 两种类型的文章，你可以在文章中混合使用两种格式，如果没有特别复杂内容和需求，推荐使用 Markdown 格式就够了。
@@ -59,8 +58,6 @@ import { TabGroup, Timeline, TimelineItem } from '@components/firefly-mdx';
 
 ### 时间线：`Timeline` / `TimelineItem`
 
-条目属性：
-
 | 属性 | 必填 | 说明 |
 | :--- | :--- | :--- |
 | `date` | 否 | 时间标签，如 "2024-03-10" |
@@ -86,5 +83,61 @@ import { TabGroup, Timeline, TimelineItem } from '@components/firefly-mdx';
   </TimelineItem>
 </Timeline>
 
+---
+
+### 步骤条：`Steps` / `StepItem`
+
+编号步骤条，适合教程、部署流程。编号自动生成，无需手动传序号。
+
+| 属性 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `title` | 否 | 步骤标题 |
+| `type` | 否 | 编号圆颜色，default 为主题色，其余对应提示框色板（tip / note / important / warning / caution） |
+| `icon` | 否 | 内置图标名，有图标时显示图标而非数字（star / rocket / git / flag / book / heart / zap / bug / tag / calendar / code / edit） |
+| 正文 | 否 | `<StepItem>` 标签内的内容，支持 Markdown |
+
+```mdx
+<Steps>
+  <StepItem title="安装依赖">
+    运行 `pnpm install`。
+  </StepItem>
+  <StepItem title="启动开发服务器" type="tip" icon="rocket">
+    运行 `pnpm dev`，打开 `localhost:4321`。
+  </StepItem>
+  <StepItem title="编写文章">
+    在 `src/content/posts/` 新建 `.mdx` 文章。
+  </StepItem>
+</Steps>
+```
+
+<Steps>
+  <StepItem title="安装依赖">
+    运行 `pnpm install`。
+  </StepItem>
+  <StepItem title="启动开发服务器" type="tip" icon="rocket">
+    运行 `pnpm dev`，打开 `localhost:4321`。
+  </StepItem>
+  <StepItem title="编写文章">
+    在 `src/content/posts/` 新建 `.mdx` 文章。
+  </StepItem>
+</Steps>
+
+---
+
+### 徽章：`Badge`
+
+内联彩色小徽章，可嵌在段落或标题里。
+
+| 属性 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `type` | 否 | default 为主题色，其余对应提示框色板（tip / note / important / warning / caution） |
+
+```mdx
+<Badge type="tip">提示</Badge> <Badge type="warning">注意</Badge>
+```
+
+<Badge>新功能</Badge> <Badge type="tip">提示</Badge> <Badge type="note">笔记</Badge> <Badge type="important">重要</Badge> <Badge type="warning">注意</Badge> <Badge type="caution">危险</Badge>
+
+---
 
 更多信息，请查看 [MDX 文档](https://mdxjs.com/)

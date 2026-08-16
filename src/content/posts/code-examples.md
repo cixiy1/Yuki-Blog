@@ -453,11 +453,11 @@ import { TabGroup } from "@/components/firefly-mdx";
 
 :::tip
 
-<TabGroup labels={["js", "py"]} client:load>
+<TabGroup labels={["test.js", "test.py"]} client:load>
   ```js
   console.log(1)
   ```
-  
+
   ```py
   print("hello world")
   ```
