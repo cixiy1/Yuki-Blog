@@ -446,9 +446,9 @@ console.log(a, b);
 
 `::: code-group` 和 `::: tip` 等 Docusaurus 风格提醒框都使用 `:::` 容器语法，而 micromark-directive 规定父子容器的冒号数必须不同，因此 `::: code-group` **无法嵌套在 `::: tip` 等提醒框内**（整块会失效）。
 
-这种情况改用 MDX 组件 [`CodeGroup`](@/components/common/CodeGroup.svelte)：MDX 组件不经过 `:::` 指令解析，在提醒框内外都能正常使用，也方便日后扩展更多 UI 组件。把文章后缀改为 `.mdx`，从统一入口 [`@/components/firefly-mdx`](@/components/firefly-mdx.ts) 引入（可一次引入多个组件）：
+这种情况改用 MDX 组件 [`TabGroup`](@/components/common/TabGroup.svelte)：MDX 组件不经过 `:::` 指令解析，在提醒框内外都能正常使用，也方便日后扩展更多 UI 组件。把文章后缀改为 `.mdx`，从统一入口 [`@/components/firefly-mdx`](@/components/firefly-mdx.ts) 引入（可一次引入多个组件）：
 
-```mdx
+````mdx
 import { TabGroup } from "@/components/firefly-mdx";
 
 :::tip
@@ -457,15 +457,16 @@ import { TabGroup } from "@/components/firefly-mdx";
   ```js
   console.log(1)
   ```
+  
   ```py
   print("hello world")
   ```
 </TabGroup>
 
 :::
-```
+````
 
-::: tip
+:::tip
 - `labels` 数组给每个代码块声明标签，顺序一一对应
 - 组件用 `client:load` 激活标签切换
 :::

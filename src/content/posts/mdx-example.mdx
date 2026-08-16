@@ -9,7 +9,7 @@ slug: mdx-example
 ---
 
 import { Icon } from 'astro-icon/components'
-import { TabGroup } from '@components/firefly-mdx';
+import { TabGroup, Timeline, TimelineItem } from '@components/firefly-mdx';
 
 :::tip
 [Firefly](https://github.com/CuteLeaf/Firefly) 支持 `MDX` 和 `Markdown` 两种类型的文章，你可以在文章中混合使用两种格式，如果没有特别复杂内容和需求，推荐使用 Markdown 格式就够了。
@@ -27,20 +27,64 @@ import { TabGroup } from '@components/firefly-mdx';
 | 动态数据 | 不支持 | 支持 (JS 表达式) |
 | 样式定制 | 有限 (class/style) | 灵活 (className/CSS-in-JS) |
 
+---
 
 ## Firefly 内置的专属 MDX UI 组件
 这里列出 Firefly 内置的 MDX UI 组件，方便在 MDX 文章中直接使用。
 
 ### Tab分组：`TabGroup`
-
+用于创建可切换的标签页，方便在文章中展示不同语言或不同版本的代码等等。
+````mdx
 <TabGroup labels={["test.js", "test.py"]} client:load>
   ```js
   console.log(1)
   ```
+
   ```py
   print("hello world")
   ```
 </TabGroup>
+````
+<TabGroup labels={["test.js", "test.py"]} client:load>
+  ```js
+  console.log(1)
+  ```
+
+  ```py
+  print("hello world")
+  ```
+</TabGroup>
+
+---
+
+### 时间线：`Timeline` / `TimelineItem`
+
+条目属性：
+
+| 属性 | 必填 | 说明 |
+| :--- | :--- | :--- |
+| `date` | 否 | 时间标签，如 "2024-03-10" |
+| `title` | 否 | 条目标题 |
+| `type` | 否 | 节点颜色，default 为主题色，其余对应提示框色板（tip / note / important / warning / caution） |
+| `icon` | 否 | 内置图标名，显示在圆点内：star / rocket / git / flag / book / heart / zap / bug / tag / calendar / code / edit |
+| 正文 | 否 | `<TimelineItem>` 标签内的内容，支持 Markdown |
+
+<Timeline>
+  <TimelineItem date="2026-08-16" title="新版本发布" icon="rocket">
+    发布了全新版本，带来以下更新：
+
+    - 新增时间线组件
+    - 改进暗色主题
+
+    正文里支持 **Markdown** 内容。
+  </TimelineItem>
+  <TimelineItem date="2025-11-02" title="站点上线" type="tip" icon="flag">
+    欢迎来到我的博客。
+  </TimelineItem>
+  <TimelineItem date="2025-06-15" title="项目立项" type="note">
+    开始规划 Firefly 主题。
+  </TimelineItem>
+</Timeline>
 
 
 更多信息，请查看 [MDX 文档](https://mdxjs.com/)
