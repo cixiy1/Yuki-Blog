@@ -26,7 +26,7 @@ export const commentConfig: CommentConfig = {
 		visitorCount: true
 	},
 	giscus: {
-		repo: "cixiy1/Yuki-blog",
+		repo: "cixiy1/Yuki-blog-retired",
 		repoId: "R_kgDOTx2vjg",
 		category: "General",
 		categoryId: "DIC_kwDOTx2vjs4DC9oL",
