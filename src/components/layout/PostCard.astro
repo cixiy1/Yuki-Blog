@@ -6,6 +6,7 @@ import CoverImage from "@/components/common/CoverImage.astro";
 import PostMetadata from "@/components/layout/PostMeta.astro";
 import PostStats from "@/components/layout/PostStats.astro";
 import { siteConfig } from "@/config";
+import { provenanceConfig } from "@/config/provenanceConfig";
 import { getApiUrlList, processCoverImageSync } from "@/utils/image-utils";
 import { getFileDirFromPath, getTagUrl } from "@/utils/url-utils";
 
@@ -159,6 +160,8 @@ const minutes = remarkPluginFrontmatter.minutes;
       minutes={minutes}
       showWords={metaShowWords}
       showReadingTime={metaShowReadingTime}
+      provenance={entry.data.provenance}
+      showProvenance={provenanceConfig.showInCard}
       className="mb-4 post-meta card-header-meta"
     />
 

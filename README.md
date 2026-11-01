@@ -76,6 +76,25 @@ category: 技术
 | `series` / `seriesOrder` | 系列名与系列内顺序 |
 | `sourceLink` | 转载原文链接，转载必填 |
 | `licenseName` / `licenseUrl` | 自定义许可 |
+| `provenance` | 来源标注：本人手写 / 代笔 / 代笔后本人改写 |
+
+### 来源标注
+
+文章和说说都能标出这段文字是谁写的。
+
+```yaml
+provenance: handwritten        # 本人手写
+provenance: ghostwritten       # 代笔
+provenance: co-written         # 代笔 + 本人改写
+
+provenance:                    # 带详情
+  kind: ghostwritten
+  model: DeepSeek-V4.1-Flash   # 哪个模型
+  agent: WorkBuddy             # 哪个 agent
+  note: 大纲模型给，正文我重写    # 可选，悬浮提示里显示
+```
+
+显示文案、图标、配色，以及出现位置（文章页、封面横幅、列表卡片、说说）都在 `src/config/provenanceConfig.ts`。新增一种标注只要在 `kinds` 里加一项，frontmatter 直接写这个键名；`showUntagged` 控制没写该字段的文章是否显示「来源未标注」。
 
 说说放 `src/content/dynamic/`，字段是 `published`、`pinned`、`location`。项目页数据放 `src/content/projects/`，字段是 `title`、`published`、`order`、`description`、`image`、`tags`、`link`、`status`。
 

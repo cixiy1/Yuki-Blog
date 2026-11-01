@@ -23,6 +23,7 @@ type PostData = {
 	passwordHint: string;
 	series: string;
 	seriesOrder?: number;
+	provenance: string | ProvenanceDetail;
 	prevTitle: string;
 	prevSlug: string;
 	nextTitle: string;
@@ -33,7 +34,30 @@ type DynamicData = {
 	published: Date;
 	pinned: boolean;
 	location: string;
+	provenance: string | ProvenanceDetail;
 };
+
+/** frontmatter 里 provenance 的对象写法，样式定义见 src/config/provenanceConfig.ts */
+type ProvenanceDetail = {
+	kind: string;
+	model: string;
+	agent: string;
+	note: string;
+};
+
+/** 字符串简写与对象写法都收：「本人手写 / 代笔（模型-代理）/ 代笔后本人二次写作」 */
+const provenanceSchema = z
+	.union([
+		z.string(),
+		z.object({
+			kind: z.string().optional().default(""),
+			model: z.string().optional().default(""),
+			agent: z.string().optional().default(""),
+			note: z.string().optional().default(""),
+		}),
+	])
+	.optional()
+	.default("");
 
 type ProjectLink = {
 	label: string;
@@ -84,6 +108,7 @@ const postsCollection: ContentCollection<PostData> = defineCollection({
 		passwordHint: z.string().optional().default(""),
 		series: z.string().optional().default(""),
 		seriesOrder: z.number().optional(),
+		provenance: provenanceSchema,
 
 		/* For internal use */
 		prevTitle: z.string().default(""),
@@ -105,6 +130,7 @@ const dynamicCollection: ContentCollection<DynamicData> = defineCollection({
 		published: z.date(),
 		pinned: z.boolean().optional().default(false),
 		location: z.string().optional().default(""),
+		provenance: provenanceSchema,
 	}),
 });
 

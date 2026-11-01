@@ -35,7 +35,7 @@ Use `pnpm`; the `preinstall` script enforces it. Node.js >= 22 is required.
 
 ### Configuration-Driven
 
-All features are toggled through TypeScript files in `src/config/`, exported via the barrel at `src/config/index.ts`. Key modules: `siteConfig.ts` (site settings, theme, pagination), `sidebarConfig.ts` (layout and widget order), `backgroundWallpaper.ts`, `musicConfig.ts`, `profileConfig.ts`, `navBarConfig.ts`, `friendsConfig.ts`, `commentConfig.ts`, `analyticsConfig.ts`, `fontConfig.ts`.
+All features are toggled through TypeScript files in `src/config/`, exported via the barrel at `src/config/index.ts`. Key modules: `siteConfig.ts` (site settings, theme, pagination), `sidebarConfig.ts` (layout and widget order), `backgroundWallpaper.ts`, `musicConfig.ts`, `profileConfig.ts`, `navBarConfig.ts`, `friendsConfig.ts`, `commentConfig.ts`, `analyticsConfig.ts`, `fontConfig.ts`, `provenanceConfig.ts` (text provenance labels shown next to post meta).
 
 ### Layout System
 
@@ -54,8 +54,8 @@ Scroll-linked work in `src/utils/` is rAF-throttled and must stay cheap on mobil
 
 Defined in `src/content.config.ts`:
 
-- `posts` — blog posts (`.md`/`.mdx`) with frontmatter: title, published, tags, category, draft, pinned, password, comment, series, and so on.
-- `dynamic` — microblog entries with `published`, `pinned`, `location`.
+- `posts` — blog posts (`.md`/`.mdx`) with frontmatter: title, published, tags, category, draft, pinned, password, comment, series, provenance, and so on.
+- `dynamic` — microblog entries with `published`, `pinned`, `location`, `provenance`.
 - `projects` — project showcase data with `title`, `published`, `order`, `description`, `image`, `tags`, `link`, `status`.
 - `spec` — special pages (about, guestbook).
 

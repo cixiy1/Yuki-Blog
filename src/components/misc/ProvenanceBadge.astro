@@ -1,0 +1,99 @@
+---
+// 文字来源标注徽标：一篇文字由谁写出来的
+// 数据来自 frontmatter 的 provenance，样式来自 src/config/provenanceConfig.ts
+import { Icon } from "astro-icon/components";
+import type { ProvenanceInput } from "@/types/provenanceConfig";
+import { resolveProvenance } from "@/utils/provenance-utils";
+
+interface Props {
+	/** frontmatter 的 provenance 原始值 */
+	value?: ProvenanceInput;
+	/** 该位置是否显示 */
+	show?: boolean;
+	/** cover=封面横幅上的白字样式 */
+	variant?: "default" | "cover";
+	class?: string;
+}
+
+const {
+	value,
+	show = true,
+	variant = "default",
+	class: className,
+} = Astro.props;
+const provenance = resolveProvenance(value, show);
+---
+
+{
+	provenance && (
+		<div
+			class:list={[
+				"provenance-badge",
+				`provenance-${provenance.tone}`,
+				{ "provenance-on-cover": variant === "cover" },
+				className,
+			]}
+			data-provenance-kind={provenance.kind || "untagged"}
+			title={provenance.tooltip || undefined}
+		>
+			{provenance.icon && <Icon name={provenance.icon} class="provenance-icon" />}
+			<span class="provenance-text">{provenance.text}</span>
+		</div>
+	)
+}
+
+<style>
+	.provenance-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		max-width: 100%;
+		padding: 0.125rem 0.5rem;
+		border: 1px solid transparent;
+		border-radius: 0.375rem;
+		background: var(--btn-regular-bg);
+		color: var(--btn-content);
+		font-size: 0.75rem;
+		line-height: 1.125rem;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: help;
+	}
+
+	.provenance-icon {
+		width: 0.9rem;
+		height: 0.9rem;
+		flex-shrink: 0;
+	}
+
+	.provenance-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* 代笔 / 二次写作：主题色描边，一眼能看出不是纯手写 */
+	.provenance-primary {
+		border-color: color-mix(in oklab, var(--primary) 40%, transparent);
+		color: var(--primary);
+	}
+
+	/* 未标注：淡化处理，不抢视觉 */
+	.provenance-muted {
+		opacity: 0.72;
+	}
+
+	/* 封面横幅上：白色半透明 */
+	.provenance-on-cover {
+		border-color: rgb(255 255 255 / 0.45);
+		background: rgb(255 255 255 / 0.14);
+		color: rgb(255 255 255 / 0.95);
+		backdrop-filter: blur(4px);
+	}
+
+	@media (max-width: 767px) {
+		.provenance-badge {
+			font-size: 0.6875rem;
+			line-height: 1rem;
+		}
+	}
+</style>

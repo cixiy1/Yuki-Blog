@@ -2,9 +2,11 @@
 import { type CollectionEntry, render } from "astro:content";
 import { Icon } from "astro-icon/components";
 import ImageWrapper from "@/components/common/ImageWrapper.astro";
+import ProvenanceBadge from "@/components/misc/ProvenanceBadge.astro";
 import DynamicGallery from "@/components/pages/dynamic/DynamicGallery.astro";
 import DynamicInlineComments from "@/components/pages/dynamic/DynamicInlineComments.astro";
 import { dynamicConfig, profileConfig, siteConfig } from "@/config";
+import { provenanceConfig } from "@/config/provenanceConfig";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
 import { formatDynamicDate, formatTimezoneOffset } from "@/utils/date-utils";
@@ -77,6 +79,10 @@ const profileUrl = url(dynamicConfig.profileUrl || "/about/");
 							<span>{location}</span>
 						</span>
 					)}
+					<ProvenanceBadge
+						value={entry.data.provenance}
+						show={provenanceConfig.showInDynamic}
+					/>
 				</div>
 			</div>
 			<a

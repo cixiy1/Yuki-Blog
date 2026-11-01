@@ -1,8 +1,10 @@
 ---
 import { Icon } from "astro-icon/components";
+import ProvenanceBadge from "@/components/misc/ProvenanceBadge.astro";
 import { commentConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
+import type { ProvenanceInput } from "@/types/provenanceConfig";
 import { formatDateToYYYYMMDD } from "@/utils/date-utils";
 import { getCategoryUrl, getTagUrl } from "@/utils/url-utils";
 
@@ -29,6 +31,10 @@ export interface Props {
 	showWords?: boolean;
 	showReadingTime?: boolean;
 	variant?: "default" | "cover";
+	/** 来源标注（frontmatter 的 provenance） */
+	provenance?: ProvenanceInput;
+	/** 是否显示来源标注，由调用方按配置开关决定 */
+	showProvenance?: boolean;
 }
 
 const {
@@ -54,6 +60,8 @@ const {
 	showReadingTime = false,
 	password,
 	variant = "default",
+	provenance,
+	showProvenance = false,
 } = Astro.props;
 
 const path = customPath || (id ? `/posts/${id}` : "");
@@ -113,6 +121,16 @@ const visibleTags =
           </span>
         </div>
       )
+  }
+
+  {
+    showProvenance && (
+      <ProvenanceBadge
+        value={provenance}
+        show={showProvenance}
+        variant={variant === "cover" ? "cover" : "default"}
+      />
+    )
   }
 
   {

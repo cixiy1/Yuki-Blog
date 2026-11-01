@@ -32,6 +32,7 @@ import SharePoster from "@/components/misc/SharePoster.svelte";
 import { coverImageConfig } from "@/config/coverImageConfig";
 import { licenseConfig } from "@/config/licenseConfig";
 import { profileConfig } from "@/config/profileConfig";
+import { provenanceConfig } from "@/config/provenanceConfig";
 import { siteConfig } from "@/config/siteConfig";
 import { sponsorConfig } from "@/config/sponsorConfig";
 import { formatDateToYYYYMMDD } from "@/utils/date-utils";
@@ -329,6 +330,8 @@ const seriesData = await getSeriesPosts(entry);
                 category={entry.data.category || undefined}
                 tags={entry.data.tags}
                 id={entry.id}
+                provenance={entry.data.provenance}
+                showProvenance={provenanceConfig.showInBanner && !entry.data.password}
               />
             </div>
           </div>
@@ -418,6 +421,8 @@ const seriesData = await getSeriesPosts(entry);
               tags={entry.data.tags}
               category={entry.data.category || undefined}
               id={entry.id}
+              provenance={entry.data.provenance}
+              showProvenance={provenanceConfig.showInPost && !entry.data.password}
             />
             {
               !showPostCover && (
