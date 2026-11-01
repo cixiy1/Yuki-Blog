@@ -14,8 +14,8 @@ export const analyticsConfig: AnalyticsConfig = {
 			sampleRate: 0.15,
 			maskLevel: "moderate",
 			maxDuration: 300000,
-			blockSelector: ""
-		}
+			blockSelector: "",
+		},
 	},
 	la51Analytics: {
 		Id: "",
@@ -23,6 +23,6 @@ export const analyticsConfig: AnalyticsConfig = {
 		ck: "",
 		autoTrack: false,
 		hashMode: false,
-		screenRecord: true
-	}
+		screenRecord: true,
+	},
 };

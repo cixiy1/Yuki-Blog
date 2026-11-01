@@ -13,14 +13,14 @@ export const expressiveCodeConfig: ExpressiveCodeConfig = {
 		enable: true,
 		lineThreshold: 15,
 		previewLines: 8,
-		defaultCollapsed: true
+		defaultCollapsed: true,
 	},
 	pluginLanguageBadge: {
-		enable: true
+		enable: true,
 	},
 	pluginLanguageLogo: {
 		enable: false,
 		color: "mono",
-		excludedLangs: []
-	}
+		excludedLangs: [],
+	},
 };

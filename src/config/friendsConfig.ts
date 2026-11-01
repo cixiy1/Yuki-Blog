@@ -27,23 +27,19 @@ export const friendsConfig: FriendLink[] = [
 		imgurl: "https://docs-firefly.cuteleaf.cn/logo.png",
 		desc: "Firefly主题模板文档",
 		siteurl: "https://docs-firefly.cuteleaf.cn",
-		tags: [
-			"Docs"
-		],
+		tags: ["Docs"],
 		weight: 9,
-		enabled: true
+		enabled: true,
 	},
 	{
 		title: "Astro",
 		imgurl: "https://avatars.githubusercontent.com/u/44914786?v=4&s=640",
 		desc: "The web framework for content-driven websites. ⭐️ Star to support our work!",
 		siteurl: "https://github.com/withastro/astro",
-		tags: [
-			"Framework"
-		],
+		tags: ["Framework"],
 		weight: 8,
-		enabled: true
-	}
+		enabled: true,
+	},
 ];
 
 // 获取启用的友链并进行排序

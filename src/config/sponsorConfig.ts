@@ -3,7 +3,8 @@ import type { SponsorConfig } from "../types/sponsorConfig";
 export const sponsorConfig: SponsorConfig = {
 	title: "",
 	description: "",
-	usage: "您的打赏将用于服务器维护、内容创作和功能开发，帮助我持续提供优质内容。",
+	usage:
+		"您的打赏将用于服务器维护、内容创作和功能开发，帮助我持续提供优质内容。",
 	showSponsorsList: true,
 	showComment: true,
 	showButtonInPost: true,
@@ -14,13 +15,13 @@ export const sponsorConfig: SponsorConfig = {
 			qrCode: "/assets/images/sponsor/wechat.png",
 			link: "",
 			description: "使用 微信 扫码打赏",
-			enabled: true
-		}
+			enabled: true,
+		},
 	],
 	sponsors: [
 		{
 			name: "苏志锦（校友）",
-			avatar: "/assets/images/sponsor/suzhijin.jpg"
-		}
-	]
+			avatar: "/assets/images/sponsor/suzhijin.jpg",
+		},
+	],
 };

@@ -8,23 +8,23 @@ export const sakuraConfig: SakuraConfig = {
 	limitTimes: -1,
 	size: {
 		min: 0.5,
-		max: 1.1
+		max: 1.1,
 	},
 	opacity: {
 		min: 0.3,
-		max: 0.9
+		max: 0.9,
 	},
 	speed: {
 		horizontal: {
 			min: -1.7,
-			max: -1.2
+			max: -1.2,
 		},
 		vertical: {
 			min: 1.5,
-			max: 2.2
+			max: 2.2,
 		},
 		rotation: 0.03,
-		fadeSpeed: 0.03
+		fadeSpeed: 0.03,
 	},
-	zIndex: 100
+	zIndex: 100,
 };

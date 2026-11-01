@@ -13,7 +13,12 @@ interface Props {
 	class?: string;
 }
 
-const { id, variant = "default", label = "阅读", class: className = "" } = Astro.props;
+const {
+	id,
+	variant = "default",
+	label = "阅读",
+	class: className = "",
+} = Astro.props;
 
 const enabled = statsConfig.enable && statsConfig.showPostView;
 const isCover = variant === "cover";

@@ -7,7 +7,7 @@ export const commentConfig: CommentConfig = {
 		lang: "zh-CN",
 		visitorCount: true,
 		jsUrl: "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js",
-		cssUrl: "/assets/css/twikoo-custom.css"
+		cssUrl: "/assets/css/twikoo-custom.css",
 	},
 	waline: {
 		serverURL: "https://waline.vercel.app",
@@ -15,15 +15,15 @@ export const commentConfig: CommentConfig = {
 		emoji: [
 			"https://unpkg.com/@waline/emojis@1.4.0/weibo",
 			"https://unpkg.com/@waline/emojis@1.4.0/bilibili",
-			"https://unpkg.com/@waline/emojis@1.4.0/bmoji"
+			"https://unpkg.com/@waline/emojis@1.4.0/bmoji",
 		],
 		login: "enable",
-		visitorCount: true
+		visitorCount: true,
 	},
 	artalk: {
 		server: "https://artalk.example.com/",
 		locale: "zh-CN",
-		visitorCount: true
+		visitorCount: true,
 	},
 	giscus: {
 		repo: "cixiy1/Yuki-blog-retired",
@@ -36,9 +36,9 @@ export const commentConfig: CommentConfig = {
 		emitMetadata: "1",
 		inputPosition: "top",
 		lang: "zh-CN",
-		loading: "lazy"
+		loading: "lazy",
 	},
 	disqus: {
-		shortname: "firefly"
-	}
+		shortname: "firefly",
+	},
 };
