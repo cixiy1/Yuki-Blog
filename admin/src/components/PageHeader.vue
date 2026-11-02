@@ -20,7 +20,7 @@ defineProps<{ title: string; desc?: string }>();
 	align-items: flex-end;
 	justify-content: space-between;
 	gap: 1rem 1.25rem;
-	margin-bottom: 1.35rem;
+	margin-bottom: 1.5rem;
 	flex-wrap: wrap;
 }
 
