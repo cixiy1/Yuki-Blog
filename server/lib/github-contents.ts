@@ -24,19 +24,57 @@ function headers(token: string): Record<string, string> {
 	};
 }
 
+/** 从 GitHub 的错误体里抠出 message，失败就退回原文 */
+function ghMessage(text: string): string {
+	try {
+		const data = JSON.parse(text) as { message?: unknown };
+		if (typeof data.message === "string") return data.message;
+	} catch {
+		// 不是 JSON，按原文处理
+	}
+	return text;
+}
+
+/**
+ * 把 GitHub 的错误翻译成能照着做的话。
+ * 403 最容易被误读：fine-grained 令牌给成只读时，`GET /repos` 里
+ * permissions.push 仍然是 true（那是账号对该仓库的权限，不是令牌的），
+ * 只有真正写入才会 403。
+ */
+function explain(status: number, raw: string): string {
+	const detail = ghMessage(raw).slice(0, 200);
+	const lower = detail.toLowerCase();
+	if (status === 401) {
+		return "GitHub 令牌无效或已过期，重新生成一个再填进来";
+	}
+	if (status === 403 && lower.includes("not accessible by personal access token")) {
+		return "令牌只有读权限。去 GitHub → Settings → Developer settings → Fine-grained tokens 打开这个令牌，把 Contents 改成 Read and write，并确认 Repository access 里包含 cixiy1/Yuki-blog；改完立即生效，不必重新生成。";
+	}
+	if (status === 404) {
+		return "令牌看不到这个仓库：检查 Repository access 是否包含 cixiy1/Yuki-blog";
+	}
+	if (status === 403) {
+		return `GitHub 拒绝写入：${detail}`;
+	}
+	return detail || `写入失败（${status}）`;
+}
+
 /** 读远端文件当前的 sha；文件不存在返回 null（首次发布时是这种情况） */
 async function currentSha(
 	repo: string,
 	path: string,
 	branch: string,
 	token: string,
-): Promise<{ sha: string | null; status: number }> {
+): Promise<{ sha: string | null; status: number; message?: string }> {
 	const res = await fetch(
 		`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`,
 		{ headers: headers(token) },
 	);
 	if (res.status === 404) return { sha: null, status: 200 };
-	if (!res.ok) return { sha: null, status: res.status };
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		return { sha: null, status: res.status, message: explain(res.status, text) };
+	}
 	const data = (await res.json()) as { sha?: string };
 	return { sha: data.sha ?? null, status: 200 };
 }
@@ -63,7 +101,8 @@ export async function putRepoFile(input: {
 		return {
 			ok: false,
 			status: existing.status,
-			message: `读取远端文件失败（${existing.status}）`,
+			message:
+				existing.message ?? `读取远端文件失败（${existing.status}）`,
 		};
 	}
 
@@ -91,7 +130,7 @@ export async function putRepoFile(input: {
 		return {
 			ok: false,
 			status: res.status,
-			message: text.slice(0, 200) || `写入失败（${res.status}）`,
+			message: explain(res.status, text),
 		};
 	}
 
