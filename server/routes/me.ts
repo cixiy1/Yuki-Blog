@@ -1,5 +1,21 @@
 import { type Context, Hono } from "hono";
+import {
+	joinMarkdown,
+	readList,
+	readScalar,
+	setList,
+	setRawScalar,
+	setScalar,
+	splitMarkdown,
+} from "../lib/frontmatter";
+import { putRepoFile } from "../lib/github-contents";
 import { readRepoPosts, type RepoPost } from "../lib/post-index";
+import {
+	deleteRepoFile,
+	readRepoFile,
+	writeRepoFile,
+} from "../lib/repo-posts";
+import { readSecret } from "../lib/site-config";
 import { isValidSlug, normalizeTags } from "../lib/validate";
 import { requireAuth } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
@@ -485,4 +501,190 @@ me.post("/posts/:id/withdraw", requireAuth, sameOriginGuard, async (c) => {
 		.first<PostRow>();
 
 	return c.json({ post: updated ? toDetail(updated) : null });
+});
+
+/* ---------- 仓库文章：直接读写 src/content/posts 下的文件 ---------- */
+
+function isOwner(c: Context<AppEnv>): boolean {
+	return c.get("user")?.role === "admin";
+}
+
+function readField(payload: Record<string, unknown>, key: string): string {
+	const value = payload[key];
+	return typeof value === "string" ? value.trim() : "";
+}
+
+async function repoToken(c: Context<AppEnv>): Promise<string | null> {
+	return readSecret(c.env.DB, c.env.PASSWORD_ENC_KEY ?? "", "github_token");
+}
+
+async function findRepoPost(
+	c: Context<AppEnv>,
+	slug: string,
+): Promise<RepoPost | null> {
+	if (!slug) return null;
+	const posts = await readRepoPosts(c.env.ASSETS);
+	return posts.find((post) => post.slug === slug) ?? null;
+}
+
+const TOKEN_MISSING = {
+	error: "github_token_missing",
+	message: "还没配置 GitHub 令牌，去「站点设置 → 集成」里填一个带 Contents 写权限的",
+};
+
+me.get("/repo-posts", requireAuth, async (c) => {
+	if (!isOwner(c)) {
+		return c.json({ error: "forbidden", message: "只有站主能编辑仓库文章" }, 403);
+	}
+	const item = await findRepoPost(c, c.req.query("slug") ?? "");
+	if (!item) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+
+	const token = await repoToken(c);
+	if (!token) return c.json(TOKEN_MISSING, 412);
+
+	const file = await readRepoFile(item.repoPath, token);
+	if (!file.ok || file.content === undefined) {
+		return c.json(
+			{ error: "repo_read_failed", message: file.message ?? "读取失败" },
+			502,
+		);
+	}
+
+	const { frontmatter, body } = splitMarkdown(file.content);
+	return c.json({
+		post: {
+			slug: item.slug,
+			repoPath: item.repoPath,
+			sha: file.sha ?? "",
+			title: readScalar(frontmatter, "title") || item.title,
+			description: readScalar(frontmatter, "description"),
+			tags: readList(frontmatter, "tags"),
+			category: readScalar(frontmatter, "category"),
+			series: readScalar(frontmatter, "series"),
+			sourceLink: readScalar(frontmatter, "sourceLink"),
+			published: readScalar(frontmatter, "published"),
+			draft: readScalar(frontmatter, "draft") === "true",
+			body,
+		},
+	});
+});
+
+me.put(
+	"/repo-posts",
+	requireAuth,
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		if (!isOwner(c)) {
+			return c.json({ error: "forbidden", message: "只有站主能编辑仓库文章" }, 403);
+		}
+		const payload = (await c.req.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		const item = await findRepoPost(c, readField(payload, "slug"));
+		if (!item) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+
+		const title = readField(payload, "title");
+		if (!title) {
+			return c.json({ error: "bad_request", message: "标题不能为空" }, 400);
+		}
+		const nextSlug = readField(payload, "nextSlug");
+		if (nextSlug && nextSlug !== item.slug && !isValidSlug(nextSlug)) {
+			return c.json({ error: "bad_slug", message: "地址格式不对" }, 400);
+		}
+		const rawTags = payload.tags;
+		const tags = normalizeTags(rawTags);
+		if (tags === null) {
+			return c.json({ error: "bad_tags", message: "标签格式不对" }, 400);
+		}
+
+		const token = await repoToken(c);
+		if (!token) return c.json(TOKEN_MISSING, 412);
+
+		const file = await readRepoFile(item.repoPath, token);
+		if (!file.ok || file.content === undefined) {
+			return c.json(
+				{ error: "repo_read_failed", message: file.message ?? "读取失败" },
+				502,
+			);
+		}
+
+		const parsed = splitMarkdown(file.content);
+		let fm = parsed.frontmatter;
+		fm = setScalar(fm, "title", title.slice(0, 120));
+		fm = setScalar(fm, "description", readField(payload, "description"));
+		fm = setList(fm, "tags", tags);
+		fm = setScalar(fm, "category", readField(payload, "category"));
+		fm = setScalar(fm, "series", readField(payload, "series"));
+		fm = setScalar(fm, "sourceLink", readField(payload, "sourceLink"));
+		const published = readField(payload, "published");
+		if (published) fm = setRawScalar(fm, "published", published);
+		fm = setRawScalar(fm, "draft", payload.draft === true ? "true" : null);
+
+		// 只有真改了地址才写 slug：原来没这一行的文章沿用文件名当 URL，
+		// 凭空补一行 slug 有把旧链接改掉的风险
+		if (nextSlug && nextSlug !== item.slug) {
+			fm = setScalar(fm, "slug", nextSlug);
+		}
+
+		const body =
+			typeof payload.body === "string" ? payload.body : parsed.body;
+		const content = joinMarkdown(fm, body);
+
+		const result = await writeRepoFile(
+			item.repoPath,
+			content,
+			token,
+			`chore(post): 更新《${title}》`,
+		);
+		if (!result.ok) {
+			return c.json(
+				{ error: "repo_write_failed", message: result.message ?? "写入失败" },
+				result.status === 400 ? 400 : 502,
+			);
+		}
+
+		return c.json({
+			ok: true,
+			sha: result.sha ?? "",
+			repoPath: item.repoPath,
+			// 写成功即触发构建，站点与列表要等这次构建完成才会变
+			building: true,
+		});
+	},
+);
+
+me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
+	if (!isOwner(c)) {
+		return c.json({ error: "forbidden", message: "只有站主能删除仓库文章" }, 403);
+	}
+	const item = await findRepoPost(c, c.req.query("slug") ?? "");
+	if (!item) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+
+	const token = await repoToken(c);
+	if (!token) return c.json(TOKEN_MISSING, 412);
+
+	const file = await readRepoFile(item.repoPath, token);
+	if (!file.ok || !file.sha) {
+		return c.json(
+			{ error: "repo_read_failed", message: file.message ?? "读取失败" },
+			502,
+		);
+	}
+
+	const result = await deleteRepoFile(
+		item.repoPath,
+		token,
+		file.sha,
+		`chore(post): 删除《${item.title}》`,
+	);
+	if (!result.ok) {
+		return c.json(
+			{ error: "repo_delete_failed", message: result.message ?? "删除失败" },
+			502,
+		);
+	}
+
+	return c.json({ ok: true, building: true });
 });

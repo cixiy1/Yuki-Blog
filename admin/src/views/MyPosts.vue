@@ -15,7 +15,7 @@ import {
 	submitPost,
 	withdrawPost,
 } from "../lib/posts";
-import { go } from "../router";
+import { go, goRepoEdit } from "../router";
 
 const posts = ref<PostSummary[]>([]);
 const loading = ref(true);
@@ -124,7 +124,7 @@ onMounted(refresh);
 	<div>
 		<PageHeader
 			title="我的文章"
-			desc="草稿存 D1，提交审核后才写进仓库；仓库里已有的文章一并列出，只读。"
+			desc="草稿存 D1；仓库里已有的文章直接改文件，保存即提交并上线。"
 		>
 			<template #actions>
 				<button
@@ -188,15 +188,23 @@ onMounted(refresh);
 					</p>
 				</div>
 				<div class="row-actions">
-					<a
-						v-if="post.origin === 'repo'"
-						class="btn-regular"
-						:href="`/posts/${post.slug}/`"
-						target="_blank"
-						rel="noopener"
-					>
-						打开
-					</a>
+					<template v-if="post.origin === 'repo'">
+						<button
+							type="button"
+							class="btn-regular"
+							@click="goRepoEdit(post.slug)"
+						>
+							编辑
+						</button>
+						<a
+							class="btn-ghost"
+							:href="`/posts/${post.slug}/`"
+							target="_blank"
+							rel="noopener"
+						>
+							打开
+						</a>
+					</template>
 					<template v-else>
 						<button
 							type="button"
@@ -239,9 +247,9 @@ onMounted(refresh);
 		</ul>
 
 		<p class="footnote">
-			带「仓库」标签的是 <code>src/content/posts/</code> 里已有的文章，读的是构建时的
-			frontmatter 快照，这里只能看不能改；在管理端新建的草稿存 D1，
-			「待审」的文章要先撤回再改，审核通过后由后端写进仓库并触发构建（P4）。
+			带「仓库」标签的是 <code>src/content/posts/</code> 里已有的文章，编辑时直接改文件，
+			保存会提交一次 git 并触发构建，约一分钟后站点生效；在管理端新建的草稿存 D1，
+			「待审」的文章要先撤回再改。
 		</p>
 	</div>
 </template>

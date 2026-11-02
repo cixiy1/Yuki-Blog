@@ -110,3 +110,53 @@ export async function withdrawPost(id: number): Promise<PostDetail | null> {
 	);
 	return data.post;
 }
+
+/* ---------- 仓库文章：直接读写 src/content/posts 下的文件 ---------- */
+
+export interface RepoPostDetail {
+	slug: string;
+	repoPath: string;
+	sha: string;
+	title: string;
+	description: string;
+	tags: string[];
+	category: string;
+	series: string;
+	sourceLink: string;
+	published: string;
+	draft: boolean;
+	body: string;
+}
+
+export interface RepoPostPatch {
+	slug: string;
+	/** 用户改过的地址；留空表示沿用原 slug */
+	nextSlug: string;
+	title: string;
+	description: string;
+	tags: string[];
+	category: string;
+	series: string;
+	sourceLink: string;
+	published: string;
+	draft: boolean;
+	body: string;
+}
+
+export async function getRepoPost(slug: string): Promise<RepoPostDetail | null> {
+	const data = await api.get<{ post: RepoPostDetail }>(
+		`/api/me/repo-posts?slug=${encodeURIComponent(slug)}`,
+	);
+	return data.post ?? null;
+}
+
+/** 保存即提交到仓库并触发构建，站点约一分钟后就变了 */
+export async function saveRepoPost(
+	patch: RepoPostPatch,
+): Promise<{ sha: string }> {
+	return api.put<{ sha: string }>("/api/me/repo-posts", patch);
+}
+
+export async function deleteRepoPost(slug: string): Promise<void> {
+	await api.delete<unknown>(`/api/me/repo-posts?slug=${encodeURIComponent(slug)}`);
+}

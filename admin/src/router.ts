@@ -16,8 +16,10 @@ export type RouteName =
 
 export interface Route {
 	name: RouteName;
-	/** post-edit 用：文章 id */
+	/** post-edit 用：D1 文章 id */
 	id?: number;
+	/** post-edit 用：仓库文章的 slug（子目录用 %2F 编码，切分时不会被拆开） */
+	repoSlug?: string;
 }
 
 const ROUTES: RouteName[] = [
@@ -34,18 +36,26 @@ const ROUTES: RouteName[] = [
 function parse(hash: string): Route {
 	const raw = hash.replace(/^#\/?/, "").replace(/\/$/, "");
 	if (!raw) return { name: "overview" };
-	const [head, tail] = raw.split("/");
+	const parts = raw.split("/");
+	const head = parts[0];
 	const name = head as RouteName;
 	if (!ROUTES.includes(name)) return { name: "overview" };
 
 	// 编辑页的地址是 /posts/<id>，与列表 /posts 共用同一段前缀
-	if (name === "posts" && tail !== undefined) {
-		const id = Number(tail);
+	if (name === "posts" && parts.length > 1) {
+		// /posts/repo/<slug>：仓库文章的编辑地址，slug 里可能有子目录
+		if (parts[1] === "repo" && parts.length > 2) {
+			return {
+				name: "post-edit",
+				repoSlug: decodeURIComponent(parts.slice(2).join("/")),
+			};
+		}
+		const id = Number(parts[1]);
 		if (Number.isInteger(id) && id > 0) return { name: "post-edit", id };
 		return { name: "posts" };
 	}
 	if (name === "post-edit") {
-		const id = Number(tail);
+		const id = Number(parts[1]);
 		return Number.isInteger(id) && id > 0 ? { name, id } : { name: "posts" };
 	}
 	return { name };
@@ -67,6 +77,11 @@ export function go(path: string): void {
 
 export function goPostEdit(id: number): void {
 	go(`/posts/${id}`);
+}
+
+/** 仓库文章走 slug，子目录的斜杠要编码，否则会把路由切成多段 */
+export function goRepoEdit(slug: string): void {
+	go(`/posts/repo/${encodeURIComponent(slug)}`);
 }
 
 export function replaceHash(path: string): void {
