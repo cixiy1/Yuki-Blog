@@ -1,0 +1,6 @@
+{
+	"_comment": "管理端「站点设置」发布时整体覆盖本文件。各分区留空即使用 src/config 里的默认值。分区：site / profile / music / friends / banner / announcement",
+	"profile": {
+		"bio": "你好，我是雪穗，欢迎来到我们的博客。"
+	}
+}
