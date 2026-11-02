@@ -1,6 +1,6 @@
 # 雪穗博客
 
-[yiyu14.top](https://yiyu14.top) 的源码。主题是 Firefly，Astro 静态站，推 `master` 触发线上构建。
+[yiyu14.top](https://yiyu14.top) 的源码。主题是 Firefly，Astro 静态站，推 `main` 触发线上构建。
 
 ## 技术栈
 
@@ -100,7 +100,7 @@ provenance:                    # 带详情
 
 ## 部署
 
-推 `master` 即由 Cloudflare Pages 构建上线，约一分钟。仓库里的 `vercel.json`、`wrangler.jsonc` 是主题自带的备选部署配置，当前不用。
+推 `main` 即由 Cloudflare Pages 构建上线，约一分钟。仓库里的 `vercel.json`、`wrangler.jsonc` 是主题自带的备选部署配置，当前不用。
 
 ## 其他
 

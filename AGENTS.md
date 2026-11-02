@@ -4,7 +4,7 @@ Guidance for AI coding agents (Claude Code, Codex, etc.) working in this reposit
 
 ## Project Overview
 
-This repository is 雪穗博客 (yiyu14.top), a personal blog running the Firefly theme — Astro 7 with Svelte 5 islands, Tailwind CSS 4, TypeScript 6, and Biome for formatting and linting. Content lives in `src/content/posts/`; all site behaviour is configured through TypeScript modules in `src/config/`. Pushing to `master` deploys the site through Cloudflare Pages.
+This repository is 雪穗博客 (yiyu14.top), a personal blog running the Firefly theme — Astro 7 with Svelte 5 islands, Tailwind CSS 4, TypeScript 6, and Biome for formatting and linting. Content lives in `src/content/posts/`; all site behaviour is configured through TypeScript modules in `src/config/`. Pushing to `main` deploys the site through Cloudflare Pages.
 
 ## Project Structure & Module Organization
 
@@ -95,4 +95,4 @@ Do not commit secrets, tokens, or service keys in config files. Keep deployment-
 
 ## Deployment
 
-Pushing to `master` builds and deploys through Cloudflare Pages, roughly one minute. `vercel.json` and `wrangler.jsonc` are the theme's alternative deployment configs and are currently unused. Static output goes to `dist/`.
+Pushing to `main` builds and deploys through Cloudflare Pages, roughly one minute. `vercel.json` and `wrangler.jsonc` are the theme's alternative deployment configs and are currently unused. Static output goes to `dist/`.

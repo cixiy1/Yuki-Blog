@@ -35,7 +35,7 @@
 ## 三、项目经历
 
 ### 1. 雪穗博客（Yuki Blog）· 已上线
-- **定位**：基于 Astro 7 + Firefly 主题二次开发的静态博客，Cloudflare Pages 托管，**推送 `master` 即自动构建上线**。
+- **定位**：基于 Astro 7 + Firefly 主题二次开发的静态博客，Cloudflare Pages 托管，**推送 `main` 即自动构建上线**。
 - **技术栈**：Astro 7 / Svelte / TypeScript / Tailwind / Pagefind。
 - **核心贡献**：
   - 班级**动态课表**：按周次自动推算当前周、支持换教室/调课/对调/停课/新增/提示六种调整，数据驱动。

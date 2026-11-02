@@ -42,7 +42,7 @@
 ## 三、项目经历
 
 ### 1. 雪穗博客（Yuki Blog）· 已上线
-- 基于 Astro 7 + Firefly 主题二次开发的静态博客，Cloudflare Pages 托管，推送 master 即自动构建上线。
+- 基于 Astro 7 + Firefly 主题二次开发的静态博客，Cloudflare Pages 托管，推送 main 即自动构建上线。
 - 班级动态课表（按周次推算、六种调课调整、数据驱动）；教材书单、新生组队匹配、站点统计等页面；文章系列、项目展示、待办清单等交互组件；长期维护主题升级与线上 bug。
 
 ### 2. Yuki-Blog App（Flutter 班级应用）· 开发中

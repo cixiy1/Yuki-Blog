@@ -29,7 +29,7 @@ link:
 - **Svelte + TypeScript** —— 交互组件
 - **Tailwind CSS** —— 样式方案
 - **Pagefind** —— 客户端全文搜索
-- **Cloudflare Pages** —— 托管，推送 `master` 即自动构建上线
+- **Cloudflare Pages** —— 托管，推送 `main` 即自动构建上线
 
 ## 自建内容
 
