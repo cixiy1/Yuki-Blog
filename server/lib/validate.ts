@@ -40,3 +40,33 @@ export function sanitizeNext(raw: unknown): string {
 	if (raw === "/api" || raw.startsWith("/api/")) return "/";
 	return raw;
 }
+
+/**
+ * 文章 slug：小写字母数字与连字符，2–60 位，首尾不能是连字符。
+ * 这是站内唯一允许的地址写法——中文标题靠它转成可读英文地址，
+ * 不做拼音转换，交给作者自己定。
+ */
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,58}[a-z0-9]$/;
+
+export function isValidSlug(raw: unknown): raw is string {
+	return typeof raw === "string" && SLUG_RE.test(raw);
+}
+
+/** 标签去重、去空、限 10 个、单个 24 字以内；传 null 表示格式非法 */
+export function normalizeTags(raw: unknown): string[] | null {
+	if (raw === undefined || raw === null) return [];
+	if (!Array.isArray(raw)) return null;
+	const seen = new Set<string>();
+	const tags: string[] = [];
+	for (const item of raw) {
+		if (typeof item !== "string") return null;
+		const tag = item.trim();
+		if (tag.length === 0) continue;
+		if (tag.length > 24) return null;
+		if (seen.has(tag)) continue;
+		seen.add(tag);
+		tags.push(tag);
+		if (tags.length > 10) return null;
+	}
+	return tags;
+}
