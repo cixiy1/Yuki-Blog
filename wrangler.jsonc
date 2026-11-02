@@ -1,10 +1,24 @@
 {
+	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "yuki-blog",
+	"main": "./server/index.ts",
 	"compatibility_date": "2025-01-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"assets": {
-		"directory": "./dist"
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"html_handling": "auto-trailing-slash",
+		"not_found_handling": "404-page",
+		"run_worker_first": ["/api", "/api/*", "!/api/dynamic.json", "!/api/allPostMeta.json"]
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "yuki-blog",
+			"database_id": "b1a82660-fba5-4586-9799-a73ce5b04ab7",
+			"migrations_dir": "server/db/migrations"
+		}
+	],
 	"observability": {
 		"logs": {
 			"enabled": true,

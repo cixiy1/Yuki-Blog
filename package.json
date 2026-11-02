@@ -17,11 +17,15 @@
     "new-dynamic": "tsx scripts/new-dynamic.js",
     "new-d": "tsx scripts/new-dynamic.js",
     "new-post": "node scripts/new-post.js",
-    "format": "biome format --write ./src ./scripts",
-    "lint": "biome check --write ./src ./scripts",
+    "format": "biome format --write ./src ./scripts ./server",
+    "lint": "biome check --write ./src ./scripts ./server",
     "preinstall": "npx only-allow pnpm",
     "lqips": "npx tsx scripts/generate-lqips.ts",
-    "github-cards": "npx tsx scripts/generate-github-card-data.ts"
+    "github-cards": "npx tsx scripts/generate-github-card-data.ts",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply yuki-blog --local",
+    "db:migrate:remote": "wrangler d1 migrations apply yuki-blog --remote"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.10",
@@ -64,6 +68,7 @@
     "gray-matter": "^4.0.3",
     "hast-util-from-html": "^2.0.3",
     "hastscript": "^9.0.1",
+    "hono": "^4.13.14",
     "katex": "^0.18.7",
     "l2d-widget": "^0.1.1",
     "marked": "^18.0.12",
