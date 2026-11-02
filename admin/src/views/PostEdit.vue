@@ -46,6 +46,11 @@ const isRepo = computed(() => repoSlug.value.length > 0);
 const loadedSlug = ref("");
 /** 仓库文章所在目录的 raw 前缀，正文里的相对图片要靠它才能在编辑器里预览 */
 const rawBase = ref("");
+/**
+ * .mdx 里有 import 与组件标签（<ClassSchedule />），IR 模式会把组件渲染成一个看不见的
+ * 空元素，作者一眼看过去像被删了。这类文件一律用分屏源码模式打开。
+ */
+const isMdx = ref(false);
 
 /* ---------- 字段定义：一份表驱动整块属性区 ---------- */
 
@@ -376,6 +381,7 @@ function fillRepo(post: RepoPostDetail): void {
 	lastSaved.value = "";
 	form.slug = post.slug;
 	rawBase.value = post.rawBase;
+	isMdx.value = post.repoPath.toLowerCase().endsWith(".mdx");
 	form.body = bodyToPreview(post.body, post.rawBase);
 	loadFields(post.fields);
 }
@@ -629,7 +635,7 @@ function createEditor(): void {
 	vditor = new Vditor(editorEl.value, {
 		cdn: "/admin/vditor",
 		value: form.body,
-		mode: "ir",
+		mode: isMdx.value ? "sv" : "ir",
 		lang: "zh_CN",
 		height: 600,
 		// 高度由卡片决定（见 .editor 的样式），自带的拖拽把手会和它打架
@@ -807,6 +813,7 @@ watch(isDark, (dark) => {
 								<span class="pill" :data-status="isRepo ? 'published' : status">
 									{{ isRepo ? "仓库文件" : statusLabel }}
 								</span>
+								<span v-if="isMdx" class="mdx-tag">MDX · 源码模式</span>
 								<span class="doc-sub-key">正文 <code class="fm-key">body</code></span>
 							</div>
 						</div>
@@ -1343,6 +1350,15 @@ watch(isDark, (dark) => {
 .doc-sub-key {
 	margin-left: auto;
 	color: var(--fg-50);
+}
+
+.mdx-tag {
+	padding: 0.02rem 0.4rem;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--admonitions-color-note) 16%, transparent);
+	color: var(--admonitions-color-note);
+	font-size: 0.64rem;
+	font-weight: 600;
 }
 
 .save-state {
