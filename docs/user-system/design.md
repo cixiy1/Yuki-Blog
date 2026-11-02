@@ -34,7 +34,9 @@
 | 内容写回 | GitHub API 提交，内容留在 git |
 | 投稿 | 草稿进 `inbox/`，审核通过后由后端移动到 `src/content/posts/` |
 | 媒体 | 三种并存：外链、R2 上传、提交进 git |
-| 邮件 | Resend |
+| 邮件 | Resend，发件地址 `mail@yiyu14.top`（不用 noreply 一类冷地址） |
+| 组织 | 独立成页，作为与 category 平行的新维度，不复用 frontmatter 的分类字符串；一个用户可同时属于多个组织 |
+| 邀请 | 组织管理端发起 → 系统邮件发链接 → 站内自行同意；个人中心也有一份待处理列表；允许邀请未注册邮箱，对方注册后可见 |
 | 预览 | 编辑器右侧实时 iframe，真跑 HTML / JS / 数据 |
 | 组件 | 文章专属组件与正文同目录；用户级可复用组件放该用户自己的目录 |
 
@@ -164,6 +166,12 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 | `settings` | 站点设置 | `key`、`value_json`、`updated_by` |
 | `audit_log` | 操作审计 | `actor_uid`、`action`、`target`、`detail_json` |
 
+待建（组织与邀请阶段，`0003` 迁移）：
+
+| 表 | 用途 | 关键字段 |
+| --- | --- | --- |
+| `org_invites` | 组织邀请 | `org_id`、`inviter_uid`、`email`、`role`、`token_hash`、`expires_at`、`accepted_at`、`accepted_uid`、`revoked_at` |
+
 索引：`users(email)` 唯一、`users(uid)` 唯一、`sessions(token_hash)` 唯一、`posts(slug)` 唯一、`posts(status, updated_at)`、`comments(post_slug, status)`、`email_codes(email, purpose)`。
 
 加密与脱敏：`oauth_accounts.access_token_enc` 用 AES-256-GCM（密钥在 Worker secret）；评论与登录记录的 IP 只存 `sha256(ip + salt)`，不存原文。
@@ -215,6 +223,20 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 | GET | `/api/admin/audit` | 审计日志 |
 | POST | `/api/admin/build-status` | 查最近一次构建状态 |
 
+### P2 实际落地的端点
+
+| 方法 | 路径 | 权限 | 备注 |
+| --- | --- | --- | --- |
+| POST | `/api/auth/email-code` | 公开 | 发码；五重限流（邮箱 60s/10min/1d、IP 1h/1d） |
+| POST | `/api/auth/verify` | 公开 | 码换会话，邮箱首次出现即注册 |
+| GET | `/api/auth/me` | 登录 | 未登录返回 401 + `authenticated:false` |
+| POST | `/api/auth/logout` | 公开（幂等） | 没带 cookie 也返回 200，不给探测面 |
+| GET | `/api/auth/github/start` | 公开 | 未配 client id 返回 503 |
+| GET | `/api/auth/github/callback` | 公开 | 失败一律 302 `/login?error=...` |
+| GET | `/api/admin/ping` | admin | 401/403 分支的验收锚点 |
+
+错误体统一 `{ error, message, field?, ... }`。`/api/*` 响应全部 `Cache-Control: no-store`。
+
 ## 九、阶段计划
 
 每阶段独立可验、独立可停。全部落在 `feat/user-system`。
@@ -238,9 +260,13 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 
 ### P2 认证
 
+已完成（`2487d42e` 主链路 + `399702b4` GitHub + 登录页），本地验收通过，未部署。
+
 - 验证码发送（Resend）、验证、会话 cookie、角色中间件
 - GitHub OAuth
 - 验收：能注册、能登录、刷新保持、退出清 session；未登录访问受限接口返回 401；普通用户访问管理员接口返回 403
+- 落地细节见第八节「P2 实际落地的端点」。登录页由 Worker 直出 `GET /login`，不占 Astro 构建；P3 的 admin SPA 上线后删掉
+- 遗留：Resend 域名与 GitHub OAuth App 要用户自己配，代码侧已就绪；`access_token` 本轮不落库
 
 ### P3 用户中心与编辑器
 
@@ -271,8 +297,8 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 - **构建期代码风险**：`.astro` 在构建时编译执行，等同任意代码。所以用户组件只能在审核通过后进入 `src/content/posts/`；`inbox/` 里的组件不参与构建。Cloudflare 构建环境不放任何密钥。
 - **import 白名单**：见第六节。
 - **会话 cookie**：`HttpOnly`、`Secure`、`SameSite=Lax`、`Path=/`、30 天过期；会话表存 token 的 SHA-256，不存原文。
-- **CSRF**：所有写操作校验 `Origin`/`Referer` 同源；关键操作再带一次性 nonce。
-- **限流**：验证码按邮箱与 IP 双维度（10 分钟 3 次、每日 10 次）；登录失败、评论、上传各自独立额度。
+- **CSRF**：写操作校验 `Origin` 同源；不带 `Origin` 的请求放行（curl、服务端调用），浏览器发起的跨站 POST 一定带 `Origin`。不能用 Hono 自带的 `csrf()`——它只拦表单类 content-type，本站写接口全是 JSON，会被直接放过。
+- **限流**：验证码按邮箱与 IP 双维度——邮箱 60 秒冷却、10 分钟 3 次、每日 10 次；IP 每小时 20 次、每日 60 次。用 `email_codes` 自身计数，不另建表。计数与 INSERT 之间无锁，并发下会超发约等于并发数，属已知偏差。
 - **密码**：不存密码，无相关风险面。
 - **上传**：只收白名单 MIME（jpg/png/webp/avif/gif/webp/svg 需净化/mp3/mp4/pdf），单文件上限 20MB，SVG 一律重写过滤。
 - **XSS**：评论走严格白名单过滤（无 `script`/`style`/`on*`/`javascript:`）；文章正文本身是作者可控，视为可信，但用户投稿在审核时才发布。
@@ -280,11 +306,19 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 - **后台暴露**：`/admin` 加 `noindex`、`robots.txt` 排除、`statsConfig.excludePaths` 排除、无 sitemap 条目。
 - **审计**：所有管理端写操作落 `audit_log`。
 
-## 十一、待确认
+## 十一、已定与待确认
 
-1. **审核粒度**：目前设的是「文章发布需审核」。评论是否也要审核？还是只做事后删除？
-2. **谁能成为审核员**：管理员手动指定，还是管理员 + 组织 owner 自动有权限？
-3. **组织的用途**：是「多人协作的写作组」，还是只是给文章分类？这决定 `orgs` 表要不要做邀请流程。
-4. **普通用户能否直接用 `src/components/widget/` 里的公共组件**（如 `ClassSchedule`）？如果能，课表数据谁维护？
-5. **旧 dev 中间件**：`astro.config.mjs` 里那两个 `/api/admin/write-config`、`/api/admin/upload` 是旧管理台留下的，鉴权可伪造、无调用方。删掉还是改造成 Worker 接口？
-6. **`Resend` 域名**：发信要用 `yiyu14.top` 的哪个子域（如 `noreply@yiyu14.top`），需要先在 Resend 验证 DNS。
+已定（2026-11-02）：
+
+1. **评论审核**：做成开关，管理端可切「先审后发 / 先发后审」。
+2. **审核员**：管理员手动指定；组织可向管理员申请审核自己成员文章的权限（`orgs.can_review`）。
+3. **组织的用途**：既是成员协作单元，也是分类维度，但独立成页（`/orgs/`、`/orgs/<slug>/`），不复用 frontmatter 的 `category` 字符串。一个用户可属于多个组织。
+4. **邀请**：组织管理端发起，系统邮件发链接；对方可在站内同意，个人中心也有待处理列表。允许邀请未注册邮箱，注册后自动可见。
+5. **旧 dev 中间件**：已删（鉴权只比对时间戳，可伪造）。
+6. **发信地址**：`mail@yiyu14.top`，需在 Resend 验证 `yiyu14.top` 的 DNS。
+
+仍未定：
+
+- **普通用户能否直接用 `src/components/widget/` 里的公共组件**（如 `ClassSchedule`）？如果能，课表数据谁维护？
+- **组织是用邀请制还是也允许申请加入**？邀请已定，申请加入是否需要？
+- **组织的分类维度与现有 category 如何共存**：文章可同时挂 org 与 category，前端两个入口是否都要出现在导航？

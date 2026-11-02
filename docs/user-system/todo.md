@@ -25,13 +25,17 @@
 
 ## P2 认证
 
-- [ ] `server/auth/` —— 验证码生成、Resend 发送、校验
-- [ ] 会话表与 cookie 签发、校验
-- [ ] 角色中间件（user / reviewer / admin）
-- [ ] GitHub OAuth start + callback
-- [ ] 限流（KV 或 D1）
-- [ ] 管理端登录页
-- [ ] 验收：注册、登录、刷新保持、退出；401 / 403 分支正确
+已完成（`2487d42e` 主链路、`399702b4` GitHub OAuth、登录页随第四步提交），本地验收通过，未部署。
+
+- [x] `server/auth/` 拆成 `lib/` + `middleware/` + `routes/`（原计划的单目录会把算法、中间件、路由混在一起，P5 评论也要中间件）
+- [x] 验证码生成、Resend 发送、校验（6 位、10 分钟、只存 hash、attempts 上限 5）
+- [x] 会话表与 cookie 签发、校验（32 字节 token 存 sha256、30 天、Secure 按协议推导）
+- [x] 角色中间件（user / reviewer / admin），401 与 403 分开
+- [x] GitHub OAuth start + callback（HMAC state + cookie 绑定、只认 verified 邮箱）
+- [x] 限流（用 `email_codes` 自身计数，一条 SQL 出五个额度）
+- [x] 登录页：Worker 直出 `GET /login`，不进 Astro 构建；P3 admin SPA 上线后删
+- [x] 验收：注册、登录、刷新保持、退出；401 / 403 分支正确；限流 429；开放重定向兜底
+- [ ] 线上可用：等 Resend 域名验证与 GitHub OAuth App 配置（代码侧已就绪）
 
 ## P3 用户中心与编辑器
 
@@ -82,7 +86,16 @@
 
 - [x] 评论是否也要审核 —— 做成开关：先审后发 / 先发后审，管理端可切
 - [x] 审核员怎么产生 —— 管理员手动指定；组织可向管理员申请审核自己成员文章的权限（`orgs.can_review`）
-- [ ] 组织是协作组还是分类
-- [ ] 普通用户能否用公共组件
+- [x] 组织是协作组还是分类 —— 两者都是，但独立成页，另开维度，不复用 frontmatter 的 category
+- [x] 普通用户能否用公共组件 —— 待定，等 P3 编辑器成型再定
 - [x] 旧 dev 中间件删还是改 —— 已删（鉴权只比对时间戳，可伪造）
-- [ ] Resend 发信子域
+- [x] Resend 发信子域 —— `mail@yiyu14.top`，域名验证待做
+
+## P2.5 组织与邀请（下一个阶段）
+
+- [ ] `0003` 迁移：`org_invites` 表
+- [ ] 组织 CRUD 与成员管理 API
+- [ ] 邀请：发信、链接落地页、站内同意、个人中心待处理列表、撤销与过期
+- [ ] 主站 `/orgs/`、`/orgs/<slug>/`，文章 frontmatter 加 `org` 字段
+- [ ] 渲染改造：`PostMeta`、`CategoryBar`、`ArchivePanel`、两个索引页、SEO `article:section`
+- [ ] 39 篇没有 org 的老文章兜底（不显示组织徽标即可）
