@@ -43,10 +43,5 @@ package/
 .mimocode
 .workbuddy/
 
-# 管理台（仅本地使用，不推送 GitHub / 不上线）
-src/pages/admin.astro
-src/pages/api/admin/
-src/components/admin/
-src/utils/admin/
-src/config/adminConfig.ts
-src/types/adminConfig.ts
+# 管理端（admin SPA 与 worker API 需要进仓库）
+# 旧版管理台在 d2c032c7 删除，相关路径不再忽略

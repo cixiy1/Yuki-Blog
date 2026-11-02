@@ -46,7 +46,7 @@
 
 2. **没有任何服务端能力。** 0 个 POST 接口，无 D1 / KV / R2 绑定，无 `src/middleware.ts`，无 `Astro.request` / `cookies` 用法。
 
-3. **`slug` 字段是摆设。** 38 篇文章里多篇写了 `slug:`，但 `src/content.config.ts` 的 posts schema 里没有这个字段，zod 静默丢弃。实际 URL 由 `src/pages/posts/[...slug].astro:57` 的 `removeFileExtension(entry.id)` 决定，即文件路径。所以现有一切正常是「文件名恰好等于想要的地址」的巧合。按用户分目录之后地址会变成 `/posts/u/12/foo/`，必须先做 slug 归一。
+3. **`slug` 已经生效，但 schema 里没有声明。** Astro 的 `glob` loader（`node_modules/astro/dist/content/loaders/glob.js` 的 `generateIdDefault`）在生成 `entry.id` 时会优先用 frontmatter 的 `slug`；没写才用路径分段（每段过 `github-slugger`，并去掉尾部 `/index`）。所以 `新生组队匹配.md` 的地址是 `/posts/dorm-match/`，靠的就是 frontmatter。**推论**：文章地址由 frontmatter `slug` 决定，与所在目录无关——用户文章放进 `posts/u/12/` 只要写了 `slug` 就不影响地址。但 schema 里没有声明 `slug` 字段，`entry.data.slug` 是 undefined，需要读它的代码读不到，所以要在 schema 补一行声明（不影响 id 生成）。
 
 4. **`.gitignore` 锁着旧管理台的路径**：`src/pages/admin.astro`、`src/pages/api/admin/`、`src/components/admin/`、`src/utils/admin/`、`src/config/adminConfig.ts`、`src/types/adminConfig.ts`。新建这些路径不会被 git 追踪，要先解开。
 
@@ -123,13 +123,16 @@ src/components/user/<uid>/              该用户的可复用组件
 
 ### URL 与 slug
 
-frontmatter 的 `slug` 会成为唯一 URL 来源，目录只决定仓库里的组织方式。做法：
+地址的唯一来源是 frontmatter 的 `slug`，目录只决定仓库里的组织方式。这不是新约定，是 Astro 本来就这么工作（`glob` loader 用 `data.slug` 当 `entry.id`）。
 
-1. `src/content.config.ts` 给 posts schema 补 `slug: z.string().optional()`
-2. `[...slug].astro` 的 `getStaticPaths` 改成 `entry.data.slug || removeFileExtension(entry.id)`
-3. 同步改 RSS、Atom、sitemap、OG 图、系列导航、上下篇、相关推荐里所有按 id 算地址的地方
+规则：
 
-老文章回落到文件名，**URL 一个都不会变**。
+1. **所有用户文章必须显式写 `slug`。** 审核通过时由后端写入，值取作者创建时定的地址。
+2. 不写 `slug` 的文章回落到路径分段。中文文件名会被 `github-slugger` 转成中文串并做百分号编码（如 `/posts/新生组队匹配/`），所以别依赖回落。
+3. `src/content.config.ts` 的 schema 补 `slug: z.string().optional().default("")`，让 `entry.data.slug` 可读（id 生成用的是原始 frontmatter，不受 schema 影响）。
+4. 现有 38 篇文章里写了 `slug` 的已经生效、没写的沿用文件名，**这次不需要动任何文章**。
+
+后端在发布时必须校验 `slug`：只允许 `[a-z0-9-]`、长度 2–60、全站唯一（查 `posts` 表）。
 
 ## 七、数据模型
 
@@ -205,11 +208,13 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 
 每阶段独立可验、独立可停。全部落在 `feat/user-system`。
 
-### P0 文档与 slug 归一
+### P0 文档与前置清理
 
 - 本目录文档
-- schema 补 `slug`，改 `[...slug].astro` 及所有按 id 算地址的地方（约 8 个文件）
-- 验收：`astro check` 通过，`pnpm build` 后逐条比对 38 篇文章的 URL 与改动前一致；`dist/rss.xml`、`sitemap-0.xml`、`og/` 路径不变
+- schema 补 `slug` 声明（只为让 `entry.data.slug` 可读，不改 id 生成，URL 零变化）
+- `.gitignore` 解开旧管理台的 6 条忽略规则
+- 删除 `astro.config.mjs` 里旧的 dev-only Vite 中间件（`/api/admin/write-config`、`/api/admin/upload`）
+- 验收：`astro check`、`biome ci ./src`、`pnpm build` 通过；构建后文章 URL 与改动前逐条一致
 
 ### P1 Worker 运行时骨架
 

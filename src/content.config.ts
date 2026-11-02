@@ -5,6 +5,7 @@ import { type ZodType, z } from "astro/zod";
 
 type PostData = {
 	title: string;
+	slug: string;
 	published: Date;
 	updated?: Date;
 	draft: boolean;
@@ -90,6 +91,9 @@ const postsCollection: ContentCollection<PostData> = defineCollection({
 	}),
 	schema: z.object({
 		title: z.string(),
+		// 文章地址来源。Astro 的 glob loader 会用它作为 entry.id（改动前就已生效），
+		// 这里声明只是为了让 entry.data.slug 可读；不写则回落到文件路径。
+		slug: z.string().optional().default(""),
 		published: z.date(),
 		updated: z.date().optional(),
 		draft: z.boolean().optional().default(false),

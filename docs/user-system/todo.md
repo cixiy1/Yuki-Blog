@@ -2,14 +2,14 @@
 
 勾选状态以实际提交为准。详细设计见 `design.md`。
 
-## P0 文档与 slug 归一
+## P0 文档与前置清理
 
 - [x] 需求与设计文档落库（本目录）
-- [ ] `src/content.config.ts` posts schema 补 `slug`
-- [ ] `src/pages/posts/[...slug].astro` 改为 `entry.data.slug || removeFileExtension(entry.id)`
-- [ ] 排查其余按 `entry.id` 算地址的位置：RSS、Atom、sitemap、OG、系列、上下篇、相关推荐
-- [ ] 给现有 38 篇文章补显式 `slug`（值 = 当前实际 URL 的末段）
-- [ ] 验收：构建后逐条比对 URL，一个都不能变
+- [x] 核实 slug 机制：Astro glob loader 已用 frontmatter `slug` 当 entry.id，不需要改路由
+- [ ] `src/content.config.ts` posts schema 补 `slug` 声明（只为 `entry.data.slug` 可读）
+- [x] `.gitignore` 解开旧管理台的 6 条忽略规则
+- [x] 删除 `astro.config.mjs` 里旧的 dev-only Vite 中间件
+- [ ] 验收：`astro check`、`biome ci ./src`、`pnpm build` 通过，文章 URL 逐条一致
 
 ## P1 Worker 运行时骨架
 
