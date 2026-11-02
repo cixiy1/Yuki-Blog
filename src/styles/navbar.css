@@ -310,9 +310,11 @@ body.wallpaper-transparent #navbar-wrapper #navbar[data-full-width="true"] > div
 }
 
 /* ============================================
- * 小于1280px时隐藏导航栏菜单图标
+ * 小于1440px时隐藏导航栏菜单图标
+ * 导航有 7 个顶级项，带图标在 1280–1439 会挤到右侧图标组，
+ * 优先保证文字完整，图标留到 1440 以上再显示
  * ============================================ */
-@media (max-width: 1279px) {
+@media (max-width: 1439px) {
     .navbar-icon {
         display: none !important;
     }

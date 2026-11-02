@@ -83,6 +83,9 @@ const getDynamicNavBarConfig = (): NavBarConfig => {
 		],
 	});
 
+	// 个人中心：登录、账号信息、管理中心（管理员）与组织入口都在这一页
+	links.push(LinkPresets.Me);
+
 	// 关于及其子菜单
 	links.push({
 		name: "关于",
@@ -127,6 +130,12 @@ export const LinkPresets: Record<string, NavBarLink> = {
 		name: "主页",
 		url: "/",
 		icon: "material-symbols:home",
+	},
+	Me: {
+		name: "个人中心",
+		// 尾斜杠不能省：trailingSlash 是 "always"，写 /me 会多一次 307
+		url: "/me/",
+		icon: "material-symbols:account-circle",
 	},
 	Archive: {
 		name: "归档",

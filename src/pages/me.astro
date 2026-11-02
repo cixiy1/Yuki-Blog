@@ -1,0 +1,12 @@
+---
+import AccountCenter from "@/components/user/AccountCenter.astro";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+const title = "个人中心";
+const description = "查看账号信息、进入管理中心、管理你加入的组织。";
+---
+
+<MainGridLayout title={title} description={description}>
+	<meta slot="head" name="robots" content="noindex, nofollow" />
+	<AccountCenter mode="center" />
+</MainGridLayout>

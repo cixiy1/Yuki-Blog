@@ -239,6 +239,13 @@ export default defineConfig({
 				// 根据页面开关配置过滤sitemap
 				const url = new URL(page);
 				const pathname = url.pathname;
+				// 登录页与个人中心是纯交互页，自带 noindex，不进 sitemap
+				if (pathname === "/login/" || pathname === "/login") {
+					return false;
+				}
+				if (pathname === "/me/" || pathname === "/me") {
+					return false;
+				}
 				if (pathname === "/dynamic/" && !siteConfig.pages.dynamic) {
 					return false;
 				}

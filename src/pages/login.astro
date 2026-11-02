@@ -1,0 +1,12 @@
+---
+import AccountCenter from "@/components/user/AccountCenter.astro";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+const title = "登录";
+const description = "邮箱验证码登录，首次登录自动注册。";
+---
+
+<MainGridLayout title={title} description={description}>
+	<meta slot="head" name="robots" content="noindex, nofollow" />
+	<AccountCenter mode="login" />
+</MainGridLayout>
