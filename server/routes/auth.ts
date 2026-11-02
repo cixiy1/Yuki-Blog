@@ -2,6 +2,17 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { randomDigits, sha256Hex, timingSafeEqualHex } from "../lib/crypto";
+import {
+	buildAuthorizeUrl,
+	buildState,
+	exchangeCode,
+	fetchGithubProfile,
+	fetchVerifiedEmail,
+	OAUTH_STATE_COOKIE,
+	OAUTH_STATE_TTL_SECONDS,
+	pickDisplayName,
+	verifyState,
+} from "../lib/github";
 import { debugAuthEnabled, sendLoginCode } from "../lib/mail";
 import { checkSendQuota } from "../lib/ratelimit";
 import {
@@ -11,7 +22,12 @@ import {
 	SESSION_TTL_DAYS,
 } from "../lib/session";
 import { utcToIso } from "../lib/time";
-import { clientIp, isLoginCode, normalizeEmail } from "../lib/validate";
+import {
+	clientIp,
+	isLoginCode,
+	normalizeEmail,
+	sanitizeNext,
+} from "../lib/validate";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
 
@@ -367,4 +383,172 @@ auth.post("/logout", sameOriginGuard, async (c) => {
 		secure: isHttps(c.req.url),
 	});
 	return c.json({ ok: true });
+});
+
+/** GitHub OAuth 跳转；没配 client id 时明确 503，不让人以为按钮坏了 */
+auth.get("/github/start", async (c) => {
+	const clientId = c.env.GITHUB_CLIENT_ID;
+	const pepper = c.env.AUTH_PEPPER;
+	if (!clientId || !pepper) {
+		return c.json(
+			{ error: "github_not_configured", message: "GitHub 登录尚未配置" },
+			503,
+		);
+	}
+
+	const origin = new URL(c.req.url).origin;
+	const state = await buildState(pepper, sanitizeNext(c.req.query("next")));
+	setCookie(c, OAUTH_STATE_COOKIE, state, {
+		httpOnly: true,
+		secure: isHttps(c.req.url),
+		sameSite: "Lax",
+		path: "/",
+		maxAge: OAUTH_STATE_TTL_SECONDS,
+	});
+	return c.redirect(
+		buildAuthorizeUrl(clientId, `${origin}/api/auth/github/callback`, state),
+		302,
+	);
+});
+
+/** OAuth 回调：失败一律 302 回登录页带 error，浏览器流程不返回 JSON */
+auth.get("/github/callback", async (c) => {
+	const origin = new URL(c.req.url).origin;
+	const stateCookieOptions = {
+		path: "/",
+		httpOnly: true,
+		sameSite: "Lax" as const,
+		secure: isHttps(c.req.url),
+	};
+	const fail = (reason: string): Response => {
+		deleteCookie(c, OAUTH_STATE_COOKIE, stateCookieOptions);
+		return c.redirect(
+			`${origin}/login?error=${encodeURIComponent(reason)}`,
+			302,
+		);
+	};
+
+	const clientId = c.env.GITHUB_CLIENT_ID;
+	const clientSecret = c.env.GITHUB_CLIENT_SECRET;
+	const pepper = c.env.AUTH_PEPPER;
+	if (!clientId || !clientSecret || !pepper)
+		return fail("github_not_configured");
+
+	const denied = c.req.query("error");
+	if (denied)
+		return fail(denied === "access_denied" ? "github_denied" : "github_error");
+
+	const code = c.req.query("code");
+	const state = c.req.query("state");
+	if (!code || !state) return fail("state_invalid");
+
+	// 先比 cookie：防攻击者把自己的 code 塞给受害者（登录 CSRF / 账号嫁接）
+	const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
+	if (!cookieState || !timingSafeEqualHex(cookieState, state))
+		return fail("state_invalid");
+
+	const payload = await verifyState(pepper, state, OAUTH_STATE_TTL_SECONDS);
+	if (!payload) return fail("state_invalid");
+
+	const accessToken = await exchangeCode(
+		clientId,
+		clientSecret,
+		code,
+		`${origin}/api/auth/github/callback`,
+	);
+	if (!accessToken) return fail("exchange_failed");
+
+	const profile = await fetchGithubProfile(accessToken);
+	if (!profile) return fail("profile_failed");
+
+	const providerUid = String(profile.id);
+	const bound = await c.env.DB.prepare(
+		`SELECT u.id, u.uid, u.email, u.role, u.status, u.email_verified,
+		        u.display_name, u.avatar_url
+		   FROM oauth_accounts o
+		   JOIN users u ON u.id = o.user_id
+		  WHERE o.provider = 'github' AND o.provider_uid = ?1`,
+	)
+		.bind(providerUid)
+		.first<UserRow>();
+
+	if (bound && bound.status !== "active") return fail("account_suspended");
+
+	let existing: UserRow | null = bound;
+	let email = bound?.email ?? "";
+
+	if (!bound) {
+		const verifiedEmail = normalizeEmail(await fetchVerifiedEmail(accessToken));
+		// users.email NOT NULL，拿不到已核验邮箱就不建号
+		if (!verifiedEmail) return fail("email_unverified");
+		email = verifiedEmail;
+		existing = await c.env.DB.prepare(
+			`SELECT id, uid, email, role, status, email_verified, display_name, avatar_url
+			   FROM users WHERE email = ?1`,
+		)
+			.bind(email)
+			.first<UserRow>();
+		if (existing && existing.status !== "active")
+			return fail("account_suspended");
+	}
+
+	const { token, tokenHash } = await createSessionToken();
+	const ipHash = await sha256Hex(`${clientIp(c.req.raw)}|${pepper}`);
+	const userAgent = (c.req.header("user-agent") ?? "").slice(0, 200);
+	const displayName = existing
+		? existing.display_name
+		: pickDisplayName(profile);
+	const avatarUrl = existing?.avatar_url ?? profile.avatar_url ?? null;
+
+	let uid = existing ? existing.uid : randomUid();
+	let completed = false;
+	let lastError: unknown = null;
+
+	for (let attempt = 0; attempt < MAX_UID_RETRY && !completed; attempt++) {
+		try {
+			await c.env.DB.batch([
+				c.env.DB.prepare(
+					`INSERT INTO users (uid, email, email_verified, display_name, avatar_url, last_login_at)
+					 VALUES (?1, ?2, 1, ?3, ?4, datetime('now'))
+					 ON CONFLICT(email) DO UPDATE SET
+					   last_login_at = datetime('now'),
+					   updated_at = datetime('now'),
+					   avatar_url = COALESCE(users.avatar_url, excluded.avatar_url)`,
+				).bind(uid, email, displayName, avatarUrl),
+				c.env.DB.prepare(
+					`INSERT INTO oauth_accounts (provider, provider_uid, user_id)
+					 SELECT 'github', ?1, id FROM users WHERE email = ?2
+					 ON CONFLICT DO NOTHING`,
+				).bind(providerUid, email),
+				c.env.DB.prepare(
+					`INSERT INTO sessions (token_hash, user_id, expires_at, ip_hash, user_agent)
+					 SELECT ?1, id, datetime('now', '+30 days'), ?2, ?3
+					   FROM users WHERE email = ?4`,
+				).bind(tokenHash, ipHash, userAgent, email),
+				c.env.DB.prepare(
+					`DELETE FROM sessions WHERE expires_at < datetime('now')`,
+				),
+			]);
+			completed = true;
+		} catch (error) {
+			lastError = error;
+			if (existing) break;
+			uid = randomUid();
+		}
+	}
+
+	if (!completed) {
+		console.error("[auth] GitHub 登录建会话失败", lastError);
+		return fail("login_failed");
+	}
+
+	setCookie(c, SESSION_COOKIE, token, {
+		httpOnly: true,
+		secure: isHttps(c.req.url),
+		sameSite: "Lax",
+		path: "/",
+		maxAge: SESSION_TTL_DAYS * 86_400,
+	});
+	deleteCookie(c, OAUTH_STATE_COOKIE, stateCookieOptions);
+	return c.redirect(`${origin}${sanitizeNext(payload.next)}`, 302);
 });
