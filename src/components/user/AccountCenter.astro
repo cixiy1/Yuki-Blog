@@ -299,7 +299,14 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 </style>
 
 <script>
-	import { say, setBusy } from "./auth-client";
+	import {
+		type ApiResult,
+		failureText,
+		postJson,
+		request,
+		say,
+		setBusy,
+	} from "./auth-client";
 
 	type Role = "user" | "reviewer" | "admin";
 
@@ -375,26 +382,22 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			say(this.#q(role), text, state);
 		}
 
-		async #call<T>(path: string, init: RequestInit = {}) {
-			const res = await fetch(path, {
-				credentials: "same-origin",
-				...init,
-			});
-			let data = {} as T;
-			try {
-				data = (await res.json()) as T;
-			} catch {
-				// 非 JSON 响应（例如 5xx 的 HTML）按空对象处理
-			}
-			return { ok: res.ok, status: res.status, data };
+		#call<T>(path: string, init: RequestInit = {}) {
+			return request<T>(path, init);
 		}
 
 		#post<T>(path: string, body: unknown) {
-			return this.#call<T>(path, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(body),
-			});
+			return postJson<T>(path, body);
+		}
+
+		/** 请求没到服务端时提前收口，别让它伪装成「账号或密码不正确」 */
+		#failed(
+			r: Pick<ApiResult<unknown>, "status" | "unreachable" | "malformed">,
+			slot: "msg" | "me-msg" | "pw-msg",
+		): boolean {
+			if (!r.unreachable && !r.malformed) return false;
+			this.#say(slot, failureText(r), "error");
+			return true;
 		}
 
 		#bind(): void {
@@ -545,6 +548,8 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 					{ identifier, password, remember },
 				);
 
+				if (this.#failed(r, "msg")) return;
+
 				if (r.ok) {
 					const next = this.#nextTarget();
 					if (next) {
@@ -592,6 +597,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			const r = await this.#post<BasicResponse>("/api/auth/resend-verification", {
 				email: identifier,
 			});
+			if (this.#failed(r, "msg")) return;
 			if (r.status === 429 && r.data.retry_after) {
 				this.#say("msg", `刚发过，${r.data.retry_after} 秒后再试`, "error");
 				return;
@@ -611,6 +617,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				current_password: current,
 				password: next,
 			});
+			if (this.#failed(r, "pw-msg")) return;
 			if (!r.ok) {
 				this.#say("pw-msg", r.data.message || "改密失败，请重试", "error");
 				return;
@@ -627,6 +634,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				allDevices ? "/api/auth/logout-all" : "/api/auth/logout",
 				{},
 			);
+			if (this.#failed(r, "me-msg")) return;
 			if (!r.ok && r.status !== 401) {
 				this.#say("me-msg", "退出失败，请重试", "error");
 				return;

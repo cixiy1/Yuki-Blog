@@ -12,25 +12,66 @@ export interface ApiResult<T> {
 	ok: boolean;
 	status: number;
 	data: T;
+	/** 请求根本没到服务端：断网、进程没起、被拦 */
+	unreachable?: boolean;
+	/** 到了服务端但拿不到 JSON：404 页面、网关 501/502 */
+	malformed?: boolean;
 }
 
-export async function postJson<T>(
+export async function request<T>(
 	path: string,
-	body: unknown,
+	init: RequestInit = {},
 ): Promise<ApiResult<T>> {
-	const res = await fetch(path, {
-		method: "POST",
-		credentials: "same-origin",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(body),
-	});
+	let res: Response;
+	try {
+		res = await fetch(path, { credentials: "same-origin", ...init });
+	} catch {
+		// 连接被拒 / DNS 失败 / 断网，均在 fetch 这一层抛出
+		return { ok: false, status: 0, data: {} as T, unreachable: true };
+	}
+
 	let data = {} as T;
+	let malformed = false;
 	try {
 		data = (await res.json()) as T;
 	} catch {
-		// 5xx 可能返回 HTML，按空对象处理
+		// 成功响应允许没有 body（例如 204），只有失败时才算异常
+		malformed = !res.ok;
 	}
-	return { ok: res.ok, status: res.status, data };
+	return { ok: res.ok, status: res.status, data, malformed };
+}
+
+export function postJson<T>(
+	path: string,
+	body: unknown,
+): Promise<ApiResult<T>> {
+	return request<T>(path, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
+}
+
+/**
+ * 把「后端根本没响应」和「账号密码不对」分开。
+ * 否则服务没起时页面会显示「账号或密码不正确」，把人往错误的方向带。
+ *
+ * 本地还会多给一句指路的：静态服务器（python http.server、纯 dist 预览）
+ * 上根本没有 /api，这类 5xx 与「密码错了」是两回事。
+ */
+export function failureText(
+	r: Pick<ApiResult<unknown>, "status" | "unreachable" | "malformed">,
+): string {
+	const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+	if (r.unreachable) {
+		return isLocal
+			? "连不上本地接口：先跑 pnpm worker:dev，再用 8787 打开"
+			: "连不上服务器，请检查网络后重试";
+	}
+	if (isLocal) {
+		return `本地接口返回 ${r.status}：这个端口没有 /api，改用 8787`;
+	}
+	return `服务返回异常（HTTP ${r.status}），请稍后重试`;
 }
 
 /** 只放行站内绝对路径，与服务端 sanitizeNext 的口径一致 */

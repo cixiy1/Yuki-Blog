@@ -191,6 +191,7 @@ const { title, desc } = titles[mode];
 <script>
 	import {
 		ACCOUNT_RE,
+		failureText,
 		passwordHint,
 		postJson,
 		readNext,
@@ -289,6 +290,9 @@ const { title, desc } = titles[mode];
 					account,
 					password,
 				});
+				if (r.unreachable || r.malformed) {
+					return this.#say(failureText(r), "error");
+				}
 
 				if (r.status === 409) {
 					return this.#say("这个登录名被占用了，换一个", "error");
@@ -325,6 +329,9 @@ const { title, desc } = titles[mode];
 				const r = await postJson<BasicResponse>("/api/auth/forgot-password", {
 					email,
 				});
+				if (r.unreachable || r.malformed) {
+					return this.#say(failureText(r), "error");
+				}
 				if (r.status === 429) {
 					return this.#say(
 						`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
@@ -358,6 +365,9 @@ const { title, desc } = titles[mode];
 					token,
 					password,
 				});
+				if (r.unreachable || r.malformed) {
+					return this.#say(failureText(r), "error");
+				}
 				if (!r.ok) {
 					return this.#say(
 						r.data.error === "token_invalid"
@@ -384,6 +394,9 @@ const { title, desc } = titles[mode];
 			const r = await postJson<BasicResponse>("/api/auth/verify-email", {
 				token,
 			});
+			if (r.unreachable || r.malformed) {
+				return this.#say(failureText(r), "error");
+			}
 			if (!r.ok) {
 				const text =
 					r.status === 403
