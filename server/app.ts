@@ -4,7 +4,6 @@ import { noStore } from "./middleware/guard";
 import { admin } from "./routes/admin";
 import { auth } from "./routes/auth";
 import { health } from "./routes/health";
-import { loginPage } from "./routes/login-page";
 import type { AppEnv } from "./types";
 
 export const app: Hono<AppEnv> = new Hono<AppEnv>();
@@ -16,7 +15,6 @@ app.use("/api/*", loadSession);
 app.route("/api", health);
 app.route("/api/auth", auth);
 app.route("/api/admin", admin);
-app.route("/", loginPage);
 
 // API 未命中返回 JSON，不要落成 HTML 404。
 app.notFound((c) => {

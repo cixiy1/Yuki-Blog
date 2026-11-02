@@ -12,8 +12,6 @@
 		"run_worker_first": [
 			"/api",
 			"/api/*",
-			"/login",
-			"/login/",
 			"!/api/dynamic.json",
 			"!/api/allPostMeta.json"
 		]
