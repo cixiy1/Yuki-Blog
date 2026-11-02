@@ -1,0 +1,59 @@
+/* 认证页与账号中心共用的表单反馈条、按钮忙碌态。
+   AccountCenter 与 AuthPanel 两块组件都要用，写在这里避免各写一份。 */
+
+/* 反馈条：没有内容时由 JS 加 hidden，靠 .auth-status 本身不留空白 */
+.auth-status {
+	margin-top: 0.75rem;
+	padding: 0.5rem 0.75rem;
+	border-left: 2px solid var(--line-divider);
+	border-radius: 0.5rem;
+	background: var(--btn-regular-bg);
+	color: var(--btn-content);
+	font-size: 0.75rem;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+
+/* 成功态不改文字色：主题的 --primary 在浅色底上对比度偏低，靠左侧色条与底纹表达。
+   color-mix 的透明色写在前面：打包器给它降级时会取第一个颜色（transparent），
+   老浏览器就退回「只有左侧色条」，不会变成一整块主题色。 */
+.auth-status[data-state="ok"] {
+	border-left-color: var(--primary);
+	background: color-mix(in srgb, transparent 90%, var(--primary));
+}
+
+.auth-status[data-state="error"] {
+	border-left-color: var(--admonitions-color-caution);
+	background: color-mix(in srgb, transparent 90%, var(--admonitions-color-caution));
+	color: var(--admonitions-color-caution);
+}
+
+/* 提交中：按钮内转圈，文案由 setBusy() 换掉 */
+.auth-busy {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.auth-busy::before {
+	content: "";
+	width: 0.875rem;
+	height: 0.875rem;
+	margin-right: 0.5rem;
+	border: 2px solid currentColor;
+	border-top-color: transparent;
+	border-radius: 50%;
+	animation: auth-busy-spin 0.7s linear infinite;
+}
+
+@keyframes auth-busy-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.auth-busy::before {
+		animation-duration: 2s;
+	}
+}

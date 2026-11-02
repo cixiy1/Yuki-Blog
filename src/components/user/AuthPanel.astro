@@ -156,13 +156,14 @@ const { title, desc } = titles[mode];
 				)
 			}
 
-			<p
+			<div
 				data-role="msg"
+				class="auth-status"
 				role="status"
 				aria-live="polite"
-				class="mt-3 min-h-5 text-xs text-50"
+				hidden
 			>
-			</p>
+			</div>
 
 			<a
 				data-role="debug-link"
@@ -185,12 +186,6 @@ const { title, desc } = titles[mode];
 	[hidden] {
 		display: none !important;
 	}
-	[data-role="msg"][data-state="ok"] {
-		color: var(--primary);
-	}
-	[data-role="msg"][data-state="error"] {
-		color: var(--admonitions-color-caution);
-	}
 </style>
 
 <script>
@@ -202,6 +197,7 @@ const { title, desc } = titles[mode];
 		readToken,
 		readTokenAndClean,
 		say,
+		setBusy,
 	} from "./auth-client";
 
 	interface BasicResponse {
@@ -229,6 +225,17 @@ const { title, desc } = titles[mode];
 			if (!el || !link) return;
 			el.href = link;
 			el.hidden = false;
+		}
+
+		/** 注册成功：还原按钮外观后把整个表单锁死 */
+		#lockForm(): void {
+			const submit = this.#q<HTMLButtonElement>("submit");
+			setBusy(submit, false);
+			const form = this.#q<HTMLFormElement>("form");
+			if (form) {
+				for (const input of form.querySelectorAll("input")) input.disabled = true;
+			}
+			if (submit) submit.disabled = true;
 		}
 
 		connectedCallback(): void {
@@ -273,33 +280,38 @@ const { title, desc } = titles[mode];
 			if (hint) return this.#say(hint, "error");
 			if (password !== confirm) return this.#say("两次密码不一致", "error");
 
-			this.#say("提交中…", "");
-			const r = await postJson<BasicResponse>("/api/auth/register", {
-				email,
-				account,
-				password,
-			});
+			const submit = this.#q<HTMLButtonElement>("submit");
+			setBusy(submit, true, "注册中…");
+			let submitted = false;
+			try {
+				const r = await postJson<BasicResponse>("/api/auth/register", {
+					email,
+					account,
+					password,
+				});
 
-			if (r.status === 409) {
-				return this.#say("这个登录名被占用了，换一个", "error");
-			}
-			if (!r.ok && r.status !== 202) {
-				if (r.status === 429) {
-					return this.#say(
-						`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
-						"error",
-					);
+				if (r.status === 409) {
+					return this.#say("这个登录名被占用了，换一个", "error");
 				}
-				return this.#say(r.data.message ?? "注册失败，请重试", "error");
-			}
+				if (!r.ok && r.status !== 202) {
+					if (r.status === 429) {
+						return this.#say(
+							`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
+							"error",
+						);
+					}
+					return this.#say(r.data.message ?? "注册失败，请重试", "error");
+				}
 
-			this.#say("验证邮件已发出，去邮箱点链接就能激活", "ok");
-			this.#debugLink(r.data.debug_link);
-			const form = this.#q<HTMLFormElement>("form");
-			if (form) {
-				for (const input of form.querySelectorAll("input")) input.disabled = true;
-				const submit = this.#q<HTMLButtonElement>("submit");
-				if (submit) submit.disabled = true;
+				this.#say("验证邮件已发出，去邮箱点链接就能激活", "ok");
+				this.#debugLink(r.data.debug_link);
+				// 注册成功后整表单锁死，避免改完再提一次又发一封
+				submitted = true;
+				this.#lockForm();
+			} catch {
+				this.#say("网络异常，请稍后重试", "error");
+			} finally {
+				if (!submitted) setBusy(submit, false);
 			}
 		}
 
@@ -307,19 +319,26 @@ const { title, desc } = titles[mode];
 			const email = this.#value("email").trim();
 			if (!email) return this.#say("邮箱不能为空", "error");
 
-			this.#say("发送中…", "");
-			const r = await postJson<BasicResponse>("/api/auth/forgot-password", {
-				email,
-			});
-			if (r.status === 429) {
-				return this.#say(
-					`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
-					"error",
-				);
+			const submit = this.#q<HTMLButtonElement>("submit");
+			setBusy(submit, true, "发送中…");
+			try {
+				const r = await postJson<BasicResponse>("/api/auth/forgot-password", {
+					email,
+				});
+				if (r.status === 429) {
+					return this.#say(
+						`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
+						"error",
+					);
+				}
+				// 与后端一致：不管邮箱存不存在，都显示同一句
+				this.#say("如果这个邮箱注册过，重置链接已经发出", "ok");
+				this.#debugLink(r.data.debug_link);
+			} catch {
+				this.#say("网络异常，请稍后重试", "error");
+			} finally {
+				setBusy(submit, false);
 			}
-			// 与后端一致：不管邮箱存不存在，都显示同一句
-			this.#say("如果这个邮箱注册过，重置链接已经发出", "ok");
-			this.#debugLink(r.data.debug_link);
 		}
 
 		async #reset(): Promise<void> {
@@ -332,22 +351,29 @@ const { title, desc } = titles[mode];
 			if (hint) return this.#say(hint, "error");
 			if (password !== confirm) return this.#say("两次密码不一致", "error");
 
-			this.#say("保存中…", "");
-			const r = await postJson<BasicResponse>("/api/auth/reset-password", {
-				token,
-				password,
-			});
-			if (!r.ok) {
-				return this.#say(
-					r.data.error === "token_invalid"
-						? "链接无效或已过期，重新发起一次"
-						: (r.data.message ?? "重置失败，请重试"),
-					"error",
-				);
+			const submit = this.#q<HTMLButtonElement>("submit");
+			setBusy(submit, true, "保存中…");
+			try {
+				const r = await postJson<BasicResponse>("/api/auth/reset-password", {
+					token,
+					password,
+				});
+				if (!r.ok) {
+					return this.#say(
+						r.data.error === "token_invalid"
+							? "链接无效或已过期，重新发起一次"
+							: (r.data.message ?? "重置失败，请重试"),
+						"error",
+					);
+				}
+				history.replaceState(null, "", location.pathname);
+				this.#say("密码已重置，正在跳到登录页…", "ok");
+				setTimeout(() => location.assign("/login/?reset=1"), 1200);
+			} catch {
+				this.#say("网络异常，请稍后重试", "error");
+			} finally {
+				setBusy(submit, false);
 			}
-			history.replaceState(null, "", location.pathname);
-			this.#say("密码已重置，正在跳到登录页…", "ok");
-			setTimeout(() => location.assign("/login/?reset=1"), 1200);
 		}
 
 		async #verify(): Promise<void> {

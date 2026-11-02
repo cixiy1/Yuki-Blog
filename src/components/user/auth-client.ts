@@ -58,6 +58,9 @@ export function readTokenAndClean(): string {
 	return token;
 }
 
+/**
+ * 写反馈条。空文本即隐藏——不靠固定高度占位，卡片不会有那条永远空着的行。
+ */
 export function say(
 	el: HTMLElement | null,
 	text: string,
@@ -67,6 +70,37 @@ export function say(
 	el.textContent = text;
 	if (state) el.dataset.state = state;
 	else delete el.dataset.state;
+	el.hidden = text.trim() === "";
+}
+
+/**
+ * 按钮忙碌态：转圈 + 换文案 + 禁用，复位时原样还回去。
+ * 文案存在 dataset 里，重复调用不会把「登录中…」当成原始文案存下来。
+ */
+export function setBusy(
+	btn: HTMLButtonElement | null,
+	busy: boolean,
+	label = "处理中…",
+): void {
+	if (!btn) return;
+	if (busy) {
+		if (!btn.dataset.idleLabel) {
+			btn.dataset.idleLabel = btn.textContent?.trim() ?? "";
+		}
+		btn.dataset.busy = "1";
+		btn.disabled = true;
+		btn.classList.add("auth-busy");
+		btn.textContent = label;
+		return;
+	}
+	delete btn.dataset.busy;
+	btn.disabled = false;
+	btn.classList.remove("auth-busy");
+	const idle = btn.dataset.idleLabel;
+	if (idle !== undefined) {
+		btn.textContent = idle;
+		delete btn.dataset.idleLabel;
+	}
 }
 
 export function passwordHint(password: string): string | null {
