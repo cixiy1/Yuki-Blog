@@ -337,7 +337,10 @@ watch(isDark, (dark) => {
 		<template v-else>
 			<section class="card-base panel">
 				<div class="field-row">
-					<label class="field-label" for="post-title">标题</label>
+					<label class="field-label" for="post-title">
+						标题
+						<code class="fm-key">title</code>
+					</label>
 					<input
 						id="post-title"
 						v-model="form.title"
@@ -350,7 +353,10 @@ watch(isDark, (dark) => {
 				</div>
 
 				<div class="field-row">
-					<label class="field-label" for="post-slug">地址</label>
+					<label class="field-label" for="post-slug">
+						地址
+						<code class="fm-key">slug</code>
+					</label>
 					<div class="slug-wrap">
 						<span class="slug-prefix">/posts/</span>
 						<input
@@ -370,7 +376,10 @@ watch(isDark, (dark) => {
 				</div>
 
 				<div class="field-row">
-					<label class="field-label" for="post-summary">摘要</label>
+					<label class="field-label" for="post-summary">
+						摘要
+						<code class="fm-key">description</code>
+					</label>
 					<input
 						id="post-summary"
 						v-model="form.summary"
@@ -384,7 +393,10 @@ watch(isDark, (dark) => {
 
 				<div class="field-grid">
 					<div class="field-row">
-						<label class="field-label" for="post-tags">标签</label>
+						<label class="field-label" for="post-tags">
+							标签
+							<code class="fm-key">tags</code>
+						</label>
 						<input
 							id="post-tags"
 							v-model="form.tagsText"
@@ -395,7 +407,10 @@ watch(isDark, (dark) => {
 						/>
 					</div>
 					<div class="field-row">
-						<label class="field-label" for="post-category">分类</label>
+						<label class="field-label" for="post-category">
+							分类
+							<code class="fm-key">category</code>
+						</label>
 						<input
 							id="post-category"
 							v-model="form.category"
@@ -406,7 +421,10 @@ watch(isDark, (dark) => {
 						/>
 					</div>
 					<div class="field-row">
-						<label class="field-label" for="post-series">系列</label>
+						<label class="field-label" for="post-series">
+							系列
+							<code class="fm-key">series</code>
+						</label>
 						<input
 							id="post-series"
 							v-model="form.series"
@@ -421,7 +439,10 @@ watch(isDark, (dark) => {
 
 			<section class="card-base panel editor-panel">
 				<div class="editor-head">
-					<p class="panel-title">正文</p>
+					<p class="panel-title">
+						正文
+						<code class="fm-key">body</code>
+					</p>
 					<p class="panel-hint">Ctrl/⌘ + S 立即保存，停手 1.5 秒也会自动保存。</p>
 				</div>
 				<div ref="editorEl" class="editor" />
@@ -437,6 +458,9 @@ watch(isDark, (dark) => {
 }
 
 .panel-title {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
 	margin: 0;
 	font-size: 0.85rem;
 	font-weight: 600;
@@ -457,8 +481,28 @@ watch(isDark, (dark) => {
 }
 
 .field-label {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
 	font-size: 0.75rem;
 	font-weight: 600;
+	color: var(--fg-50);
+}
+
+/* frontmatter 里的原始键名，方便对着源码 / 文档改 */
+.fm-key {
+	padding: 0.02rem 0.32rem;
+	border-radius: 0.3rem;
+	background: var(--license-block-bg);
+	color: var(--fg-50);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.66rem;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+}
+
+:root.dark .fm-key {
+	background: rgba(255, 255, 255, 0.07);
 	color: var(--fg-50);
 }
 
