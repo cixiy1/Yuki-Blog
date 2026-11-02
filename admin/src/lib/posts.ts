@@ -121,20 +121,22 @@ export async function withdrawPost(id: number): Promise<PostDetail | null> {
 
 /* ---------- 仓库文章：直接读写 src/content/posts 下的文件 ---------- */
 
+/** frontmatter 里能出现的值：标量、数字、布尔、列表、一层嵌套（provenance） */
+export type FieldValue =
+	| string
+	| number
+	| boolean
+	| string[]
+	| Record<string, string>;
+
 export interface RepoPostDetail {
 	slug: string;
 	repoPath: string;
 	/** 文章所在目录的 raw 前缀，给编辑器预览图片用 */
 	rawBase: string;
 	sha: string;
-	title: string;
-	description: string;
-	tags: string[];
-	category: string;
-	series: string;
-	sourceLink: string;
-	published: string;
-	draft: boolean;
+	/** 整份 frontmatter，认得的键进表单，认不得的进「自定义属性」 */
+	fields: Record<string, FieldValue>;
 	body: string;
 }
 
@@ -142,14 +144,8 @@ export interface RepoPostPatch {
 	slug: string;
 	/** 用户改过的地址；留空表示沿用原 slug */
 	nextSlug: string;
-	title: string;
-	description: string;
-	tags: string[];
-	category: string;
-	series: string;
-	sourceLink: string;
-	published: string;
-	draft: boolean;
+	/** 送 null 表示删掉这个键 */
+	fields: Record<string, FieldValue | null>;
 	body: string;
 }
 

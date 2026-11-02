@@ -1,16 +1,15 @@
 import { type Context, Hono } from "hono";
 import {
+	type FieldValue,
 	joinMarkdown,
-	readList,
+	KEY_RE,
+	readAll,
 	readScalar,
-	setList,
-	setRawScalar,
-	setScalar,
+	setField,
 	splitMarkdown,
-	yamlString,
 } from "../lib/frontmatter";
 import { putRepoFile } from "../lib/github-contents";
-import { readRepoPosts, type RepoPost } from "../lib/post-index";
+import { type RepoPost, readRepoPosts } from "../lib/post-index";
 import {
 	deleteRepoFile,
 	readRepoFile,
@@ -97,7 +96,9 @@ function toMillis(value: unknown): number {
  */
 function repoToSummary(post: RepoPost): Record<string, unknown> {
 	const published = new Date(post.published).toISOString();
-	const updated = post.updated ? new Date(post.updated).toISOString() : published;
+	const updated = post.updated
+		? new Date(post.updated).toISOString()
+		: published;
 	return {
 		id: 0,
 		origin: "repo",
@@ -276,7 +277,10 @@ me.get("/all-posts", requireAuth, async (c) => {
 	const user = c.get("user");
 	if (!user) return c.json({ posts: [] });
 	if (user.role === "user") {
-		return c.json({ error: "forbidden", message: "没有查看全站文章的权限" }, 403);
+		return c.json(
+			{ error: "forbidden", message: "没有查看全站文章的权限" },
+			403,
+		);
 	}
 
 	const repo = (await readRepoPosts(c.env.ASSETS)).map((post) =>
@@ -586,12 +590,16 @@ async function resolveRepoPath(
 
 const TOKEN_MISSING = {
 	error: "github_token_missing",
-	message: "还没配置 GitHub 令牌，去「站点设置 → 集成」里填一个带 Contents 写权限的",
+	message:
+		"还没配置 GitHub 令牌，去「站点设置 → 集成」里填一个带 Contents 写权限的",
 };
 
 me.get("/repo-posts", requireAuth, async (c) => {
 	if (!isOwner(c)) {
-		return c.json({ error: "forbidden", message: "只有站主能编辑仓库文章" }, 403);
+		return c.json(
+			{ error: "forbidden", message: "只有站主能编辑仓库文章" },
+			403,
+		);
 	}
 	const slug = c.req.query("slug") ?? "";
 	const path = await resolveRepoPath(c, slug);
@@ -615,18 +623,55 @@ me.get("/repo-posts", requireAuth, async (c) => {
 			repoPath: path,
 			rawBase: repoRawBase(path),
 			sha: file.sha ?? "",
-			title: readScalar(frontmatter, "title"),
-			description: readScalar(frontmatter, "description"),
-			tags: readList(frontmatter, "tags"),
-			category: readScalar(frontmatter, "category"),
-			series: readScalar(frontmatter, "series"),
-			sourceLink: readScalar(frontmatter, "sourceLink"),
-			published: readScalar(frontmatter, "published"),
-			draft: readScalar(frontmatter, "draft") === "true",
 			body,
+			// 整份 frontmatter 交给前端：认得的是表单字段，认不得的留在「自定义属性」里
+			fields: readAll(frontmatter),
 		},
 	});
 });
+
+/** 单个字段值：收窄类型、去掉过长内容，乱写的类型直接丢 */
+function cleanFieldValue(key: string, value: unknown): FieldValue | null {
+	if (value === null) return null;
+
+	if (typeof value === "string") {
+		const text = value.trim();
+		if (text.length === 0) return null;
+		if (text.length > 2000) throw new Error(`${key} 太长`);
+		return text;
+	}
+	if (typeof value === "boolean") return value;
+	if (typeof value === "number") {
+		if (!Number.isFinite(value)) throw new Error(`${key} 不是有效数字`);
+		return value;
+	}
+	if (Array.isArray(value)) {
+		const items = value
+			.filter((item): item is string => typeof item === "string")
+			.map((item) => item.trim())
+			.filter((item) => item.length > 0);
+		if (items.length > 20) throw new Error(`${key} 最多 20 项`);
+		if (items.some((item) => item.length > 200)) {
+			throw new Error(`${key} 单项太长`);
+		}
+		return items.length > 0 ? items : null;
+	}
+	if (typeof value === "object") {
+		const out: Record<string, string> = {};
+		for (const [childKey, childValue] of Object.entries(
+			value as Record<string, unknown>,
+		)) {
+			if (!KEY_RE.test(childKey)) continue;
+			if (typeof childValue !== "string") continue;
+			const text = childValue.trim();
+			if (text.length === 0) continue;
+			if (text.length > 500) throw new Error(`${key}.${childKey} 太长`);
+			out[childKey] = text;
+		}
+		return out;
+	}
+	return null;
+}
 
 me.put(
 	"/repo-posts",
@@ -635,7 +680,10 @@ me.put(
 	sameOriginGuard,
 	async (c) => {
 		if (!isOwner(c)) {
-			return c.json({ error: "forbidden", message: "只有站主能编辑仓库文章" }, 403);
+			return c.json(
+				{ error: "forbidden", message: "只有站主能编辑仓库文章" },
+				403,
+			);
 		}
 		const payload = (await c.req.json().catch(() => ({}))) as Record<
 			string,
@@ -643,20 +691,21 @@ me.put(
 		>;
 		const slug = readField(payload, "slug");
 		const path = await resolveRepoPath(c, slug);
-		if (!path) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+		if (!path)
+			return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
-		const title = readField(payload, "title");
+		const title =
+			typeof payload.fields === "object" &&
+			payload.fields !== null &&
+			typeof (payload.fields as Record<string, unknown>).title === "string"
+				? String((payload.fields as Record<string, unknown>).title).trim()
+				: "";
 		if (!title) {
 			return c.json({ error: "bad_request", message: "标题不能为空" }, 400);
 		}
 		const nextSlug = readField(payload, "nextSlug");
 		if (nextSlug && nextSlug !== slug && !isValidSlug(nextSlug)) {
 			return c.json({ error: "bad_slug", message: "地址格式不对" }, 400);
-		}
-		const rawTags = payload.tags;
-		const tags = normalizeTags(rawTags);
-		if (tags === null) {
-			return c.json({ error: "bad_tags", message: "标签格式不对" }, 400);
 		}
 
 		const token = await repoToken(c);
@@ -672,24 +721,63 @@ me.put(
 
 		const parsed = splitMarkdown(file.content);
 		let fm = parsed.frontmatter;
-		fm = setScalar(fm, "title", title.slice(0, 120));
-		fm = setScalar(fm, "description", readField(payload, "description"));
-		fm = setList(fm, "tags", tags);
-		fm = setScalar(fm, "category", readField(payload, "category"));
-		fm = setScalar(fm, "series", readField(payload, "series"));
-		fm = setScalar(fm, "sourceLink", readField(payload, "sourceLink"));
-		const published = readField(payload, "published");
-		if (published) fm = setRawScalar(fm, "published", published);
-		fm = setRawScalar(fm, "draft", payload.draft === true ? "true" : null);
+
+		const fields =
+			payload.fields !== null && typeof payload.fields === "object"
+				? (payload.fields as Record<string, unknown>)
+				: null;
+		if (!fields) {
+			return c.json({ error: "bad_request", message: "缺少 fields" }, 400);
+		}
+		const keys = Object.keys(fields);
+		if (keys.length > 40) {
+			return c.json({ error: "too_many_fields", message: "字段太多" }, 400);
+		}
+
+		try {
+			for (const key of keys) {
+				// slug 单独处理：它决定 URL，必须和 nextSlug 的判断走同一条路
+				if (key === "slug") continue;
+				if (!KEY_RE.test(key)) {
+					return c.json(
+						{ error: "bad_key", message: `字段名不合法：${key}` },
+						400,
+					);
+				}
+				if (key === "tags") {
+					const tags = normalizeTags(fields.tags);
+					if (tags === null) {
+						return c.json(
+							{
+								error: "bad_tags",
+								message: "标签最多 10 个，每个不超过 24 字",
+							},
+							400,
+						);
+					}
+					fm = setField(fm, key, tags);
+					continue;
+				}
+				fm = setField(fm, key, cleanFieldValue(key, fields[key]));
+			}
+		} catch (error) {
+			return c.json(
+				{
+					error: "bad_field",
+					message: error instanceof Error ? error.message : "字段值不合法",
+				},
+				400,
+			);
+		}
+		fm = setField(fm, "title", title.slice(0, 120));
 
 		// 只有真改了地址才写 slug：原来没这一行的文章沿用文件名当 URL，
 		// 凭空补一行 slug 有把旧链接改掉的风险
 		if (nextSlug && nextSlug !== slug) {
-			fm = setScalar(fm, "slug", nextSlug);
+			fm = setField(fm, "slug", nextSlug);
 		}
 
-		const body =
-			typeof payload.body === "string" ? payload.body : parsed.body;
+		const body = typeof payload.body === "string" ? payload.body : parsed.body;
 		const content = joinMarkdown(fm, body);
 
 		const result = await writeRepoFile(
@@ -717,7 +805,10 @@ me.put(
 
 me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 	if (!isOwner(c)) {
-		return c.json({ error: "forbidden", message: "只有站主能删除仓库文章" }, 403);
+		return c.json(
+			{ error: "forbidden", message: "只有站主能删除仓库文章" },
+			403,
+		);
 	}
 	const path = await resolveRepoPath(c, c.req.query("slug") ?? "");
 	if (!path) return c.json({ error: "not_found", message: "文章不存在" }, 404);
@@ -733,7 +824,10 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 		);
 	}
 
-	const title = readScalar(splitMarkdown(file.content ?? "").frontmatter, "title");
+	const title = readScalar(
+		splitMarkdown(file.content ?? "").frontmatter,
+		"title",
+	);
 	const result = await deleteRepoFile(
 		path,
 		token,
@@ -752,23 +846,25 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 
 /** 把 D1 草稿拼成仓库里的 markdown：frontmatter 按站内约定顺序排 */
 export function buildPostFrontmatter(row: PostRow): string {
-	const lines: string[] = [
-		`title: ${yamlString(row.title.trim())}`,
-		`published: ${new Date().toISOString().slice(0, 10)}`,
-	];
-	if (row.summary) lines.push(`description: ${yamlString(row.summary)}`);
+	let fm = "";
+	fm = setField(fm, "title", row.title.trim());
+	fm = setField(fm, "published", new Date().toISOString().slice(0, 10));
+	if (row.summary) fm = setField(fm, "description", row.summary);
 	const tags = parseTags(row.tags);
-	if (tags.length > 0) {
-		lines.push("tags:", ...tags.map((tag) => `  - ${yamlString(tag)}`));
-	}
+	if (tags.length > 0) fm = setField(fm, "tags", tags);
+	if (row.cover) fm = setField(fm, "image", row.cover);
+
 	const meta = parseMeta(row.meta_json);
-	if (row.cover) lines.push(`image: ${yamlString(row.cover)}`);
 	for (const [key, value] of Object.entries(meta)) {
-		if (typeof value === "string" && value.trim().length > 0) {
-			lines.push(`${key}: ${yamlString(value)}`);
+		// 标题和日期由上面几行定，meta 里再写一遍只会打架
+		if (key === "title" || key === "published" || !KEY_RE.test(key)) continue;
+		try {
+			fm = setField(fm, key, cleanFieldValue(key, value));
+		} catch {
+			// 单个字段超长或类型不对就跳过，不因为一条脏数据挡住整篇发布
 		}
 	}
-	return lines.join("\n");
+	return fm;
 }
 
 /**
@@ -782,7 +878,10 @@ me.post("/posts/:id/publish", requireAuth, sameOriginGuard, async (c) => {
 	if (!user) return c.json({ error: "unauthorized" }, 401);
 	if (user.role !== "admin") {
 		return c.json(
-			{ error: "forbidden", message: "只有管理员能直接发布，其他人的稿子走提交审核" },
+			{
+				error: "forbidden",
+				message: "只有管理员能直接发布，其他人的稿子走提交审核",
+			},
 			403,
 		);
 	}

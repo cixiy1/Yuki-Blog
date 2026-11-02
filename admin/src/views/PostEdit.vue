@@ -18,16 +18,17 @@ import { uploadImage } from "../lib/media";
 import {
 	bodyToPreview,
 	bodyToStorage,
+	deleteRepoPost,
+	type FieldValue,
 	formatTime,
 	getPost,
 	getRepoPost,
 	isEditable,
 	type PostDetail,
-	type RepoPostDetail,
 	publishPost,
+	type RepoPostDetail,
 	savePost,
 	saveRepoPost,
-	deleteRepoPost,
 	submitPost,
 	withdrawPost,
 } from "../lib/posts";
@@ -46,18 +47,151 @@ const loadedSlug = ref("");
 /** 仓库文章所在目录的 raw 前缀，正文里的相对图片要靠它才能在编辑器里预览 */
 const rawBase = ref("");
 
-const form = reactive({
-	title: "",
-	slug: "",
-	summary: "",
-	tagsText: "",
-	body: "",
-	category: "",
-	series: "",
-	published: "",
-	sourceLink: "",
-	draft: false,
-});
+/* ---------- 字段定义：一份表驱动整块属性区 ---------- */
+
+type Kind =
+	| "text"
+	| "textarea"
+	| "date"
+	| "number"
+	| "bool"
+	| "password"
+	| "url"
+	| "tags"
+	| "image"
+	| "provenance";
+
+interface Def {
+	key: string;
+	label: string;
+	kind: Kind;
+	placeholder?: string;
+	hint?: string;
+}
+
+interface Group {
+	title: string;
+	note?: string;
+	defs: Def[];
+}
+
+/**
+ * 覆盖 src/content.config.ts 里 posts schema 的全部可配置项。
+ * schema 改了这里要跟着改，剩下的键一律进「自定义属性」。
+ */
+const GROUPS: Group[] = [
+	{
+		title: "文章属性",
+		defs: [
+			{ key: "slug", label: "地址", kind: "text", placeholder: "my-post-slug" },
+			{
+				key: "description",
+				label: "摘要",
+				kind: "textarea",
+				placeholder: "列表页显示的一两句话",
+			},
+			{
+				key: "tags",
+				label: "标签",
+				kind: "tags",
+				placeholder: "用逗号分隔，最多 10 个",
+			},
+			{ key: "category", label: "分类", kind: "text", placeholder: "如：编码经验" },
+			{ key: "series", label: "系列", kind: "text", placeholder: "留空表示不属于系列" },
+			{
+				key: "seriesOrder",
+				label: "系列序号",
+				kind: "number",
+				placeholder: "同系列内排序",
+			},
+			{ key: "image", label: "封面图", kind: "image", placeholder: "站内路径或图片地址" },
+		],
+	},
+	{
+		title: "来源标注",
+		note: "读者在标题下能看到；选了代笔才展开模型与代理",
+		defs: [{ key: "provenance", label: "是否代笔", kind: "provenance" }],
+	},
+	{
+		title: "发布",
+		defs: [
+			{ key: "published", label: "发布日期", kind: "date", placeholder: "2026-11-01" },
+			{ key: "updated", label: "更新日期", kind: "date", placeholder: "留空表示没更新过" },
+			{ key: "draft", label: "存为草稿", kind: "bool", hint: "draft: true，站点上看不到" },
+			{ key: "pinned", label: "置顶", kind: "bool" },
+			{ key: "comment", label: "允许评论", kind: "bool" },
+		],
+	},
+	{
+		title: "署名与出处",
+		defs: [
+			{ key: "author", label: "作者", kind: "text", placeholder: "留空表示站主" },
+			{ key: "sourceLink", label: "转载来源", kind: "url", placeholder: "留空表示原创" },
+			{ key: "lang", label: "语言", kind: "text", placeholder: "zh-CN" },
+			{
+				key: "licenseName",
+				label: "许可协议",
+				kind: "text",
+				placeholder: "如：CC BY-NC-SA 4.0",
+			},
+			{ key: "licenseUrl", label: "协议链接", kind: "url", placeholder: "https://…" },
+		],
+	},
+	{
+		title: "访问控制",
+		note: "设了密码，站点上的正文要输密码才能看",
+		defs: [
+			{ key: "password", label: "访问密码", kind: "password" },
+			{ key: "passwordHint", label: "密码提示", kind: "text", placeholder: "给读者的提示" },
+		],
+	},
+];
+
+const ALL_DEFS: Def[] = GROUPS.flatMap((group) => group.defs);
+const KNOWN = new Set([
+	...ALL_DEFS.map((def) => def.key),
+	"title",
+	"slug",
+	// 站内自动算出来的上下篇，改了也会被覆盖
+	"prevTitle",
+	"prevSlug",
+	"nextTitle",
+	"nextSlug",
+]);
+
+/** 与 src/config/provenanceConfig.ts 的 kinds 对齐 */
+const PROV_KINDS = [
+	{ value: "", label: "不标注" },
+	{ value: "handwritten", label: "全自写" },
+	{ value: "ghostwritten", label: "代笔" },
+	{ value: "co-written", label: "代笔 + 本人改写" },
+];
+
+const KEY_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+/* ---------- 表单状态 ---------- */
+
+const form = reactive({ title: "", slug: "", body: "" });
+/** 非布尔字段统一按字符串存，保存时按 kind 转回类型。
+    number 输入框的 v-model 会给回数字，取值一律走 textOf */
+const vals = reactive<Record<string, string | number>>({});
+/** 布尔字段（draft / pinned / comment） */
+const flags = reactive<Record<string, boolean>>({});
+const prov = reactive({ kind: "", model: "", agent: "", note: "" });
+
+interface CustomRow {
+	orig: string;
+	key: string;
+	value: string;
+	/** 载入时的值：没改动就不写回，免得把 `toc: false` 改写成 `toc: "false"` */
+	initial: string;
+	/** 原值形态：列表按逗号还原，嵌套对象只读 */
+	type: "scalar" | "list" | "object" | "bool" | "number";
+}
+const custom = ref<CustomRow[]>([]);
+
+/** 文件里原本有哪些键：决定保存时写不写、删不删，避免无意义地重写整份 frontmatter */
+let loadedKeys = new Set<string>();
 
 const status = ref("draft");
 const loading = ref(true);
@@ -131,55 +265,205 @@ const editorEl = ref<HTMLDivElement | null>(null);
 let vditor: Vditor | null = null;
 let timer: number | null = null;
 
+function textOf(key: string): string {
+	const value = vals[key];
+	if (typeof value === "string") return value;
+	return value === undefined || value === null ? "" : String(value);
+}
+
 function splitTags(): string[] {
-	return form.tagsText
+	return textOf("tags")
 		.split(/[,，]/)
 		.map((tag) => tag.trim())
 		.filter((tag) => tag.length > 0);
 }
 
+/** 封面可能是不带前导 ./ 的相对路径，管理端下解析不到，转到仓库 raw 上预览 */
+const coverBroken = ref(false);
+const coverPreview = computed(() => {
+	const src = textOf("image").trim();
+	if (!src || coverBroken.value) return "";
+	if (/^(?:https?:|data:|\/)/i.test(src)) return src;
+	return rawBase.value ? `${rawBase.value}${src.replace(/^\.\//, "")}` : "";
+});
+
+function applyProvenance(raw: FieldValue | undefined): void {
+	if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+		prov.kind = raw.kind ?? "";
+		prov.model = raw.model ?? "";
+		prov.agent = raw.agent ?? "";
+		prov.note = raw.note ?? "";
+		return;
+	}
+	prov.kind = typeof raw === "string" ? raw : "";
+	prov.model = "";
+	prov.agent = "";
+	prov.note = "";
+}
+
+/** 把接口给的 frontmatter 铺进表单 */
+function loadFields(fields: Record<string, FieldValue>): void {
+	loadedKeys = new Set(Object.keys(fields));
+	form.title = typeof fields.title === "string" ? fields.title : "";
+
+	for (const def of ALL_DEFS) {
+		// 地址走 form.slug + nextSlug 那条路，不进 frontmatter 字段表
+		if (def.key === "slug") continue;
+		const raw = fields[def.key];
+		if (def.kind === "bool") {
+			flags[def.key] = raw === true || raw === "true";
+			continue;
+		}
+		if (def.kind === "tags") {
+			vals.tags = Array.isArray(raw)
+				? raw.join(", ")
+				: typeof raw === "string"
+					? raw
+					: "";
+			continue;
+		}
+		if (def.kind === "provenance") {
+			applyProvenance(raw);
+			continue;
+		}
+		vals[def.key] = raw === undefined || raw === null ? "" : String(raw);
+	}
+
+	custom.value = Object.entries(fields)
+		.filter(([key]) => !KNOWN.has(key))
+		.map(([key, value]) => {
+			if (Array.isArray(value)) {
+				const text = value.join(", ");
+				return {
+					orig: key,
+					key,
+					value: text,
+					initial: text,
+					type: "list" as const,
+				};
+			}
+			if (value !== null && typeof value === "object") {
+				const text = Object.entries(value)
+					.map(([childKey, childValue]) => `${childKey}: ${childValue}`)
+					.join(" · ");
+				return { orig: key, key, value: text, initial: text, type: "object" as const };
+			}
+			const text = value === undefined || value === null ? "" : String(value);
+			const type = /^(?:true|false)$/i.test(text)
+				? ("bool" as const)
+				: /^-?\d+(?:\.\d+)?$/.test(text)
+					? ("number" as const)
+					: ("scalar" as const);
+			return { orig: key, key, value: text, initial: text, type };
+		});
+}
+
 function fill(post: PostDetail): void {
 	status.value = post.status;
 	lastSaved.value = formatTime(post.updated_at);
-	form.title = post.title;
 	form.slug = post.slug;
-	form.summary = post.summary;
-	form.tagsText = post.tags.join(", ");
 	form.body = post.body;
-	form.category =
-		typeof post.meta?.category === "string" ? post.meta.category : "";
-	form.series = typeof post.meta?.series === "string" ? post.meta.series : "";
+	loadFields((post.meta ?? {}) as Record<string, FieldValue>);
+	// D1 的标题、摘要、标签在列上，不在 meta 里
+	form.title = post.title;
+	vals.description = post.summary ?? "";
+	vals.tags = (post.tags ?? []).join(", ");
 }
 
 function fillRepo(post: RepoPostDetail): void {
 	loadedSlug.value = post.slug;
 	status.value = "published";
 	lastSaved.value = "";
-	form.title = post.title;
 	form.slug = post.slug;
-	form.summary = post.description;
-	form.tagsText = post.tags.join(", ");
 	rawBase.value = post.rawBase;
 	form.body = bodyToPreview(post.body, post.rawBase);
-	form.category = post.category;
-	form.series = post.series;
-	form.published = post.published;
-	form.sourceLink = post.sourceLink;
-	form.draft = post.draft;
+	loadFields(post.fields);
 }
 
-function buildPatch(): Record<string, unknown> {
-	const meta: Record<string, unknown> = {};
-	if (form.category.trim()) meta.category = form.category.trim();
-	if (form.series.trim()) meta.series = form.series.trim();
-	return {
-		title: form.title.trim(),
-		slug: form.slug.trim(),
-		summary: form.summary,
-		tags: splitTags(),
-		body: form.body,
-		meta,
+/** 值 -> frontmatter：空值送 null，服务端据此删掉这个键 */
+function provValue(): FieldValue | null {
+	if (!prov.kind) return null;
+	const model = prov.model.trim();
+	const agent = prov.agent.trim();
+	const note = prov.note.trim();
+	if (!model && !agent && !note) return prov.kind;
+	return { kind: prov.kind, model, agent, note };
+}
+
+/**
+ * 只提交真动过的字段：文件里没有、值又是空的就跳过。
+ * 否则每存一次都会凭空补一堆 `pinned: false`，diff 没法看。
+ */
+function buildFields(): Record<string, FieldValue | null> {
+	const out: Record<string, FieldValue | null> = {};
+	const put = (key: string, value: FieldValue | null, empty: boolean): void => {
+		if (loadedKeys.has(key) || !empty) out[key] = empty ? null : value;
 	};
+
+	out.title = form.title.trim();
+
+	for (const def of ALL_DEFS) {
+		if (def.key === "slug") continue;
+		if (def.kind === "bool") {
+			const value = Boolean(flags[def.key]);
+			put(def.key, value, !value);
+			continue;
+		}
+		if (def.kind === "tags") {
+			const tags = splitTags();
+			put(def.key, tags, tags.length === 0);
+			continue;
+		}
+		if (def.kind === "provenance") {
+			const value = provValue();
+			put(def.key, value, value === null);
+			continue;
+		}
+		const text = textOf(def.key).trim();
+		if (def.kind === "number") {
+			const num = Number(text);
+			put(def.key, text.length > 0 && Number.isFinite(num) ? num : null, text.length === 0);
+			continue;
+		}
+		put(def.key, text, text.length === 0);
+	}
+
+	for (const row of custom.value) {
+		const key = row.key.trim();
+		// 改了键名要把老键删掉，否则 frontmatter 里会留下两条
+		if (row.orig && row.orig !== key && loadedKeys.has(row.orig)) out[row.orig] = null;
+		if (!KEY_RE.test(key) || KNOWN.has(key)) continue;
+		if (row.type === "object") continue;
+
+		const text = row.value.trim();
+		const changed = row.orig === "" || row.orig !== key || text !== row.initial;
+		if (!changed) continue;
+
+		if (row.type === "list") {
+			const items = text
+				.split(/[,，]/)
+				.map((item) => item.trim())
+				.filter((item) => item.length > 0);
+			out[key] = items.length > 0 ? items : null;
+			continue;
+		}
+		if (row.type === "bool") {
+			out[key] = text.toLowerCase() === "true";
+			continue;
+		}
+		if (row.type === "number") {
+			const num = Number(text);
+			out[key] = text.length > 0 && Number.isFinite(num) ? num : null;
+			continue;
+		}
+		out[key] = text.length > 0 ? text : null;
+	}
+
+	for (const key of removedKeys.value) {
+		if (!KNOWN.has(key)) out[key] = null;
+	}
+
+	return out;
 }
 
 /** 仓库文章：整份写回文件，一次保存 = 一次 commit + 一次构建 */
@@ -190,22 +474,15 @@ async function saveRepo(): Promise<boolean> {
 		await saveRepoPost({
 			slug: loadedSlug.value,
 			nextSlug: form.slug.trim(),
-			title: form.title.trim(),
-			description: form.summary,
-			tags: splitTags(),
-			category: form.category.trim(),
-			series: form.series.trim(),
-			sourceLink: form.sourceLink.trim(),
-			published: form.published.trim(),
-			draft: form.draft,
+			fields: buildFields(),
 			body: bodyToStorage(form.body, rawBase.value),
 		});
 		lastSaved.value = new Date().toLocaleString("zh-CN", { hour12: false });
 		saveState.value = "saved";
+		removedKeys.value = [];
 		return true;
 	} catch (error) {
-		errorText.value =
-			error instanceof ApiError ? error.message : "提交失败，请重试";
+		errorText.value = error instanceof Error ? error.message : "提交失败，请重试";
 		saveState.value = "error";
 		return false;
 	}
@@ -213,21 +490,33 @@ async function saveRepo(): Promise<boolean> {
 
 async function save(): Promise<boolean> {
 	if (!ready.value) return false;
+	if (!isRepo.value && !editable.value) return false;
 	if (isRepo.value) return saveRepo();
-	if (!editable.value) return false;
 	saveState.value = "saving";
 	errorText.value = "";
 	try {
-		const post = await savePost(postId.value, buildPatch());
+		// 标题、摘要、标签在 D1 里是独立的列，meta 里再放一份会打架
+		const meta = buildFields();
+		delete meta.title;
+		delete meta.description;
+		delete meta.tags;
+		const post = await savePost(postId.value, {
+			title: form.title.trim(),
+			slug: form.slug.trim(),
+			summary: textOf("description").trim(),
+			tags: splitTags(),
+			body: form.body,
+			meta,
+		});
 		if (post) {
 			status.value = post.status;
 			lastSaved.value = formatTime(post.updated_at);
 		}
 		saveState.value = "saved";
+		removedKeys.value = [];
 		return true;
 	} catch (error) {
-		errorText.value =
-			error instanceof ApiError ? error.message : "保存失败，请重试";
+		errorText.value = error instanceof Error ? error.message : "保存失败，请重试";
 		saveState.value = "error";
 		return false;
 	}
@@ -288,6 +577,26 @@ async function onWithdraw(): Promise<void> {
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "撤回失败";
 	}
+}
+
+function addCustom(): void {
+	custom.value.push({
+		orig: "",
+		key: "",
+		value: "",
+		initial: "",
+		type: "scalar",
+	});
+}
+
+/** 删掉的行：原来文件里有的键要在下一次保存时送 null，才会从 frontmatter 里消失 */
+const removedKeys = ref<string[]>([]);
+
+function removeCustom(index: number): void {
+	const row = custom.value[index];
+	if (row.orig) removedKeys.value.push(row.orig);
+	custom.value.splice(index, 1);
+	onFieldInput();
 }
 
 /**
@@ -506,127 +815,197 @@ watch(isDark, (dark) => {
 				</div>
 
 				<aside class="col-rail">
-					<section class="card-base panel">
-						<p class="panel-title">文章属性</p>
-						<div class="field-row">
-							<label class="field-label" for="post-slug">
-								地址
-								<code class="fm-key">slug</code>
+					<section v-for="group in GROUPS" :key="group.title" class="card-base panel">
+						<p class="panel-title">{{ group.title }}</p>
+						<p v-if="group.note" class="panel-hint">{{ group.note }}</p>
+
+						<div v-for="def in group.defs" :key="def.key" class="field-row">
+							<label v-if="def.kind !== 'bool'" class="field-label" :for="`f-${def.key}`">
+								{{ def.label }}
+								<code class="fm-key">{{ def.key }}</code>
 							</label>
-							<div class="slug-wrap">
-								<span class="slug-prefix">/posts/</span>
+
+							<template v-if="def.kind === 'provenance'">
+								<div class="prov">
+									<div class="prov-kinds">
+										<button
+											v-for="kind in PROV_KINDS"
+											:key="kind.value"
+											type="button"
+											class="prov-kind"
+											:class="{ on: prov.kind === kind.value }"
+											:disabled="!editable"
+											@click="
+												prov.kind = kind.value;
+												onFieldInput();
+											"
+										>
+											{{ kind.label }}
+										</button>
+									</div>
+									<div v-if="prov.kind && prov.kind !== 'handwritten'" class="prov-detail">
+										<input
+											v-model="prov.model"
+											class="field"
+											placeholder="模型，如 DeepSeek-V4.1-Flash"
+											:disabled="!editable"
+											@input="onFieldInput"
+										/>
+										<input
+											v-model="prov.agent"
+											class="field"
+											placeholder="Agent / 工具，如 WorkBuddy"
+											:disabled="!editable"
+											@input="onFieldInput"
+										/>
+										<input
+											v-model="prov.note"
+											class="field"
+											placeholder="备注，如：大纲由模型给出，正文自己重写"
+											:disabled="!editable"
+											@input="onFieldInput"
+										/>
+									</div>
+								</div>
+							</template>
+
+							<template v-else-if="def.kind === 'bool'">
+								<label class="check-row" :for="`f-${def.key}`">
+									<input
+										:id="`f-${def.key}`"
+										v-model="flags[def.key]"
+										type="checkbox"
+										:disabled="!editable"
+										@change="onFieldInput"
+									/>
+									<span>{{ def.label }}</span>
+									<code class="fm-key">{{ def.key }}</code>
+								</label>
+							</template>
+
+							<template v-else-if="def.kind === 'tags'">
 								<input
-									id="post-slug"
-									v-model="form.slug"
-									class="field slug-input"
-									maxlength="60"
+									:id="`f-${def.key}`"
+									v-model="vals.tags"
+									class="field"
 									:disabled="!editable"
-									placeholder="my-post-slug"
+									:placeholder="def.placeholder"
 									@input="onFieldInput"
 								/>
-								<span class="slug-prefix">/</span>
-							</div>
-							<p class="field-hint">
-								2–60 位小写字母、数字与连字符，站内唯一。发布后不要再改。
-							</p>
-						</div>
+							</template>
 
-						<div class="field-row">
-							<label class="field-label" for="post-summary">
-								摘要
-								<code class="fm-key">description</code>
-							</label>
+							<template v-else-if="def.kind === 'image'">
+								<div class="cover-row">
+									<img
+										v-if="coverPreview"
+										class="cover-thumb"
+										:src="coverPreview"
+										alt=""
+										@error="coverBroken = true"
+									/>
+									<input
+										:id="`f-${def.key}`"
+										v-model="vals.image"
+										class="field"
+										:disabled="!editable"
+										:placeholder="def.placeholder"
+										@input="
+											coverBroken = false;
+											onFieldInput();
+										"
+									/>
+								</div>
+							</template>
+
+							<template v-else-if="def.key === 'slug'">
+								<div class="slug-wrap">
+									<span class="slug-prefix">/posts/</span>
+									<input
+										id="f-slug"
+										v-model="form.slug"
+										class="field slug-input"
+										maxlength="60"
+										:disabled="!editable"
+										:placeholder="def.placeholder"
+										@input="onFieldInput"
+									/>
+									<span class="slug-prefix">/</span>
+								</div>
+								<p class="field-hint">
+									2–60 位小写字母、数字与连字符，发布后不要再改。
+								</p>
+							</template>
+
 							<textarea
-								id="post-summary"
-								v-model="form.summary"
+								v-else-if="def.kind === 'textarea'"
+								:id="`f-${def.key}`"
+								v-model="vals[def.key]"
 								class="field summary"
-								maxlength="300"
 								rows="3"
+								maxlength="300"
 								:disabled="!editable"
-								placeholder="列表页显示的一两句话"
+								:placeholder="def.placeholder"
 								@input="onFieldInput"
 							/>
-						</div>
 
-						<div class="field-row">
-							<label class="field-label" for="post-tags">
-								标签
-								<code class="fm-key">tags</code>
-							</label>
 							<input
-								id="post-tags"
-								v-model="form.tagsText"
+								v-else
+								:id="`f-${def.key}`"
+								v-model="vals[def.key]"
 								class="field"
+								:type="
+									def.kind === 'number'
+										? 'number'
+										: def.kind === 'password'
+											? 'password'
+											: 'text'
+								"
 								:disabled="!editable"
-								placeholder="用逗号分隔，最多 10 个"
+								:placeholder="def.placeholder"
 								@input="onFieldInput"
 							/>
-						</div>
-
-						<div class="field-row">
-							<label class="field-label" for="post-category">
-								分类
-								<code class="fm-key">category</code>
-							</label>
-							<input
-								id="post-category"
-								v-model="form.category"
-								class="field"
-								:disabled="!editable"
-								placeholder="如：编码经验"
-								@input="onFieldInput"
-							/>
-						</div>
-
-						<div class="field-row last">
-							<label class="field-label" for="post-series">
-								系列
-								<code class="fm-key">series</code>
-							</label>
-							<input
-								id="post-series"
-								v-model="form.series"
-								class="field"
-								:disabled="!editable"
-								placeholder="留空表示不属于系列"
-								@input="onFieldInput"
-							/>
+							<p v-if="def.hint" class="field-hint">{{ def.hint }}</p>
 						</div>
 					</section>
 
-					<section v-if="isRepo" class="card-base panel">
-						<p class="panel-title">发布设置</p>
-						<p class="panel-hint">frontmatter 里剩下的字段。</p>
-						<div class="field-row">
-							<label class="field-label" for="post-published">
-								发布日期
-								<code class="fm-key">published</code>
-							</label>
+					<section class="card-base panel">
+						<p class="panel-title">
+							自定义属性
+							<span class="panel-count">{{ custom.length }}</span>
+						</p>
+						<p class="panel-hint">
+							schema 之外要写的键放这里，按原样写进 frontmatter；同名的会用模板里的值。
+						</p>
+
+						<div v-for="(row, index) in custom" :key="index" class="custom-row">
 							<input
-								id="post-published"
-								v-model="form.published"
-								class="field"
-								placeholder="2026-11-01"
+								v-model="row.key"
+								class="field custom-key"
+								placeholder="key"
+								:disabled="!editable || row.type === 'object'"
 								@input="onFieldInput"
 							/>
-						</div>
-						<div class="field-row">
-							<label class="field-label" for="post-source">
-								转载来源
-								<code class="fm-key">sourceLink</code>
-							</label>
 							<input
-								id="post-source"
-								v-model="form.sourceLink"
-								class="field"
-								placeholder="留空表示原创"
+								v-model="row.value"
+								class="field custom-value"
+								:placeholder="row.type === 'list' ? '用逗号分隔' : 'value'"
+								:disabled="!editable || row.type === 'object'"
 								@input="onFieldInput"
 							/>
+							<button
+								type="button"
+								class="row-del"
+								title="删除这条属性"
+								:disabled="!editable"
+								@click="removeCustom(index)"
+							>
+								✕
+							</button>
 						</div>
-						<label class="check-row">
-							<input v-model="form.draft" type="checkbox" @change="onFieldInput" />
-							<span>存为草稿（draft: true，站点上不显示）</span>
-						</label>
+
+						<button type="button" class="add-row" :disabled="!editable" @click="addCustom">
+							＋ 添加属性
+						</button>
 					</section>
 				</aside>
 			</div>
@@ -636,8 +1015,8 @@ watch(isDark, (dark) => {
 
 <style scoped>
 .panel {
-	padding: 1.1rem 1.2rem;
-	margin-bottom: 0.9rem;
+	padding: 0.9rem 1rem;
+	margin-bottom: 0.75rem;
 }
 
 .panel-title {
@@ -645,21 +1024,27 @@ watch(isDark, (dark) => {
 	align-items: center;
 	gap: 0.35rem;
 	margin: 0;
-	font-size: 0.85rem;
+	font-size: 0.8rem;
 	font-weight: 600;
 	color: var(--fg-75);
 }
 
-.panel-hint {
-	margin: 0.15rem 0 0;
-	font-size: 0.72rem;
+.panel-count {
 	color: var(--fg-30);
+	font-weight: 500;
+}
+
+.panel-hint {
+	margin: 0.2rem 0 0;
+	font-size: 0.68rem;
+	line-height: 1.5;
+	color: var(--fg-50);
 }
 
 .check-row {
 	display: flex;
 	align-items: center;
-	gap: 0.45rem;
+	gap: 0.4rem;
 	font-size: 0.78rem;
 	color: var(--fg-75);
 	cursor: pointer;
@@ -680,93 +1065,228 @@ watch(isDark, (dark) => {
 .field-row {
 	display: flex;
 	flex-direction: column;
-	gap: 0.3rem;
-	margin-bottom: 0.85rem;
+	gap: 0.25rem;
+	margin-bottom: 0.7rem;
+}
+
+.field-row:last-child {
+	margin-bottom: 0;
 }
 
 .field-label {
 	display: flex;
 	align-items: center;
-	gap: 0.35rem;
-	font-size: 0.75rem;
+	gap: 0.3rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	color: var(--fg-50);
 }
 
 /* frontmatter 里的原始键名，方便对着源码 / 文档改 */
 .fm-key {
-	padding: 0.02rem 0.32rem;
-	border-radius: 0.3rem;
+	padding: 0.02rem 0.3rem;
+	border-radius: 0.28rem;
 	background: var(--license-block-bg);
 	color: var(--fg-50);
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 0.66rem;
+	font-size: 0.62rem;
 	font-weight: 500;
-	letter-spacing: 0.01em;
 }
 
 :root.dark .fm-key {
 	background: rgba(255, 255, 255, 0.07);
-	color: var(--fg-50);
 }
 
 .field-hint {
 	margin: 0;
-	font-size: 0.72rem;
-	color: var(--fg-30);
+	font-size: 0.66rem;
+	color: var(--fg-50);
+}
+
+/* 属性栏里的输入框比全局小一档：14px 的正文在这里显得笨重 */
+.field {
+	padding: 0.4rem 0.6rem;
+	border-radius: 0.55rem;
+	font-size: 0.78rem;
 }
 
 .slug-wrap {
 	display: flex;
 	align-items: center;
-	gap: 0.35rem;
+	gap: 0.3rem;
 }
 
 .slug-prefix {
-	font-size: 0.78rem;
-	color: var(--fg-30);
 	flex: none;
+	font-size: 0.72rem;
+	color: var(--fg-50);
 }
 
 .slug-input {
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 0.82rem;
+	font-size: 0.76rem;
+}
+
+.summary {
+	line-height: 1.55;
+	resize: vertical;
+}
+
+.cover-row {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+}
+
+.cover-thumb {
+	width: 2.2rem;
+	height: 2.2rem;
+	flex: none;
+	border-radius: 0.45rem;
+	border: 1px solid var(--line-divider);
+	object-fit: cover;
+	background: var(--btn-regular-bg);
+}
+
+/* ---- 代笔声明：三档用胶囊选择，比下拉更好扫 ---- */
+.prov {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+}
+
+.prov-kinds {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+}
+
+.prov-kind {
+	padding: 0.25rem 0.5rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--fg-75);
+	font-size: 0.72rem;
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.prov-kind:hover {
+	background: var(--btn-plain-bg-hover);
+}
+
+.prov-kind.on {
+	border-color: transparent;
+	background: var(--tab-on-bg);
+	color: var(--accent-text);
+	font-weight: 600;
+}
+
+.prov-kind:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.prov-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+
+/* ---- 自定义属性 ---- */
+.custom-row {
+	display: grid;
+	grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) 1.4rem;
+	gap: 0.3rem;
+	align-items: center;
+	margin-bottom: 0.3rem;
+}
+
+.custom-key {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.72rem;
+}
+
+.custom-value {
+	font-size: 0.74rem;
+}
+
+.row-del {
+	display: grid;
+	place-items: center;
+	width: 1.4rem;
+	height: 1.4rem;
+	border: none;
+	border-radius: 0.4rem;
+	background: transparent;
+	color: var(--fg-50);
+	font-size: 0.7rem;
+}
+
+.row-del:hover {
+	background: color-mix(in oklab, var(--admonitions-color-caution) 12%, transparent);
+	color: var(--admonitions-color-caution);
+}
+
+.add-row {
+	width: 100%;
+	margin-top: 0.15rem;
+	padding: 0.35rem;
+	border: 1px dashed var(--line-color);
+	border-radius: 0.5rem;
+	background: transparent;
+	color: var(--fg-50);
+	font-size: 0.72rem;
+}
+
+.add-row:hover {
+	border-color: var(--primary);
+	color: var(--accent-text);
 }
 
 /* 正文占主列，属性收进右侧栏：编辑器才能吃掉整屏高度 */
 .edit-layout {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 19rem;
+	grid-template-columns: minmax(0, 1fr) 18.5rem;
 	gap: 1rem;
 	align-items: start;
 }
 
 .col-main {
 	min-width: 0;
+	/* 属性栏比正文高得多，正文若不粘住，往下滚左边就空出一大片白。
+	   粘住之后正文始终占满一屏，属性栏自己往下滚 */
+	position: sticky;
+	top: 0.5rem;
+	height: calc(100vh - 1rem);
 }
 
 .col-rail {
-	position: sticky;
-	top: 1rem;
 	display: flex;
 	flex-direction: column;
-	gap: 0.9rem;
 }
 
 .col-rail .panel {
+	margin-bottom: 0.7rem;
+}
+
+.col-rail .panel:last-child {
 	margin-bottom: 0;
 }
 
 .col-rail .panel-title {
-	margin: 0 0 0.75rem;
+	margin: 0 0 0.55rem;
 }
 
 .panel.editor-panel {
 	display: flex;
 	flex-direction: column;
-	/* 撑到一屏：视口减去页头与上下留白，编辑器吃掉剩下的高度 */
-	height: calc(100vh - 11rem);
-	min-height: 32rem;
+	/* 高度跟着 .col-main 走：视口多高，编辑器就多高 */
+	height: 100%;
+	min-height: 30rem;
 	padding: 0;
 	margin-bottom: 0;
 	overflow: hidden;
@@ -776,8 +1296,8 @@ watch(isDark, (dark) => {
 	display: flex;
 	flex-direction: column;
 	flex: none;
-	gap: 0.4rem;
-	padding: 0.9rem 1.1rem 0.65rem;
+	gap: 0.35rem;
+	padding: 0.8rem 1rem 0.55rem;
 	border-bottom: 1px solid var(--line-divider);
 }
 
@@ -785,7 +1305,7 @@ watch(isDark, (dark) => {
 	display: flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.72rem;
+	font-size: 0.68rem;
 	font-weight: 600;
 	color: var(--fg-50);
 }
@@ -796,7 +1316,7 @@ watch(isDark, (dark) => {
 	border: none;
 	background: transparent;
 	color: var(--fg-90);
-	font-size: 1.35rem;
+	font-size: 1.2rem;
 	font-weight: 700;
 	line-height: 1.35;
 	outline: none;
@@ -810,24 +1330,24 @@ watch(isDark, (dark) => {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
-	gap: 0.4rem;
-	font-size: 0.72rem;
+	gap: 0.35rem;
+	font-size: 0.68rem;
 	color: var(--fg-50);
 }
 
 .slug-tag {
-	font-size: 0.72rem;
+	font-size: 0.68rem;
 	color: var(--fg-50);
 }
 
 .doc-sub-key {
 	margin-left: auto;
-	color: var(--fg-30);
+	color: var(--fg-50);
 }
 
 .save-state {
 	margin-left: auto;
-	font-size: 0.72rem;
+	font-size: 0.68rem;
 	font-weight: 500;
 	color: var(--fg-50);
 }
@@ -841,11 +1361,11 @@ watch(isDark, (dark) => {
 }
 
 .pill {
-	padding: 0.02rem 0.42rem;
+	padding: 0.02rem 0.4rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
 	color: var(--fg-90);
-	font-size: 0.68rem;
+	font-size: 0.64rem;
 	font-weight: 600;
 }
 
@@ -869,10 +1389,7 @@ watch(isDark, (dark) => {
 	min-height: 0;
 }
 
-/* Vditor 会在根元素写行内 height，这里让它填满卡片。
-   :not(.vditor--fullscreen) 必须保留：全屏靠 height:100vh !important，
-   被这条盖掉之后点全屏只剩卡片那么大 */
-/* Vditor 是把容器元素本身变成 .vditor（类名挂在同一个节点上），
+/* Vditor 会把容器元素本身变成 .vditor（类名挂在同一个节点上），
    所以这里不能写后代选择器，否则规则永远不生效 */
 .editor.vditor:not(.vditor--fullscreen) {
 	height: 100% !important;
@@ -881,29 +1398,10 @@ watch(isDark, (dark) => {
 	background: transparent;
 }
 
-.summary {
-	line-height: 1.6;
-	resize: vertical;
-}
-
-.field-row.last {
-	margin-bottom: 0;
-}
-
-/* 窄屏：属性栏落到正文下面，编辑器不再强行一屏高 */
-@media (max-width: 1180px) {
-	.edit-layout {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.col-rail {
-		position: static;
-	}
-
-	.panel.editor-panel {
-		height: min(75vh, 44rem);
-		min-height: 26rem;
-	}
+/* Vditor 自带深色是 #24292e，比卡片亮一档，铺满整屏后就是一块发灰的补丁 */
+.editor.vditor--dark {
+	--panel-background-color: var(--card-bg);
+	--textarea-background-color: var(--card-bg);
 }
 
 .editor :deep(.vditor-toolbar) {
@@ -913,36 +1411,41 @@ watch(isDark, (dark) => {
 	padding-left: 0.6rem !important;
 }
 
-/* Vditor 自带深色是 #24292e，比卡片亮一档，铺满整屏后就是一块发灰的补丁 */
-.editor.vditor--dark {
-	--panel-background-color: var(--card-bg);
-	--textarea-background-color: var(--card-bg);
-}
-
-/* Vditor 自带深色是 #24292e，比卡片亮一档，铺满整屏后就是一块发灰的补丁 */
-.editor.vditor--dark {
-	--panel-background-color: var(--card-bg);
-	--textarea-background-color: var(--card-bg);
-}
-
 .editor :deep(.vditor-reset) {
-	font-size: 0.95rem;
-	line-height: 1.75;
+	font-size: 0.9rem;
+	line-height: 1.7;
 }
 
 .error {
-	margin: 0 0 0.7rem;
-	padding: 0.45rem 0.7rem;
-	border-radius: 0.6rem;
+	margin: 0 0 0.6rem;
+	padding: 0.4rem 0.65rem;
+	border-radius: 0.55rem;
 	background: color-mix(in oklab, var(--admonitions-color-caution) 14%, transparent);
 	color: var(--admonitions-color-caution);
-	font-size: 0.8rem;
+	font-size: 0.78rem;
 }
 
 .state {
 	padding: 2rem 1rem;
 	text-align: center;
-	font-size: 0.85rem;
+	font-size: 0.82rem;
 	color: var(--fg-50);
+}
+
+/* 窄屏：属性栏落到正文下面，编辑器不再强行一屏高 */
+@media (max-width: 1180px) {
+	.edit-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.col-main {
+		position: static;
+		height: auto;
+	}
+
+	.panel.editor-panel {
+		height: min(75vh, 44rem);
+		min-height: 26rem;
+	}
 }
 </style>

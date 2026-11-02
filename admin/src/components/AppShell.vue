@@ -192,23 +192,28 @@ const roleLabel = computed(() => {
 	display: grid;
 	grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
 	gap: var(--shell-gap);
-	max-width: var(--shell-max);
-	margin: 0 auto;
-	padding: var(--shell-gap);
+	max-width: none;
+	margin: 0;
+	/* 左右不留白：侧栏贴窗口左边，内容列贴右边，宽屏上不再有两条灰带。
+	   右边留 12px 是为了让最后一张卡的右描边落在窗口内，不至于贴着边被切掉。
+	   下边也不能留：侧栏 sticky 到容器底就被钳住，容器少 24px 页脚就会浮起来 */
+	padding: 0 0.75rem 0 0;
 	align-items: start;
 }
 
 .sidebar {
 	position: sticky;
-	top: var(--shell-gap);
+	top: 0;
 	display: flex;
 	flex-direction: column;
 	gap: 1.1rem;
-	height: calc(100vh - var(--shell-gap) * 2);
+	height: 100vh;
 	padding: 1rem 0.8rem;
 	background: var(--sidebar-bg);
+	/* 贴边的一侧不收圆角、不留描边，看起来是「贴在窗口上的面板」而不是浮着的卡 */
 	border: 1px solid var(--line-divider);
-	border-radius: var(--radius-large);
+	border-left: none;
+	border-radius: 0 var(--radius-large) var(--radius-large) 0;
 	box-shadow: var(--card-shadow);
 }
 
@@ -385,8 +390,9 @@ const roleLabel = computed(() => {
 .page {
 	min-width: 0;
 	/* 短页面也撑到与侧栏底边齐平，右侧不会剩一块「到此为止」的空白 */
-	min-height: calc(100vh - var(--shell-gap) * 2);
-	padding-bottom: 2.5rem;
+	min-height: 100vh;
+	/* 只留上下呼吸，左右贴边 */
+	padding: 1.25rem 0 2.5rem;
 }
 
 /* 窄屏：侧栏横过来当顶部条，导航项横向滚动 */
@@ -394,7 +400,7 @@ const roleLabel = computed(() => {
 	.app {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 0.75rem;
-		padding: 0.75rem;
+		padding: 0 0 0.75rem;
 	}
 
 	.sidebar {
@@ -407,6 +413,9 @@ const roleLabel = computed(() => {
 		align-items: center;
 		gap: 0.4rem 0.6rem;
 		padding: 0.55rem 0.7rem;
+		border-left: 1px solid var(--line-divider);
+		border-top: none;
+		border-radius: 0 0 var(--radius-large) var(--radius-large);
 	}
 
 	.brand {
