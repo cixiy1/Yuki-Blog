@@ -821,7 +821,7 @@ onMounted(() => void refresh());
 
 .layout > .side {
 	position: sticky;
-	top: calc(var(--nav-height) + 1rem);
+	top: var(--shell-gap);
 	display: flex;
 	flex-direction: column;
 	gap: 0.75rem;

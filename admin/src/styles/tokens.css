@@ -8,7 +8,8 @@
 	--radius-large: 1rem;
 
 	--primary: oklch(0.7 0.14 var(--hue));
-	--page-bg: oklch(0.95 0.01 var(--hue));
+	/* 底色不跟主题色相走：主站壁纸挡着看不出来，管理端整页铺开就会显出一层绿 */
+	--page-bg: oklch(0.968 0.002 250);
 	--card-bg: white;
 
 	--btn-content: oklch(0.55 0.12 var(--hue));
@@ -40,23 +41,20 @@
 	--fg-50: rgba(0, 0, 0, 0.5);
 	--fg-30: rgba(0, 0, 0, 0.3);
 
-	--sidebar-width: 13.5rem;
-	--shell-max: 87.5rem;
+	--sidebar-width: 15rem;
+	--shell-max: 100rem;
 
-	/* ---- 与主站页面同构的骨架尺寸：悬浮导航条 + 居中内容列 ---- */
-	--nav-height: 3.75rem;
-	--content-max: 84rem;
+	/* ---- 骨架尺寸：左侧卡片式侧栏 + 内容列 ---- */
+	--shell-gap: 1.25rem;
 	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-	--nav-surface: color-mix(in oklab, var(--card-bg) 78%, transparent);
-	--nav-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
 	/* 选中态胶囊：--btn-regular-bg 只有 2.5% 色度，铺在浅色页面上几乎看不出，这里加深一档 */
 	--tab-on-bg: color-mix(in srgb, var(--primary) 18%, var(--card-bg));
 }
 
 :root.dark {
 	--primary: oklch(0.75 0.14 var(--hue));
-	--page-bg: oklch(0.16 0.014 var(--hue));
-	--card-bg: oklch(0.23 0.015 var(--hue));
+	--page-bg: oklch(0.168 0.004 250);
+	--card-bg: oklch(0.225 0.004 250);
 
 	--btn-content: oklch(0.75 0.1 var(--hue));
 	--btn-regular-bg: oklch(0.33 0.035 var(--hue));
@@ -87,9 +85,6 @@
 	--fg-50: rgba(255, 255, 255, 0.5);
 	--fg-30: rgba(255, 255, 255, 0.3);
 
-	/* 深色下 card-bg 与 page-bg 只差一档，导航条用「卡片色 + 一点白」才浮得起来 */
-	--nav-surface: color-mix(in oklab, white 7%, var(--card-bg));
-	--nav-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 	--tab-on-bg: color-mix(in srgb, var(--primary) 30%, var(--card-bg));
 	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
@@ -116,40 +111,6 @@ body {
 	transition:
 		background-color 0.2s ease,
 		color 0.2s ease;
-}
-
-/* 主站有壁纸与卡片投影，管理端用同一色相的两团柔光补上层次，避免整页一块死平底 */
-body::before {
-	content: "";
-	position: fixed;
-	inset: 0;
-	z-index: -1;
-	pointer-events: none;
-	background:
-		radial-gradient(
-			52rem 26rem at 15% -8%,
-			oklch(0.9 0.06 var(--hue) / 0.5),
-			transparent 70%
-		),
-		radial-gradient(
-			46rem 22rem at 92% 2%,
-			oklch(0.93 0.04 calc(var(--hue) + 40) / 0.45),
-			transparent 72%
-		);
-}
-
-:root.dark body::before {
-	background:
-		radial-gradient(
-			52rem 26rem at 15% -8%,
-			oklch(0.32 0.06 var(--hue) / 0.32),
-			transparent 70%
-		),
-		radial-gradient(
-			46rem 22rem at 92% 2%,
-			oklch(0.28 0.05 calc(var(--hue) + 40) / 0.28),
-			transparent 72%
-		);
 }
 
 ::selection {
@@ -195,20 +156,6 @@ select {
 	border-radius: var(--radius-large);
 	border: 1px solid var(--line-divider);
 	box-shadow: var(--card-shadow);
-}
-
-/* 页面容器：与导航条共用同一列宽，主站的内容也是这么居中的 */
-.page-wrap {
-	width: 100%;
-	max-width: var(--content-max);
-	margin: 0 auto;
-	padding: 1.75rem 1.25rem 4rem;
-}
-
-@media (max-width: 640px) {
-	.page-wrap {
-		padding: 1.1rem 0.9rem 3rem;
-	}
 }
 
 .btn-regular {
