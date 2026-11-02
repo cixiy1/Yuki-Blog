@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import Pending from "../components/Pending.vue";
+import Pending from "../components/PendingPanel.vue";
 import { canReview } from "../lib/auth";
 </script>
 

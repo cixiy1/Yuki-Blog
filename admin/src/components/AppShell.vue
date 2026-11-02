@@ -5,7 +5,7 @@ import { isDark, toggleTheme } from "../lib/theme";
 import { go, type RouteName, route } from "../router";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
-import Overview from "../views/Overview.vue";
+import Overview from "../views/OverviewPage.vue";
 import PostEdit from "../views/PostEdit.vue";
 import ReviewQueue from "../views/ReviewQueue.vue";
 import SiteAdmin from "../views/SiteAdmin.vue";

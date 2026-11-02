@@ -33,6 +33,13 @@ function parse(hash: string): Route {
 	const [head, tail] = raw.split("/");
 	const name = head as RouteName;
 	if (!ROUTES.includes(name)) return { name: "overview" };
+
+	// 编辑页的地址是 /posts/<id>，与列表 /posts 共用同一段前缀
+	if (name === "posts" && tail !== undefined) {
+		const id = Number(tail);
+		if (Number.isInteger(id) && id > 0) return { name: "post-edit", id };
+		return { name: "posts" };
+	}
 	if (name === "post-edit") {
 		const id = Number(tail);
 		return Number.isInteger(id) && id > 0 ? { name, id } : { name: "posts" };
