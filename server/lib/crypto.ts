@@ -13,6 +13,31 @@ export async function sha256Hex(input: string): Promise<string> {
 	return bytesToHex(new Uint8Array(digest));
 }
 
+/** 对二进制求摘要，用于媒体去重 */
+export async function sha256HexBytes(bytes: Uint8Array): Promise<string> {
+	// crypto.subtle 只收 ArrayBuffer 视图；拷一份保证底层是 ArrayBuffer 而不是 SharedArrayBuffer
+	const copy = new Uint8Array(bytes.length);
+	copy.set(bytes);
+	const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
+	return bytesToHex(new Uint8Array(digest));
+}
+
+/** 标准 base64（不含 url 安全替换）→ 字节；非法字符返回 null */
+export function decodeBase64(value: string): Uint8Array | null {
+	if (value.length === 0 || value.length % 4 !== 0) return null;
+	if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+	try {
+		const binary = atob(value);
+		const bytes = new Uint8Array(binary.length);
+		for (let i = 0; i < binary.length; i += 1) {
+			bytes[i] = binary.charCodeAt(i);
+		}
+		return bytes;
+	} catch {
+		return null;
+	}
+}
+
 export async function hmacSha256Hex(
 	key: string,
 	input: string,

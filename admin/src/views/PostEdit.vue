@@ -13,6 +13,7 @@ import {
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { ApiError } from "../lib/api";
+import { uploadImage } from "../lib/media";
 import {
 	formatTime,
 	getPost,
@@ -79,6 +80,7 @@ const TOOLBAR = [
 	"inline-code",
 	"link",
 	"table",
+	"upload",
 	"|",
 	"undo",
 	"redo",
@@ -183,11 +185,29 @@ async function onWithdraw(): Promise<void> {
 	}
 }
 
-async function onUpload(files: File[]): Promise<void> {
-	// 图片上传在下一步接入 /api/media，这里先明确告知，避免静默失败
-	const names = files.map((file) => file.name).join("、");
-	errorText.value = `图片上传还没接（${names}）。下一步做媒体与组件时一起接。`;
-	saveState.value = "error";
+/**
+ * Vditor 的自定义上传：返回字符串表示错误，返回 null 表示成功。
+ * 成功时自己把 Markdown 插进正文，Vditor 不会代劳。
+ */
+async function onUpload(files: File[]): Promise<string | null> {
+	if (!vditor) return "编辑器还没就绪";
+	errorText.value = "";
+	const snippets: string[] = [];
+	for (const file of files) {
+		try {
+			const media = await uploadImage(file);
+			const alt = file.name.replace(/\.[^.]+$/, "");
+			snippets.push(`![${alt}](${media.url})`);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : "上传失败";
+			errorText.value = `${file.name}：${reason}`;
+			saveState.value = "error";
+			return `${file.name}：${reason}`;
+		}
+	}
+	vditor.insertValue(`${snippets.join("\n")}\n`);
+	scheduleSave();
+	return null;
 }
 
 function createEditor(): void {
@@ -209,10 +229,7 @@ function createEditor(): void {
 		},
 		upload: {
 			accept: "image/png,image/jpeg,image/webp,image/gif,image/avif",
-			handler: (files: File[]) => {
-				void onUpload(files);
-				return null;
-			},
+			handler: (files: File[]) => onUpload(files),
 		},
 		input: (value: string) => {
 			form.body = value;
