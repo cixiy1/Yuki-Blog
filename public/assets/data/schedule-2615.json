@@ -5,8 +5,9 @@
     "term": "2026-2027学年第1学期",
     "week1Monday": "2026-08-31",
     "totalWeeks": 19,
-    "updated": "2026-11-02 22:37",
+    "updated": "2026-11-02 22:50",
     "changelog": [
+      {"date": "2026-11-02 22:50", "content": "取消周二早八Java补课"},
       {"date": "2026-11-02 22:37", "content": "周二早八加Java课"},
       {"date": "2026-11-02 22:29", "content": "撤回两条测试产生的 Java 加课"},
       {"date": "2026-11-02 22:26", "content": "周二早八新增Java课"},
@@ -1025,6 +1026,14 @@
       ],
       "flag": "",
       "note": "周二早八补Java课"
+    },
+    {
+      "type": "cancel",
+      "id": "c04",
+      "weeks": [
+        10
+      ],
+      "note": "周二早八实际不上Java"
     }
   ],
   "notices": [
