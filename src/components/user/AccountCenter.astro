@@ -171,7 +171,6 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 							>
 								进入管理中心
 							</button>
-							<p class="mt-2 text-[11px] text-30">建设中，尚未上线</p>
 						</div>
 						<div class="rounded-xl border border-(--line-divider) p-4">
 							<div class="flex items-center gap-2 text-sm font-semibold text-90">
@@ -337,20 +336,27 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				void this.#verify();
 			});
 			this.#q("logout")?.addEventListener("click", () => void this.#logout());
+			// 用整页跳转而不是 <a href>：/admin/ 是独立 SPA，不能被 Swup 接管替换容器
 			this.#q("admin-open")?.addEventListener("click", () => {
-				this.#say("me-msg", "管理中心正在开发中，稍后上线", "ok");
+				location.assign("/admin/");
 			});
+		}
+
+		/** 登录成功后的落点。只认站内绝对路径，且不能又跳回登录页自己 */
+		#nextTarget(): string | null {
+			const next = new URLSearchParams(location.search).get("next");
+			if (!next || !/^\/(?!\/)/.test(next)) return null;
+			if (next.startsWith("/login")) return null;
+			return next;
 		}
 
 		/** GitHub 的 next 参数运行时补：静态页 SSR 时读不到 query */
 		#fixGithubHref(): void {
 			const link = this.#q<HTMLAnchorElement>("github");
 			if (!link) return;
-			const next = new URLSearchParams(location.search).get("next");
-			// 只放行站内绝对路径；不要整体 encodeURIComponent，%2F 会被服务端判非法
-			if (next && /^\/(?!\/)/.test(next)) {
-				link.href = `/api/auth/github/start?next=${next}`;
-			}
+			const next = this.#nextTarget();
+			// 不要整体 encodeURIComponent，%2F 会被服务端判非法
+			if (next) link.href = `/api/auth/github/start?next=${next}`;
 		}
 
 		#showOauthError(): void {
@@ -529,6 +535,11 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			if (codeInput) codeInput.value = "";
 			const block = this.#q("code-block");
 			if (block) block.hidden = true;
+			const next = this.#nextTarget();
+			if (next) {
+				location.assign(next);
+				return;
+			}
 			await this.#refresh();
 		}
 

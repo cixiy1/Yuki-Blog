@@ -51,3 +51,5 @@ package/
 
 # 管理端（admin SPA 与 worker API 需要进仓库）
 # 旧版管理台在 d2c032c7 删除，相关路径不再忽略
+# admin/ 源码进仓库，产物由 pnpm build:admin 生成到 public/admin/ 再被 astro build 拷进 dist
+public/admin/

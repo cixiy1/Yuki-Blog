@@ -1,0 +1,77 @@
+<script setup lang="ts">
+import { computed } from "vue";
+
+/**
+ * 手写的一组线性图标，避免为几个图标引整套图标库。
+ * 路径统一 24×24 视口、2px 描边，与主站 material-symbols 的视觉重量接近。
+ */
+const PATHS: Record<string, string[]> = {
+	overview: ["M3 10.6 12 3l9 7.6", "M5.6 9.4V21h12.8V9.4"],
+	posts: ["M4 20h4.2L19 9.2a2.9 2.9 0 0 0-4.1-4.1L4 15.8V20z"],
+	components: [
+		"M4 4h7v7H4z",
+		"M13 4h7v7h-7z",
+		"M4 13h7v7H4z",
+		"M13 13h7v7h-7z",
+	],
+	review: ["M12 3.2 19 6v6.1c0 4.3-2.9 7.3-7 8.7-4.1-1.4-7-4.4-7-8.7V6z"],
+	admin: [
+		"M4 7h16",
+		"M4 12h16",
+		"M4 17h16",
+		"M8.5 7v0",
+		"M15.5 12v0",
+		"M9.5 17v0",
+	],
+	moon: ["M20.2 14.6A8.6 8.6 0 0 1 9.4 3.8a8.6 8.6 0 1 0 10.8 10.8z"],
+	sun: [
+		"M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8z",
+		"M12 2.5v2.2",
+		"M12 19.3v2.2",
+		"M2.5 12h2.2",
+		"M19.3 12h2.2",
+		"M5.3 5.3l1.6 1.6",
+		"M17.1 17.1l1.6 1.6",
+		"M18.7 5.3l-1.6 1.6",
+		"M6.9 17.1l-1.6 1.6",
+	],
+	logout: [
+		"M14.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3.5",
+		"M9.5 8 5.5 12l4 4",
+		"M5.5 12H15",
+	],
+	back: ["M10 5.5 3.5 12 10 18.5", "M3.5 12H20"],
+	plus: ["M12 5.5v13", "M5.5 12h13"],
+	trash: ["M4.5 7h15", "M9.5 7V4.8h5V7", "M6.4 7l1 12.2h9.2L17.6 7"],
+	external: [
+		"M14 4h6v6",
+		"M20 4l-8.5 8.5",
+		"M18 14.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V7.5A1.5 1.5 0 0 1 5 6h4.5",
+	],
+	save: ["M5 4h11l3 3v13H5z", "M8 4v5h7V4", "M8 20v-6h8v6"],
+	eye: [
+		"M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z",
+		"M12 9.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z",
+	],
+};
+
+const props = defineProps<{ name: string; size?: number }>();
+
+const paths = computed(() => PATHS[props.name] ?? []);
+</script>
+
+<template>
+	<svg
+		:width="size ?? 18"
+		:height="size ?? 18"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.8"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-hidden="true"
+	>
+		<path v-for="(d, index) in paths" :key="index" :d="d" />
+	</svg>
+</template>

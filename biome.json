@@ -12,6 +12,7 @@
       "!**/src/**/*.css",
       "!**/src/public/**/*",
       "!**/dist/**/*",
+      "!**/public/admin/**/*",
       "!**/node_modules/**/*",
       "!**/src/constants/icons-data.json",
       "!**/src/constants/lqips.json",
