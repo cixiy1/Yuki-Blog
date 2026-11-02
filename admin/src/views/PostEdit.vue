@@ -76,6 +76,13 @@ const statusLabel = computed(() => {
 	return "草稿";
 });
 
+/** 页头说明：固定文案，不随保存状态抖动 */
+const pageDesc = computed(() => {
+	if (!editable.value) return `当前状态：${statusLabel.value}，不可编辑`;
+	if (isRepo.value) return "改的是仓库里的文件，保存即提交并触发构建。";
+	return "草稿存在 D1，停手 1.5 秒自动保存。";
+});
+
 const saveHint = computed(() => {
 	if (isRepo.value) {
 		if (saveState.value === "saving") return "正在提交到仓库…";
@@ -85,7 +92,8 @@ const saveHint = computed(() => {
 		if (saveState.value === "error") return errorText.value || "保存失败";
 		return "改的是仓库里的文件，保存即提交并触发构建";
 	}
-	if (!editable.value) return `当前状态：${statusLabel.value}，不可编辑`;
+	// 不可编辑时的状态说明交给页头，这里留空
+	if (!editable.value) return "";
 	if (saveState.value === "saving") return "保存中…";
 	if (saveState.value === "saved") return `已保存 ${lastSaved.value ?? ""}`;
 	if (saveState.value === "dirty") return "有改动未保存";
@@ -314,7 +322,9 @@ function createEditor(): void {
 		value: form.body,
 		mode: "ir",
 		lang: "zh_CN",
-		height: 560,
+		height: 600,
+		// 高度由卡片决定（见 .editor 的样式），自带的拖拽把手会和它打架
+		resize: { enable: false },
 		theme: isDark.value ? "dark" : "classic",
 		cache: { enable: false },
 		toolbar: TOOLBAR,
@@ -415,7 +425,7 @@ watch(isDark, (dark) => {
 
 <template>
 	<div>
-		<PageHeader title="编辑文章" :desc="saveHint">
+		<PageHeader title="编辑文章" :desc="pageDesc">
 			<template #actions>
 				<button type="button" class="btn-ghost" @click="go('/posts')">
 					返回列表
@@ -461,159 +471,165 @@ watch(isDark, (dark) => {
 		<div v-if="loading" class="state">读取中…</div>
 
 		<template v-else>
-			<section class="card-base panel">
-				<div class="field-row">
-					<label class="field-label" for="post-title">
-						标题
-						<code class="fm-key">title</code>
-					</label>
-					<input
-						id="post-title"
-						v-model="form.title"
-						class="field"
-						maxlength="120"
-						:disabled="!editable"
-						placeholder="文章标题"
-						@input="onFieldInput"
-					/>
+			<div class="edit-layout">
+				<div class="col-main">
+					<section class="card-base panel editor-panel">
+						<div class="doc-head">
+							<div class="doc-label">
+								<span>标题</span>
+								<code class="fm-key">title</code>
+								<span
+									v-if="saveHint"
+									class="save-state"
+									:data-state="saveState"
+								>{{ saveHint }}</span>
+							</div>
+							<input
+								id="post-title"
+								v-model="form.title"
+								class="doc-title"
+								maxlength="120"
+								:disabled="!editable"
+								placeholder="文章标题"
+								@input="onFieldInput"
+							/>
+							<div class="doc-sub">
+								<code class="slug-tag">/posts/{{ form.slug || "…" }}/</code>
+								<span class="pill" :data-status="isRepo ? 'published' : status">
+									{{ isRepo ? "仓库文件" : statusLabel }}
+								</span>
+								<span class="doc-sub-key">正文 <code class="fm-key">body</code></span>
+							</div>
+						</div>
+						<div ref="editorEl" class="editor" />
+					</section>
 				</div>
 
-				<div class="field-row">
-					<label class="field-label" for="post-slug">
-						地址
-						<code class="fm-key">slug</code>
-					</label>
-					<div class="slug-wrap">
-						<span class="slug-prefix">/posts/</span>
-						<input
-							id="post-slug"
-							v-model="form.slug"
-							class="field slug-input"
-							maxlength="60"
-							:disabled="!editable"
-							placeholder="my-post-slug"
-							@input="onFieldInput"
-						/>
-						<span class="slug-prefix">/</span>
-					</div>
-					<p class="field-hint">
-						2–60 位小写字母、数字与连字符，站内唯一。发布后不要再改。
-					</p>
-				</div>
+				<aside class="col-rail">
+					<section class="card-base panel">
+						<p class="panel-title">文章属性</p>
+						<div class="field-row">
+							<label class="field-label" for="post-slug">
+								地址
+								<code class="fm-key">slug</code>
+							</label>
+							<div class="slug-wrap">
+								<span class="slug-prefix">/posts/</span>
+								<input
+									id="post-slug"
+									v-model="form.slug"
+									class="field slug-input"
+									maxlength="60"
+									:disabled="!editable"
+									placeholder="my-post-slug"
+									@input="onFieldInput"
+								/>
+								<span class="slug-prefix">/</span>
+							</div>
+							<p class="field-hint">
+								2–60 位小写字母、数字与连字符，站内唯一。发布后不要再改。
+							</p>
+						</div>
 
-				<div class="field-row">
-					<label class="field-label" for="post-summary">
-						摘要
-						<code class="fm-key">description</code>
-					</label>
-					<input
-						id="post-summary"
-						v-model="form.summary"
-						class="field"
-						maxlength="300"
-						:disabled="!editable"
-						placeholder="列表页显示的一两句话"
-						@input="onFieldInput"
-					/>
-				</div>
+						<div class="field-row">
+							<label class="field-label" for="post-summary">
+								摘要
+								<code class="fm-key">description</code>
+							</label>
+							<textarea
+								id="post-summary"
+								v-model="form.summary"
+								class="field summary"
+								maxlength="300"
+								rows="3"
+								:disabled="!editable"
+								placeholder="列表页显示的一两句话"
+								@input="onFieldInput"
+							/>
+						</div>
 
-				<div class="field-grid">
-					<div class="field-row">
-						<label class="field-label" for="post-tags">
-							标签
-							<code class="fm-key">tags</code>
-						</label>
-						<input
-							id="post-tags"
-							v-model="form.tagsText"
-							class="field"
-							:disabled="!editable"
-							placeholder="用逗号分隔，最多 10 个"
-							@input="onFieldInput"
-						/>
-					</div>
-					<div class="field-row">
-						<label class="field-label" for="post-category">
-							分类
-							<code class="fm-key">category</code>
-						</label>
-						<input
-							id="post-category"
-							v-model="form.category"
-							class="field"
-							:disabled="!editable"
-							placeholder="如：编码经验"
-							@input="onFieldInput"
-						/>
-					</div>
-					<div class="field-row">
-						<label class="field-label" for="post-series">
-							系列
-							<code class="fm-key">series</code>
-						</label>
-						<input
-							id="post-series"
-							v-model="form.series"
-							class="field"
-							:disabled="!editable"
-							placeholder="留空表示不属于系列"
-							@input="onFieldInput"
-						/>
-					</div>
-				</div>
-			</section>
+						<div class="field-row">
+							<label class="field-label" for="post-tags">
+								标签
+								<code class="fm-key">tags</code>
+							</label>
+							<input
+								id="post-tags"
+								v-model="form.tagsText"
+								class="field"
+								:disabled="!editable"
+								placeholder="用逗号分隔，最多 10 个"
+								@input="onFieldInput"
+							/>
+						</div>
 
-			<section v-if="isRepo" class="card-base panel">
-				<div class="panel-head">
-					<p class="panel-title">发布设置</p>
-					<p class="panel-hint">这几项是 frontmatter 里剩下的字段，只有仓库文章能改。</p>
-				</div>
-				<div class="field-grid">
-					<div class="field-row">
-						<label class="field-label" for="post-published">
-							发布日期
-							<code class="fm-key">published</code>
-						</label>
-						<input
-							id="post-published"
-							v-model="form.published"
-							class="field"
-							placeholder="2026-11-01"
-							@input="onFieldInput"
-						/>
-					</div>
-					<div class="field-row">
-						<label class="field-label" for="post-source">
-							转载来源
-							<code class="fm-key">sourceLink</code>
-						</label>
-						<input
-							id="post-source"
-							v-model="form.sourceLink"
-							class="field"
-							placeholder="留空表示原创"
-							@input="onFieldInput"
-						/>
-					</div>
-				</div>
-				<label class="check-row">
-					<input v-model="form.draft" type="checkbox" @change="onFieldInput" />
-					<span>存为草稿（draft: true，站点上不显示）</span>
-				</label>
-			</section>
+						<div class="field-row">
+							<label class="field-label" for="post-category">
+								分类
+								<code class="fm-key">category</code>
+							</label>
+							<input
+								id="post-category"
+								v-model="form.category"
+								class="field"
+								:disabled="!editable"
+								placeholder="如：编码经验"
+								@input="onFieldInput"
+							/>
+						</div>
 
-			<section class="card-base panel editor-panel">
-				<div class="editor-head">
-					<p class="panel-title">
-						正文
-						<code class="fm-key">body</code>
-					</p>
-					<p class="panel-hint">
-						{{ isRepo ? "Ctrl/⌘ + S 保存；每次保存都会提交一次 git 并触发构建。" : "Ctrl/⌘ + S 立即保存，停手 1.5 秒也会自动保存。" }}
-					</p>
-				</div>
-				<div ref="editorEl" class="editor" />
-			</section>
+						<div class="field-row last">
+							<label class="field-label" for="post-series">
+								系列
+								<code class="fm-key">series</code>
+							</label>
+							<input
+								id="post-series"
+								v-model="form.series"
+								class="field"
+								:disabled="!editable"
+								placeholder="留空表示不属于系列"
+								@input="onFieldInput"
+							/>
+						</div>
+					</section>
+
+					<section v-if="isRepo" class="card-base panel">
+						<p class="panel-title">发布设置</p>
+						<p class="panel-hint">frontmatter 里剩下的字段。</p>
+						<div class="field-row">
+							<label class="field-label" for="post-published">
+								发布日期
+								<code class="fm-key">published</code>
+							</label>
+							<input
+								id="post-published"
+								v-model="form.published"
+								class="field"
+								placeholder="2026-11-01"
+								@input="onFieldInput"
+							/>
+						</div>
+						<div class="field-row">
+							<label class="field-label" for="post-source">
+								转载来源
+								<code class="fm-key">sourceLink</code>
+							</label>
+							<input
+								id="post-source"
+								v-model="form.sourceLink"
+								class="field"
+								placeholder="留空表示原创"
+								@input="onFieldInput"
+							/>
+						</div>
+						<label class="check-row">
+							<input v-model="form.draft" type="checkbox" @change="onFieldInput" />
+							<span>存为草稿（draft: true，站点上不显示）</span>
+						</label>
+					</section>
+				</aside>
+			</div>
 		</template>
 	</div>
 </template>
@@ -638,10 +654,6 @@ watch(isDark, (dark) => {
 	margin: 0.15rem 0 0;
 	font-size: 0.72rem;
 	color: var(--fg-30);
-}
-
-.panel-head {
-	margin-bottom: 0.7rem;
 }
 
 .check-row {
@@ -704,12 +716,6 @@ watch(isDark, (dark) => {
 	color: var(--fg-30);
 }
 
-.field-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-	gap: 0 0.8rem;
-}
-
 .slug-wrap {
 	display: flex;
 	align-items: center;
@@ -727,22 +733,177 @@ watch(isDark, (dark) => {
 	font-size: 0.82rem;
 }
 
-.editor-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
+/* 正文占主列，属性收进右侧栏：编辑器才能吃掉整屏高度 */
+.edit-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 19rem;
 	gap: 1rem;
-	margin-bottom: 0.6rem;
+	align-items: start;
+}
+
+.col-main {
+	min-width: 0;
+}
+
+.col-rail {
+	position: sticky;
+	top: 1rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+}
+
+.col-rail .panel {
+	margin-bottom: 0;
+}
+
+.col-rail .panel-title {
+	margin: 0 0 0.75rem;
+}
+
+.panel.editor-panel {
+	display: flex;
+	flex-direction: column;
+	/* 撑到一屏：视口减去页头与上下留白，编辑器吃掉剩下的高度 */
+	height: calc(100vh - 11rem);
+	min-height: 32rem;
+	padding: 0;
+	margin-bottom: 0;
+	overflow: hidden;
+}
+
+.doc-head {
+	display: flex;
+	flex-direction: column;
+	flex: none;
+	gap: 0.4rem;
+	padding: 0.9rem 1.1rem 0.65rem;
+	border-bottom: 1px solid var(--line-divider);
+}
+
+.doc-label {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.72rem;
+	font-weight: 600;
+	color: var(--fg-50);
+}
+
+.doc-title {
+	width: 100%;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--fg-90);
+	font-size: 1.35rem;
+	font-weight: 700;
+	line-height: 1.35;
+	outline: none;
+}
+
+.doc-title::placeholder {
+	color: var(--fg-30);
+}
+
+.doc-sub {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	font-size: 0.72rem;
+	color: var(--fg-50);
+}
+
+.slug-tag {
+	font-size: 0.72rem;
+	color: var(--fg-50);
+}
+
+.doc-sub-key {
+	margin-left: auto;
+	color: var(--fg-30);
+}
+
+.save-state {
+	margin-left: auto;
+	font-size: 0.72rem;
+	font-weight: 500;
+	color: var(--fg-50);
+}
+
+.save-state[data-state="dirty"] {
+	color: var(--admonitions-color-warning);
+}
+
+.save-state[data-state="error"] {
+	color: var(--admonitions-color-caution);
+}
+
+.pill {
+	padding: 0.02rem 0.42rem;
+	border-radius: 999px;
+	background: var(--btn-regular-bg);
+	color: var(--fg-90);
+	font-size: 0.68rem;
+	font-weight: 600;
+}
+
+.pill[data-status="published"] {
+	background: color-mix(in oklab, var(--admonitions-color-tip) 18%, transparent);
+	color: var(--admonitions-color-tip);
+}
+
+.pill[data-status="pending"] {
+	background: color-mix(in oklab, var(--admonitions-color-warning) 18%, transparent);
+	color: var(--admonitions-color-warning);
+}
+
+.pill[data-status="rejected"] {
+	background: color-mix(in oklab, var(--admonitions-color-caution) 16%, transparent);
+	color: var(--admonitions-color-caution);
 }
 
 .editor {
-	min-height: 22rem;
+	flex: 1;
+	min-height: 0;
 }
 
-.editor :deep(.vditor) {
-	border-radius: 0.75rem;
-	border-color: var(--line-divider);
+/* Vditor 会在根元素写行内 height，这里让它填满卡片。
+   :not(.vditor--fullscreen) 必须保留：全屏靠 height:100vh !important，
+   被这条盖掉之后点全屏只剩卡片那么大 */
+/* Vditor 是把容器元素本身变成 .vditor（类名挂在同一个节点上），
+   所以这里不能写后代选择器，否则规则永远不生效 */
+.editor.vditor:not(.vditor--fullscreen) {
+	height: 100% !important;
+	border: none;
+	border-radius: 0;
 	background: transparent;
+}
+
+.summary {
+	line-height: 1.6;
+	resize: vertical;
+}
+
+.field-row.last {
+	margin-bottom: 0;
+}
+
+/* 窄屏：属性栏落到正文下面，编辑器不再强行一屏高 */
+@media (max-width: 1180px) {
+	.edit-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.col-rail {
+		position: static;
+	}
+
+	.panel.editor-panel {
+		height: min(75vh, 44rem);
+		min-height: 26rem;
+	}
 }
 
 .editor :deep(.vditor-toolbar) {
@@ -752,8 +913,21 @@ watch(isDark, (dark) => {
 	padding-left: 0.6rem !important;
 }
 
+/* Vditor 自带深色是 #24292e，比卡片亮一档，铺满整屏后就是一块发灰的补丁 */
+.editor.vditor--dark {
+	--panel-background-color: var(--card-bg);
+	--textarea-background-color: var(--card-bg);
+}
+
+/* Vditor 自带深色是 #24292e，比卡片亮一档，铺满整屏后就是一块发灰的补丁 */
+.editor.vditor--dark {
+	--panel-background-color: var(--card-bg);
+	--textarea-background-color: var(--card-bg);
+}
+
 .editor :deep(.vditor-reset) {
-	font-size: 0.9rem;
+	font-size: 0.95rem;
+	line-height: 1.75;
 }
 
 .error {
