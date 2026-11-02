@@ -68,6 +68,20 @@
 - [x] sitemap、统计、robots 同步排除新页面
 - [x] 验收：注册 202 → 激活自动登录 → 账号与邮箱两种 identifier 登录 → 错密码 401 → 未验证 403 → 禁用 403 → 第 11 次错密码 429 → 篡改 cookie 401 → 封禁后旧票失效
 
+## P3.6 管理端用户管理 + 审计（2026-11-02）
+
+已完成，本地验收通过，未部署。
+
+- [x] `GET /api/admin/users`（q/role/status/page，显式列白名单，响应无 password_enc）
+- [x] `GET /api/admin/users/:uid`（附最近 20 条审计）
+- [x] `PATCH /api/admin/users/:uid`：禁改自己、禁改任何 admin、禁写 deleted，
+      封禁时 `session_epoch + 1` 让旧 cookie 立刻失效，`WHERE status = ?` 乐观并发
+- [x] `GET /api/admin/audit`（按 action 筛、分页）
+- [x] 管理端 `/admin/#/users` 用户表与 `/admin/#/audit` 审计页
+- [x] 验收：未登录 401 / 普通用户 403 / admin 200；改自己 409；提管理员 409；
+      停用后其旧 cookie 401、重新登录 403；恢复并改角色 200；写 deleted 400；
+      审计按动作筛选可用且 detail 里没有密码
+
 ## P4 审核与发布
 
 - [ ] `inbox/` 目录约定与写入逻辑

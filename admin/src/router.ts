@@ -10,6 +10,8 @@ export type RouteName =
 	| "post-edit"
 	| "components"
 	| "review"
+	| "users"
+	| "audit"
 	| "admin";
 
 export interface Route {
@@ -24,6 +26,8 @@ const ROUTES: RouteName[] = [
 	"post-edit",
 	"components",
 	"review",
+	"users",
+	"audit",
 	"admin",
 ];
 

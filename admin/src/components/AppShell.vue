@@ -3,12 +3,14 @@ import { computed } from "vue";
 import { canReview, isAdmin, logout, user } from "../lib/auth";
 import { isDark, toggleTheme } from "../lib/theme";
 import { go, type RouteName, route } from "../router";
+import AuditLog from "../views/AuditLog.vue";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
 import Overview from "../views/OverviewPage.vue";
 import PostEdit from "../views/PostEdit.vue";
 import ReviewQueue from "../views/ReviewQueue.vue";
 import SiteAdmin from "../views/SiteAdmin.vue";
+import UsersAdmin from "../views/UsersAdmin.vue";
 import AppIcon from "./AppIcon.vue";
 
 const VIEWS: Record<RouteName, unknown> = {
@@ -17,6 +19,8 @@ const VIEWS: Record<RouteName, unknown> = {
 	"post-edit": PostEdit,
 	components: MyComponents,
 	review: ReviewQueue,
+	users: UsersAdmin,
+	audit: AuditLog,
 	admin: SiteAdmin,
 };
 
@@ -69,6 +73,20 @@ const navGroups = computed<NavGroup[]>(() => {
 		groups.push({
 			label: "管理",
 			items: [
+				{
+					key: "users",
+					label: "用户管理",
+					icon: "users",
+					path: "/users",
+					role: "admin",
+				},
+				{
+					key: "audit",
+					label: "审计日志",
+					icon: "audit",
+					path: "/audit",
+					role: "admin",
+				},
 				{
 					key: "admin",
 					label: "站点管理",
