@@ -39,19 +39,24 @@
 
 ## P3 用户中心与编辑器
 
-- [ ] `admin/` Vite + Vue 3 骨架，`base: "/admin/"`，hash 路由
-- [ ] 路由守卫与登录态注入
-- [ ] Vditor 封装：工具栏裁剪、图片上传钩子、主题跟随
-- [ ] 「我的文章」列表（草稿 / 待审 / 已发布 / 被退）
-- [ ] 草稿编辑与自动保存
-- [ ] 用户级组件管理（增删改、列表）
-- [ ] 页面型文章：把 `ClassSchedule.astro`、todo 的组件逻辑抽成 `public/assets/js/` 小部件
-- [ ] 实时预览 iframe（HTML + JS + 数据拼装，注入主题 CSS）
-- [ ] 验收：能写能存能传图；组件能建能在文章里 import
+已完成（`a79fc02d` 骨架、`0ec9d254` 草稿接口、`b842b04e` 列表与编辑器、`48fef3ad` 媒体），本地验收通过，未部署。
+
+- [x] `admin/` Vite + Vue 3 骨架，`base: "/admin/"`，hash 路由，产物落 `public/admin/`（不进 git）
+- [x] 路由守卫与登录态注入（401 跳 `/login/?next=/admin/`，登录后跳回）
+- [x] 主题跟随：tokens.css 与主站 variables.styl 对齐，共用 localStorage 的 `theme` 与 `hue`
+- [x] Vditor 封装：工具栏裁剪、主题联动、上传钩子、资源自托管（只拷 lute/icons/i18n/highlight/katex）
+- [x] 「我的文章」列表（全部/草稿/待审/已发布/被退 + 计数 + 状态徽标 + 被退理由）
+- [x] 草稿编辑与自动保存（1.5 秒防抖 + Ctrl/Cmd+S），待审与已发布只读
+- [x] 草稿图片上传：客户端压缩 → D1 `media_blobs` → `/api/media/<id>` 直出
+- [x] 验收：能写能存、刷新不丢、能传图并回填、深浅色正常
+- [ ] 用户级组件管理 —— 移入 P4（要写进 `src/components/user/<uid>/` 才能 import，依赖 Contents API）
+- [ ] 页面型文章的实时预览 iframe —— 移入 P4（依赖发布链路）
 
 ## P4 审核与发布
 
 - [ ] `inbox/` 目录约定与写入逻辑
+- [ ] 用户级组件管理（`src/components/user/<uid>/`，import 白名单：只允许 `./`、`../` 与自己的目录）
+- [ ] 页面型文章的实时预览 iframe（HTML + JS + 数据拼装，注入主题 CSS）
 - [ ] 审核队列 UI
 - [ ] 通过：读 `inbox/` → 写 `src/content/posts/u/<uid>/<slug>/` → 删 `inbox/` 原件 → 一次 commit
 - [ ] 退回：写理由、作者可见

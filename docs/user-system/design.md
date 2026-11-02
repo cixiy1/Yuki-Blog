@@ -270,10 +270,36 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 
 ### P3 用户中心与编辑器
 
-- admin SPA 骨架、路由守卫、Vditor 封装（工具栏、上传钩子、主题联动）
-- 「我的文章」列表与草稿编辑、用户组件管理
-- 验证码登录页
-- 验收：能建草稿、能存、刷新不丢；能上传图片并回填；能建用户级组件并在文章里 import
+已完成（`a79fc02d` 骨架 + `0ec9d254` 草稿接口 + `b842b04e` 列表与编辑器 + `48fef3ad` 媒体），本地验收通过，未部署。
+
+- admin SPA 骨架：`admin/` 作为 pnpm workspace 成员独立管依赖（vue / vite 不进主站），Vite `base: "/admin/"`、hash 路由，产物出到 `public/admin/` 再由 `astro build` 拷进 `dist/`（产物不进 git）
+- 路由守卫：进页面先调 `/api/auth/me`，401 整页跳 `/login/?next=/admin/`，登录成功后由登录页跳回
+- 主题跟随：`admin/src/styles/tokens.css` 与主站 `variables.styl` 逐条对齐，`--hue` 与深浅色读同一份 localStorage
+- 「我的文章」：四态过滤、状态徽标、被退理由、提交/撤回/删除
+- 编辑器：Vditor 即时渲染，1.5 秒防抖自动保存 + Ctrl/⌘+S，待审与已发布只读
+- 媒体：草稿图片存 D1 `media_blobs`，`/api/media/<id>` 直出，客户端先压再传
+- 验收：能建草稿、能存、刷新不丢；能上传图片并回填；深浅色两套正常
+
+遗留（转入 P4）：
+
+- **用户级组件管理不做在 P3**。组件要写进 `src/components/user/<uid>/` 才能在文章里 import，而写仓库要 Contents API 与 PAT，本来就是 P4 的地基；先在 D1 里存一份没有意义——不能 import 就等于不可用。等 P4 一并做，届时连同草稿正文、媒体一起写进 git
+- 页面型文章的实时预览 iframe（HTML + JS + 数据拼装）同样依赖发布链路，挪到 P4
+
+### P3 实际落地的端点
+
+| 方法 | 路径 | 权限 | 备注 |
+| --- | --- | --- | --- |
+| GET | `/api/me/posts` | 登录 | 自己名下文章，按更新时间倒序，上限 200 |
+| POST | `/api/me/posts` | 登录 | 建草稿，slug 不传则给 `draft-xxxxxx` |
+| GET | `/api/me/posts/:id` | 登录 | 带正文与 meta |
+| PUT | `/api/me/posts/:id` | 登录 | 只允许 draft/rejected，否则 409 |
+| DELETE | `/api/me/posts/:id` | 登录 | 同上 |
+| POST | `/api/me/posts/:id/submit` | 登录 | 置 pending，响应里带 `git.written=false` 如实说明还没写仓库 |
+| POST | `/api/me/posts/:id/withdraw` | 登录 | pending → draft |
+| POST | `/api/media` | 登录 | base64 JSON，png/jpeg/webp/gif/avif，≤900KB |
+| GET | `/api/media/:id` | 公开 | `Cache-Control: public, max-age=31536000, immutable` |
+
+草稿正文落 D1 的 `posts.body`，与「正文在 git」不冲突：git 里的是已发布文章，草稿每 1.5 秒自动保存一次，走 GitHub API 会产生大量无意义提交。`posts.meta_json` 存 frontmatter 里 title/summary/tags/cover 之外的字段（category、series、password 等），原样透传，构建时再由 schema 校验。
 
 ### P4 审核与发布
 
