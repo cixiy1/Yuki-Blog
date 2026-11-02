@@ -3,7 +3,7 @@ import { onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview, isAdmin, user } from "../lib/auth";
-import { listPosts } from "../lib/posts";
+import { listAllPosts, listPosts } from "../lib/posts";
 import { go } from "../router";
 
 const entries = [
@@ -14,6 +14,14 @@ const entries = [
 		desc: "写草稿、改稿、提交审核。",
 		path: "/posts",
 		show: true,
+	},
+	{
+		key: "all-posts",
+		icon: "globe",
+		title: "全站文章",
+		desc: "站点上已发布的全部文章。",
+		path: "/all-posts",
+		show: canReview.value,
 	},
 	{
 		key: "components",
@@ -44,15 +52,22 @@ const entries = [
 const name = user.value?.display_name || user.value?.email.split("@")[0] || "";
 
 /** 概览只有入口卡会显得空，补一组自己的内容计数，顺手让「有几篇待审」一眼可见 */
-const counts = ref<{ draft: number; pending: number; published: number } | null>(null);
+const counts = ref<{
+	draft: number;
+	pending: number;
+	published: number;
+	site: number;
+} | null>(null);
 
 onMounted(async () => {
 	try {
-		const posts = await listPosts();
+		const mine = await listPosts();
+		const all = canReview.value ? await listAllPosts() : [];
 		counts.value = {
-			draft: posts.filter((post) => post.status === "draft").length,
-			pending: posts.filter((post) => post.status === "pending").length,
-			published: posts.filter((post) => post.status === "published").length,
+			draft: mine.filter((post) => post.status === "draft").length,
+			pending: mine.filter((post) => post.status === "pending").length,
+			published: mine.filter((post) => post.status === "published").length,
+			site: all.length,
 		};
 	} catch {
 		// 未登录或接口不可用时不显示统计，页面其余部分照常
@@ -83,7 +98,7 @@ onMounted(async () => {
 		<section v-if="counts" class="stats card-base">
 			<div class="stat">
 				<span class="num">{{ counts.draft }}</span>
-				<span class="label">草稿</span>
+				<span class="label">我的草稿</span>
 			</div>
 			<div class="stat">
 				<span class="num">{{ counts.pending }}</span>
@@ -91,7 +106,11 @@ onMounted(async () => {
 			</div>
 			<div class="stat">
 				<span class="num">{{ counts.published }}</span>
-				<span class="label">已发布</span>
+				<span class="label">我发布的</span>
+			</div>
+			<div v-if="canReview" class="stat">
+				<span class="num">{{ counts.site }}</span>
+				<span class="label">全站文章</span>
 			</div>
 			<a class="stat-go" href="#/posts" @click.prevent="go('/posts')">
 				去看文章
@@ -113,7 +132,8 @@ onMounted(async () => {
 <style scoped>
 .grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+	/* 入口卡现在有五张，15rem 在 1440 下只能排四张、第二行剩一张孤零零的 */
+	grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
 	gap: 0.85rem;
 }
 

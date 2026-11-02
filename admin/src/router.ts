@@ -7,6 +7,7 @@ import { ref } from "vue";
 export type RouteName =
 	| "overview"
 	| "posts"
+	| "all-posts"
 	| "post-edit"
 	| "components"
 	| "review"
@@ -25,6 +26,7 @@ export interface Route {
 const ROUTES: RouteName[] = [
 	"overview",
 	"posts",
+	"all-posts",
 	"post-edit",
 	"components",
 	"review",

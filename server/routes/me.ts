@@ -238,20 +238,33 @@ me.get("/posts", requireAuth, async (c) => {
 		.bind(user.uid)
 		.all<PostRow>();
 
-	const mine = (rows.results ?? []).map(toSummary);
+	return c.json({ posts: (rows.results ?? []).map(toSummary) });
+});
 
-	// 仓库里在用户系统之前写的文章，从来没进过 D1。管理员（站主）把这些一并列出来，
-	// 否则「我的文章」只能看到新建的一两篇草稿，和站点上实际发布的文章对不上。
-	let fromRepo: Record<string, unknown>[] = [];
-	if (user.role === "admin") {
-		const known = new Set(mine.map((post) => String(post.slug)));
-		const posts = await readRepoPosts(c.env.ASSETS);
-		fromRepo = posts
-			.filter((post) => !known.has(post.slug))
-			.map((post) => repoToSummary(post));
+/**
+ * 全站文章：仓库里的已发布文章 + D1 里已发布但没有对应文件的（过渡期兼容）。
+ * 「我的文章」只放自己的稿子，全站是另一栏，两者不混。
+ */
+me.get("/all-posts", requireAuth, async (c) => {
+	const user = c.get("user");
+	if (!user) return c.json({ posts: [] });
+	if (user.role === "user") {
+		return c.json({ error: "forbidden", message: "没有查看全站文章的权限" }, 403);
 	}
 
-	const posts = [...mine, ...fromRepo].sort(
+	const repo = (await readRepoPosts(c.env.ASSETS)).map((post) =>
+		repoToSummary(post),
+	);
+	const known = new Set(repo.map((post) => String(post.slug)));
+
+	const rows = await c.env.DB.prepare(
+		"SELECT * FROM posts WHERE status = 'published' ORDER BY published_at DESC LIMIT 200",
+	).all<PostRow>();
+	const extra = (rows.results ?? [])
+		.filter((row) => !known.has(row.slug))
+		.map((row) => toSummary(row));
+
+	const posts = [...repo, ...extra].sort(
 		(a, b) =>
 			toMillis(b.published_at ?? b.updated_at) -
 			toMillis(a.published_at ?? a.updated_at),

@@ -160,3 +160,9 @@ export async function saveRepoPost(
 export async function deleteRepoPost(slug: string): Promise<void> {
 	await api.delete<unknown>(`/api/me/repo-posts?slug=${encodeURIComponent(slug)}`);
 }
+
+/** 全站文章：仓库里的已发布内容，编辑走仓库文件 */
+export async function listAllPosts(): Promise<PostSummary[]> {
+	const data = await api.get<{ posts: PostSummary[] }>("/api/me/all-posts");
+	return data.posts ?? [];
+}

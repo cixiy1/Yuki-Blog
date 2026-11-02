@@ -9,6 +9,7 @@ import { computed } from "vue";
 import { canReview, isAdmin, logout, user } from "../lib/auth";
 import { isDark, toggleTheme } from "../lib/theme";
 import { go, type RouteName, route } from "../router";
+import AllPosts from "../views/AllPosts.vue";
 import AuditLog from "../views/AuditLog.vue";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
@@ -22,6 +23,7 @@ import AppIcon from "./AppIcon.vue";
 const VIEWS: Record<RouteName, unknown> = {
 	overview: Overview,
 	posts: MyPosts,
+	"all-posts": AllPosts,
 	"post-edit": PostEdit,
 	components: MyComponents,
 	review: ReviewQueue,
@@ -50,6 +52,16 @@ const navGroups = computed<NavGroup[]>(() => {
 			label: "内容",
 			items: [
 				{ key: "overview", label: "概览", icon: "overview", path: "/overview" },
+				...(canReview.value
+					? [
+							{
+								key: "all-posts" as RouteName,
+								label: "全站文章",
+								icon: "globe",
+								path: "/all-posts",
+							},
+						]
+					: []),
 				{ key: "posts", label: "我的文章", icon: "posts", path: "/posts" },
 				{
 					key: "components",
@@ -82,7 +94,10 @@ const navGroups = computed<NavGroup[]>(() => {
 });
 
 const activeKey = computed(() => {
-	if (route.value.name === "post-edit") return "posts";
+	if (route.value.name === "post-edit") {
+		// 仓库文章的编辑页归到「全站文章」名下，D1 草稿归「我的文章」
+		return route.value.repoSlug ? "all-posts" : "posts";
+	}
 	return route.value.name;
 });
 
