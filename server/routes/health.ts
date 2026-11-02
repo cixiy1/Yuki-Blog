@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 
-export const health = new Hono<{ Bindings: Env }>();
+export const health: Hono<{ Bindings: Env }> = new Hono<{ Bindings: Env }>();
 
 /**
  * 骨架阶段的健康检查：Worker 活着、D1 能读。

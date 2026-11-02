@@ -1,15 +1,22 @@
 /**
  * Worker 运行时绑定声明。
  *
- * 这里只声明 P1 用到的接口，不引 @cloudflare/workers-types：
+ * 这里只声明用得到的接口，不引 @cloudflare/workers-types：
  * 那个包会向全局注入一套与 DOM 冲突的类型，而 Astro 的 tsconfig 已经带了 DOM。
- * 等 P3 起需要更完整的 D1 API 时，再评估换用 `wrangler types` 生成。
  */
+
+interface D1Meta {
+	changes?: number;
+	last_row_id?: number;
+	rows_read?: number;
+	rows_written?: number;
+	duration?: number;
+}
 
 interface D1Result<T = Record<string, unknown>> {
 	results?: T[];
 	success: boolean;
-	meta?: Record<string, unknown>;
+	meta?: D1Meta;
 	error?: string;
 }
 
@@ -35,4 +42,15 @@ interface AssetsFetcher {
 interface Env {
 	DB: D1Database;
 	ASSETS: AssetsFetcher;
+
+	/** 验证码与 IP 哈希的机密盐，缺失时认证接口一律 500 */
+	AUTH_PEPPER?: string;
+	/** Resend API key，缺失时只打 console 不发信 */
+	RESEND_API_KEY?: string;
+	/** 发件人，形如 `Yuki Blog <mail@yiyu14.top>` */
+	MAIL_FROM?: string;
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_CLIENT_SECRET?: string;
+	/** 仅本地 .dev.vars 设 "1"，生产不配这个键 */
+	AUTH_DEBUG?: string;
 }
