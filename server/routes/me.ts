@@ -13,6 +13,7 @@ import { readRepoPosts, type RepoPost } from "../lib/post-index";
 import {
 	deleteRepoFile,
 	readRepoFile,
+	repoRawBase,
 	writeRepoFile,
 } from "../lib/repo-posts";
 import { readSecret } from "../lib/site-config";
@@ -568,6 +569,7 @@ me.get("/repo-posts", requireAuth, async (c) => {
 		post: {
 			slug: item.slug,
 			repoPath: item.repoPath,
+			rawBase: repoRawBase(item.repoPath),
 			sha: file.sha ?? "",
 			title: readScalar(frontmatter, "title") || item.title,
 			description: readScalar(frontmatter, "description"),

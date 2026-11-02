@@ -18,6 +18,16 @@ export function isPostPath(path: string): boolean {
 	return path.startsWith(POSTS_PREFIX) && !path.includes("..");
 }
 
+/**
+ * 文章里 `./images/a.webp` 这类相对路径是 Astro 的资产引用，构建时会被换成
+ * `/_astro/xxx.hash.webp`，原路径在站点上根本不存在。编辑器要做预览只能用仓库的
+ * 原始文件，这里给出它所在目录的 raw 前缀。
+ */
+export function repoRawBase(filePath: string): string {
+	const dir = filePath.slice(0, filePath.lastIndexOf("/") + 1);
+	return `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${dir}`;
+}
+
 export interface RepoFile {
 	ok: boolean;
 	status: number;

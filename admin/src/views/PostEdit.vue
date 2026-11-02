@@ -15,6 +15,8 @@ import PageHeader from "../components/PageHeader.vue";
 import { ApiError } from "../lib/api";
 import { uploadImage } from "../lib/media";
 import {
+	bodyToPreview,
+	bodyToStorage,
 	formatTime,
 	getPost,
 	getRepoPost,
@@ -39,6 +41,8 @@ const repoSlug = computed(() => route.value.repoSlug ?? "");
 const isRepo = computed(() => repoSlug.value.length > 0);
 /** 原始 slug：表单里可能被改，接口定位要用原来的 */
 const loadedSlug = ref("");
+/** 仓库文章所在目录的 raw 前缀，正文里的相对图片要靠它才能在编辑器里预览 */
+const rawBase = ref("");
 
 const form = reactive({
 	title: "",
@@ -145,7 +149,8 @@ function fillRepo(post: RepoPostDetail): void {
 	form.slug = post.slug;
 	form.summary = post.description;
 	form.tagsText = post.tags.join(", ");
-	form.body = post.body;
+	rawBase.value = post.rawBase;
+	form.body = bodyToPreview(post.body, post.rawBase);
 	form.category = post.category;
 	form.series = post.series;
 	form.published = post.published;
@@ -183,7 +188,7 @@ async function saveRepo(): Promise<boolean> {
 			sourceLink: form.sourceLink.trim(),
 			published: form.published.trim(),
 			draft: form.draft,
-			body: form.body,
+			body: bodyToStorage(form.body, rawBase.value),
 		});
 		lastSaved.value = new Date().toLocaleString("zh-CN", { hour12: false });
 		saveState.value = "saved";

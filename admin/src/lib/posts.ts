@@ -116,6 +116,8 @@ export async function withdrawPost(id: number): Promise<PostDetail | null> {
 export interface RepoPostDetail {
 	slug: string;
 	repoPath: string;
+	/** 文章所在目录的 raw 前缀，给编辑器预览图片用 */
+	rawBase: string;
 	sha: string;
 	title: string;
 	description: string;
@@ -165,4 +167,34 @@ export async function deleteRepoPost(slug: string): Promise<void> {
 export async function listAllPosts(): Promise<PostSummary[]> {
 	const data = await api.get<{ posts: PostSummary[] }>("/api/me/all-posts");
 	return data.posts ?? [];
+}
+
+/**
+ * 文章里的 `./images/a.webp` 是 Astro 的资产引用，构建时会被换成 `/_astro/hash.webp`，
+ * 原路径在站点上不存在。编辑器直接渲染会 404，所以预览时换成仓库的 raw 地址，
+ * 保存时再换回相对路径——否则每次保存都会把正文里的图片地址改写成 raw URL。
+ */
+const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g;
+
+export function bodyToPreview(body: string, rawBase: string): string {
+	if (!rawBase) return body;
+	return body.replace(
+		IMAGE_RE,
+		(whole: string, alt: string, src: string, title: string) => {
+			if (/^(?:https?:|data:|\/|#)/i.test(src)) return whole;
+			const clean = src.replace(/^\.\//, "");
+			return `![${alt}](${rawBase}${clean}${title ?? ""})`;
+		},
+	);
+}
+
+export function bodyToStorage(body: string, rawBase: string): string {
+	if (!rawBase) return body;
+	return body.replace(
+		IMAGE_RE,
+		(whole: string, alt: string, src: string, title: string) => {
+			if (!src.startsWith(rawBase)) return whole;
+			return `![${alt}](./${src.slice(rawBase.length)}${title ?? ""})`;
+		},
+	);
 }
