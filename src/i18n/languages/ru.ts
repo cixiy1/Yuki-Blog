@@ -17,7 +17,7 @@ export const ru: Translation = {
 	// Группы меню навигации
 	[Key.navArticles]: "Статьи",
 	[Key.navSocial]: "Соцсети",
-	[Key.navMine]: "Моё",
+	[Key.navMine]: "Yukiho",
 	[Key.navAbout]: "Обо мне",
 	[Key.navLinks]: "Ссылки",
 	[Key.all]: "Все",

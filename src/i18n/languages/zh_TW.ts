@@ -17,7 +17,7 @@ export const zh_TW: Translation = {
 	// 導覽列選單分組
 	[Key.navArticles]: "文章",
 	[Key.navSocial]: "社交",
-	[Key.navMine]: "我的",
+	[Key.navMine]: "雪穗",
 	[Key.navAbout]: "關於",
 	[Key.navLinks]: "連結",
 	[Key.all]: "全部",

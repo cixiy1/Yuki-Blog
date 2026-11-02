@@ -17,7 +17,7 @@ export const ja: Translation = {
 	// ナビバーメニューグループ
 	[Key.navArticles]: "記事",
 	[Key.navSocial]: "ソーシャル",
-	[Key.navMine]: "マイ",
+	[Key.navMine]: "Yukiho",
 	[Key.navAbout]: "について",
 	[Key.navLinks]: "リンク",
 	[Key.all]: "すべて",

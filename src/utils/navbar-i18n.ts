@@ -12,6 +12,8 @@ const NAVBAR_DEFAULT_NAMES: Record<string, I18nKey> = {
 	// 分组
 	文章: I18nKey.navArticles,
 	社交: I18nKey.navSocial,
+	// 这一项显示站主名（中文「雪穗」、其它语言「Yukiho」），值在语言包里。
+	// 配置里仍写默认名「我的」以命中映射——把 navBarConfig 的 name 改掉会让映射失配，多语言随之失效。
 	我的: I18nKey.navMine,
 	关于: I18nKey.navAbout,
 	链接: I18nKey.navLinks,
