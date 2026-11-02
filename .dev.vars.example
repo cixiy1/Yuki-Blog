@@ -1,0 +1,15 @@
+# 复制成 .dev.vars 后填值（.dev.vars 已被 gitignore，不要提交）
+#
+# AUTH_PEPPER 必填：验证码与 IP 哈希的机密盐，缺失时认证接口一律 500。
+#   生成：openssl rand -hex 32
+# RESEND_API_KEY 留空时验证码不发信、只打到 console；本地验收靠 AUTH_DEBUG。
+# MAIL_FROM 用已在 Resend 验证过的域名下的地址。
+# GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET 留空时 /api/auth/github/start 返回 503。
+# AUTH_DEBUG=1 只在本地开：它要求同时满足「回环地址」，生产永远吐不出 debug_code。
+
+AUTH_PEPPER=
+RESEND_API_KEY=
+MAIL_FROM="Yuki Blog <mail@yiyu14.top>"
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+AUTH_DEBUG=1
