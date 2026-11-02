@@ -191,7 +191,7 @@ const roleLabel = computed(() => {
 	gap: 1.1rem;
 	height: calc(100vh - var(--shell-gap) * 2);
 	padding: 1rem 0.8rem;
-	background: var(--card-bg);
+	background: var(--sidebar-bg);
 	border: 1px solid var(--line-divider);
 	border-radius: var(--radius-large);
 	box-shadow: var(--card-shadow);

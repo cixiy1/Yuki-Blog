@@ -7,25 +7,29 @@
 :root {
 	--radius-large: 1rem;
 
-	--primary: oklch(0.7 0.14 var(--hue));
-	/* 底色用纯白：管理端没有壁纸挡着，任何色度铺满整页都会显出一层色 */
-	--page-bg: #ffffff;
+	/* 管理端不跟主题色相：站点色相 180 时，所有「淡色底 + 深色字」的强调件
+	   （导航选中、页签、标签胶囊、按钮）整片泛绿，跟纯白/纯黑的底子打架。
+	   这里把强调色收成中性：实心件用近黑，淡色件用黑的一档透明度 */
+	--primary: #141416;
+	/* 页面底色用中性灰、不带色相：卡片是纯白，靠这一档灰度分开层次。
+	   以前两边都是 #fff，侧栏和筛选条只剩一条 10% 的描边，看起来像粘在一起 */
+	--page-bg: #f6f6f7;
 	--card-bg: #ffffff;
 
-	--btn-content: oklch(0.55 0.12 var(--hue));
-	--btn-regular-bg: oklch(0.95 0.025 var(--hue));
-	--btn-regular-bg-hover: oklch(0.9 0.05 var(--hue));
-	--btn-regular-bg-active: oklch(0.85 0.08 var(--hue));
+	--btn-content: var(--fg-90);
+	--btn-regular-bg: rgba(0, 0, 0, 0.055);
+	--btn-regular-bg-hover: rgba(0, 0, 0, 0.085);
+	--btn-regular-bg-active: rgba(0, 0, 0, 0.115);
 
-	--btn-plain-bg-hover: oklch(0.95 0.025 var(--hue));
-	--btn-plain-bg-active: oklch(0.98 0.01 var(--hue));
+	--btn-plain-bg-hover: rgba(0, 0, 0, 0.05);
+	--btn-plain-bg-active: rgba(0, 0, 0, 0.07);
 
 	--line-divider: rgba(0, 0, 0, 0.1);
 	--line-color: rgba(0, 0, 0, 0.12);
 	--content-meta: rgba(0, 0, 0, 0.7);
 
-	--muted: oklch(0.93 0.015 var(--hue));
-	--selection-bg: oklch(0.9 0.05 var(--hue));
+	--muted: rgba(0, 0, 0, 0.04);
+	--selection-bg: rgba(0, 0, 0, 0.12);
 	--codeblock-bg: oklch(0.17 0.015 var(--hue));
 	--float-panel-bg: white;
 	--license-block-bg: rgba(0, 0, 0, 0.03);
@@ -42,35 +46,38 @@
 	--fg-30: rgba(0, 0, 0, 0.3);
 
 	--sidebar-width: 15rem;
+	/* 侧栏与内容卡同色，浅色下靠页面灰底分开就够了 */
+	--sidebar-bg: var(--card-bg);
 	--shell-max: 100rem;
 
 	/* ---- 骨架尺寸：左侧卡片式侧栏 + 内容列 ---- */
 	--shell-gap: 1.25rem;
 	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-	/* 选中态胶囊：--btn-regular-bg 只有 2.5% 色度，铺在浅色页面上几乎看不出，这里加深一档 */
-	--tab-on-bg: color-mix(in srgb, var(--primary) 18%, var(--card-bg));
+	/* 选中态胶囊加深一档，白卡上才看得出选中 */
+	--tab-on-bg: rgba(0, 0, 0, 0.07);
 }
 
 :root.dark {
-	--primary: oklch(0.75 0.14 var(--hue));
+	--primary: #f4f4f6;
 	--page-bg: #000000;
-	/* 纯黑底上的卡片要抬一点点，否则只剩一条描边 */
-	--card-bg: #0c0c0e;
+	/* 纯黑底上的卡片要明显抬起一档。原来 #0c0c0e 只比黑亮 5%，侧栏、筛选条、
+	   表格卡在深色下全糊成一块，分不清边界 */
+	--card-bg: #1e1e22;
 
-	--btn-content: oklch(0.75 0.1 var(--hue));
-	--btn-regular-bg: oklch(0.33 0.035 var(--hue));
-	--btn-regular-bg-hover: oklch(0.38 0.04 var(--hue));
-	--btn-regular-bg-active: oklch(0.43 0.045 var(--hue));
+	--btn-content: var(--fg-90);
+	--btn-regular-bg: rgba(255, 255, 255, 0.09);
+	--btn-regular-bg-hover: rgba(255, 255, 255, 0.13);
+	--btn-regular-bg-active: rgba(255, 255, 255, 0.17);
 
-	--btn-plain-bg-hover: oklch(0.3 0.035 var(--hue));
-	--btn-plain-bg-active: oklch(0.27 0.025 var(--hue));
+	--btn-plain-bg-hover: rgba(255, 255, 255, 0.06);
+	--btn-plain-bg-active: rgba(255, 255, 255, 0.04);
 
-	--line-divider: rgba(255, 255, 255, 0.08);
-	--line-color: rgba(255, 255, 255, 0.1);
+	--line-divider: rgba(255, 255, 255, 0.12);
+	--line-color: rgba(255, 255, 255, 0.14);
 	--content-meta: rgba(255, 255, 255, 0.6);
 
-	--muted: oklch(0.25 0.015 var(--hue));
-	--selection-bg: oklch(0.4 0.08 var(--hue));
+	--muted: rgba(255, 255, 255, 0.07);
+	--selection-bg: rgba(255, 255, 255, 0.2);
 	--codeblock-bg: oklch(0.17 0.015 var(--hue));
 	--float-panel-bg: oklch(0.19 0.015 var(--hue));
 	--license-block-bg: var(--codeblock-bg);
@@ -86,8 +93,10 @@
 	--fg-50: rgba(255, 255, 255, 0.5);
 	--fg-30: rgba(255, 255, 255, 0.3);
 
-	--tab-on-bg: color-mix(in srgb, var(--primary) 30%, var(--card-bg));
-	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+	--tab-on-bg: rgba(255, 255, 255, 0.11);
+	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+	/* 深色下侧栏比内容卡暗一档：黑底 → 侧栏 → 卡片，三层才分得开 */
+	--sidebar-bg: #131316;
 }
 
 * {
@@ -236,8 +245,8 @@ select {
 	padding: 0.55rem 0.8rem;
 	border: 1px solid var(--line-divider);
 	border-radius: 0.75rem;
-	/* 卡片底也是白的，纯透明输入框在白卡上会糊成一片，给一点主色调再压一档边 */
-	background: color-mix(in srgb, var(--primary) 5%, var(--card-bg));
+	/* 卡片底也是白的，纯透明输入框在白卡上会糊成一片，压一档中性灰再加描边 */
+	background: rgba(0, 0, 0, 0.025);
 	color: var(--fg-90);
 	outline: none;
 	transition:
@@ -247,6 +256,11 @@ select {
 
 .field::placeholder {
 	color: var(--fg-30);
+}
+
+/* 深色卡片上再用主色调压底会发脏，换成一层中性白 */
+:root.dark .field {
+	background: rgba(255, 255, 255, 0.06);
 }
 
 .field:focus {
