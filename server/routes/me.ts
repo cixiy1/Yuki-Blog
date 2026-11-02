@@ -7,6 +7,7 @@ import {
 	setRawScalar,
 	setScalar,
 	splitMarkdown,
+	yamlString,
 } from "../lib/frontmatter";
 import { putRepoFile } from "../lib/github-contents";
 import { readRepoPosts, type RepoPost } from "../lib/post-index";
@@ -566,6 +567,23 @@ async function findRepoPost(
 	return posts.find((post) => post.slug === slug) ?? null;
 }
 
+/**
+ * 定位文章文件。
+ *
+ * 优先查 post-index 快照，但快照是构建期的：刚在管理端发布的文章要等下一次构建
+ * 才进快照，这段时间里编辑、删除都会 404。所以退回按 slug 猜默认路径
+ * （只有单段 slug 才能这么猜，子目录的文章必须走快照）。
+ */
+async function resolveRepoPath(
+	c: Context<AppEnv>,
+	slug: string,
+): Promise<string | null> {
+	const item = await findRepoPost(c, slug);
+	if (item) return item.repoPath;
+	if (isValidSlug(slug)) return `src/content/posts/${slug}.md`;
+	return null;
+}
+
 const TOKEN_MISSING = {
 	error: "github_token_missing",
 	message: "还没配置 GitHub 令牌，去「站点设置 → 集成」里填一个带 Contents 写权限的",
@@ -575,13 +593,14 @@ me.get("/repo-posts", requireAuth, async (c) => {
 	if (!isOwner(c)) {
 		return c.json({ error: "forbidden", message: "只有站主能编辑仓库文章" }, 403);
 	}
-	const item = await findRepoPost(c, c.req.query("slug") ?? "");
-	if (!item) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+	const slug = c.req.query("slug") ?? "";
+	const path = await resolveRepoPath(c, slug);
+	if (!path) return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
 	const token = await repoToken(c);
 	if (!token) return c.json(TOKEN_MISSING, 412);
 
-	const file = await readRepoFile(item.repoPath, token);
+	const file = await readRepoFile(path, token);
 	if (!file.ok || file.content === undefined) {
 		return c.json(
 			{ error: "repo_read_failed", message: file.message ?? "读取失败" },
@@ -592,11 +611,11 @@ me.get("/repo-posts", requireAuth, async (c) => {
 	const { frontmatter, body } = splitMarkdown(file.content);
 	return c.json({
 		post: {
-			slug: item.slug,
-			repoPath: item.repoPath,
-			rawBase: repoRawBase(item.repoPath),
+			slug,
+			repoPath: path,
+			rawBase: repoRawBase(path),
 			sha: file.sha ?? "",
-			title: readScalar(frontmatter, "title") || item.title,
+			title: readScalar(frontmatter, "title"),
 			description: readScalar(frontmatter, "description"),
 			tags: readList(frontmatter, "tags"),
 			category: readScalar(frontmatter, "category"),
@@ -622,15 +641,16 @@ me.put(
 			string,
 			unknown
 		>;
-		const item = await findRepoPost(c, readField(payload, "slug"));
-		if (!item) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+		const slug = readField(payload, "slug");
+		const path = await resolveRepoPath(c, slug);
+		if (!path) return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
 		const title = readField(payload, "title");
 		if (!title) {
 			return c.json({ error: "bad_request", message: "标题不能为空" }, 400);
 		}
 		const nextSlug = readField(payload, "nextSlug");
-		if (nextSlug && nextSlug !== item.slug && !isValidSlug(nextSlug)) {
+		if (nextSlug && nextSlug !== slug && !isValidSlug(nextSlug)) {
 			return c.json({ error: "bad_slug", message: "地址格式不对" }, 400);
 		}
 		const rawTags = payload.tags;
@@ -642,7 +662,7 @@ me.put(
 		const token = await repoToken(c);
 		if (!token) return c.json(TOKEN_MISSING, 412);
 
-		const file = await readRepoFile(item.repoPath, token);
+		const file = await readRepoFile(path, token);
 		if (!file.ok || file.content === undefined) {
 			return c.json(
 				{ error: "repo_read_failed", message: file.message ?? "读取失败" },
@@ -664,7 +684,7 @@ me.put(
 
 		// 只有真改了地址才写 slug：原来没这一行的文章沿用文件名当 URL，
 		// 凭空补一行 slug 有把旧链接改掉的风险
-		if (nextSlug && nextSlug !== item.slug) {
+		if (nextSlug && nextSlug !== slug) {
 			fm = setScalar(fm, "slug", nextSlug);
 		}
 
@@ -673,7 +693,7 @@ me.put(
 		const content = joinMarkdown(fm, body);
 
 		const result = await writeRepoFile(
-			item.repoPath,
+			path,
 			content,
 			token,
 			`chore(post): 更新《${title}》`,
@@ -688,7 +708,7 @@ me.put(
 		return c.json({
 			ok: true,
 			sha: result.sha ?? "",
-			repoPath: item.repoPath,
+			repoPath: path,
 			// 写成功即触发构建，站点与列表要等这次构建完成才会变
 			building: true,
 		});
@@ -699,13 +719,13 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 	if (!isOwner(c)) {
 		return c.json({ error: "forbidden", message: "只有站主能删除仓库文章" }, 403);
 	}
-	const item = await findRepoPost(c, c.req.query("slug") ?? "");
-	if (!item) return c.json({ error: "not_found", message: "文章不存在" }, 404);
+	const path = await resolveRepoPath(c, c.req.query("slug") ?? "");
+	if (!path) return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
 	const token = await repoToken(c);
 	if (!token) return c.json(TOKEN_MISSING, 412);
 
-	const file = await readRepoFile(item.repoPath, token);
+	const file = await readRepoFile(path, token);
 	if (!file.ok || !file.sha) {
 		return c.json(
 			{ error: "repo_read_failed", message: file.message ?? "读取失败" },
@@ -713,11 +733,12 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 		);
 	}
 
+	const title = readScalar(splitMarkdown(file.content ?? "").frontmatter, "title");
 	const result = await deleteRepoFile(
-		item.repoPath,
+		path,
 		token,
 		file.sha,
-		`chore(post): 删除《${item.title}》`,
+		`chore(post): 删除《${title || path}》`,
 	);
 	if (!result.ok) {
 		return c.json(
@@ -727,4 +748,113 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 	}
 
 	return c.json({ ok: true, building: true });
+});
+
+/** 把 D1 草稿拼成仓库里的 markdown：frontmatter 按站内约定顺序排 */
+export function buildPostFrontmatter(row: PostRow): string {
+	const lines: string[] = [
+		`title: ${yamlString(row.title.trim())}`,
+		`published: ${new Date().toISOString().slice(0, 10)}`,
+	];
+	if (row.summary) lines.push(`description: ${yamlString(row.summary)}`);
+	const tags = parseTags(row.tags);
+	if (tags.length > 0) {
+		lines.push("tags:", ...tags.map((tag) => `  - ${yamlString(tag)}`));
+	}
+	const meta = parseMeta(row.meta_json);
+	if (row.cover) lines.push(`image: ${yamlString(row.cover)}`);
+	for (const [key, value] of Object.entries(meta)) {
+		if (typeof value === "string" && value.trim().length > 0) {
+			lines.push(`${key}: ${yamlString(value)}`);
+		}
+	}
+	return lines.join("\n");
+}
+
+/**
+ * 管理员直接发布：D1 草稿 → 仓库文件。
+ *
+ * 站主自己的稿子没有「提交审核」这一说——审核是给别人的投稿用的，
+ * 让管理员排进自己的审核队列等于自己盖自己的章。
+ */
+me.post("/posts/:id/publish", requireAuth, sameOriginGuard, async (c) => {
+	const user = c.get("user");
+	if (!user) return c.json({ error: "unauthorized" }, 401);
+	if (user.role !== "admin") {
+		return c.json(
+			{ error: "forbidden", message: "只有管理员能直接发布，其他人的稿子走提交审核" },
+			403,
+		);
+	}
+
+	const id = readId(c);
+	if (id === null) {
+		return c.json({ error: "bad_request", message: "id 非法" }, 400);
+	}
+	const row = await findOwned(c, id);
+	if (!row) return c.json(POST_NOT_FOUND, 404);
+	if (!EDITABLE.has(row.status)) return c.json(lockedBody(row.status), 409);
+	if (row.title.trim().length === 0) {
+		return c.json({ error: "invalid_title", message: "标题不能为空" }, 400);
+	}
+	if ((row.body ?? "").trim().length === 0) {
+		return c.json({ error: "empty_body", message: "正文还是空的" }, 400);
+	}
+	if (!isValidSlug(row.slug)) {
+		return c.json(
+			{ error: "invalid_slug", message: "先给文章定一个合法地址" },
+			400,
+		);
+	}
+
+	const token = await repoToken(c);
+	if (!token) return c.json(TOKEN_MISSING, 412);
+
+	const path = `src/content/posts/${row.slug}.md`;
+	const existing = await readRepoFile(path, token);
+	if (existing.ok) {
+		return c.json(
+			{
+				error: "slug_taken",
+				message: `仓库里已经有 ${path}，换个地址再发`,
+			},
+			409,
+		);
+	}
+	if (existing.status !== 404) {
+		return c.json(
+			{ error: "repo_read_failed", message: existing.message ?? "读取失败" },
+			502,
+		);
+	}
+
+	const content = joinMarkdown(buildPostFrontmatter(row), row.body ?? "");
+	const written = await writeRepoFile(
+		path,
+		content,
+		token,
+		`feat(post): 发布《${row.title.trim()}》`,
+	);
+	if (!written.ok) {
+		return c.json(
+			{ error: "repo_write_failed", message: written.message ?? "写入失败" },
+			502,
+		);
+	}
+
+	const updated = await c.env.DB.prepare(
+		`UPDATE posts
+		    SET status = 'published', repo_path = ?1,
+		        published_at = datetime('now'), updated_at = datetime('now')
+		  WHERE id = ?2 AND uid = ?3
+		 RETURNING *`,
+	)
+		.bind(path, row.id, row.uid)
+		.first<PostRow>();
+
+	return c.json({
+		post: updated ? toDetail(updated) : null,
+		repoPath: path,
+		building: true,
+	});
 });

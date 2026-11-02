@@ -13,6 +13,7 @@ import {
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { ApiError } from "../lib/api";
+import { isAdmin } from "../lib/auth";
 import { uploadImage } from "../lib/media";
 import {
 	bodyToPreview,
@@ -23,6 +24,7 @@ import {
 	isEditable,
 	type PostDetail,
 	type RepoPostDetail,
+	publishPost,
 	savePost,
 	saveRepoPost,
 	deleteRepoPost,
@@ -239,6 +241,22 @@ function onFieldInput(): void {
 	scheduleSave();
 }
 
+/** 管理员：保存后直接写成仓库文件，不经过审核队列 */
+async function onPublish(): Promise<void> {
+	const saved = await save();
+	if (!saved) return;
+	if (!window.confirm("发布后直接写入仓库并触发构建，约一分钟后站点上线。确定？")) {
+		return;
+	}
+	try {
+		await publishPost(postId.value);
+		go("/posts");
+	} catch (error) {
+		errorText.value = error instanceof Error ? error.message : "发布失败";
+		saveState.value = "error";
+	}
+}
+
 async function onSubmit(): Promise<void> {
 	if (!editable.value) return;
 	const saved = await save();
@@ -424,9 +442,9 @@ watch(isDark, (dark) => {
 					v-if="editable && !isRepo"
 					type="button"
 					class="btn-primary"
-					@click="onSubmit"
+					@click="isAdmin ? onPublish() : onSubmit()"
 				>
-					提交审核
+					{{ isAdmin ? "发布" : "提交审核" }}
 				</button>
 				<button
 					v-if="isRepo"

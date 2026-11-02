@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { ApiError } from "../lib/api";
+import { isAdmin } from "../lib/auth";
 import {
 	createPost,
 	deletePost,
@@ -11,6 +12,7 @@ import {
 	listPosts,
 	type PostStatus,
 	type PostSummary,
+	publishPost,
 	STATUS_LABEL,
 	submitPost,
 	withdrawPost,
@@ -67,6 +69,22 @@ async function onCreate(): Promise<void> {
 		if (post) go(`/posts/${post.id}`);
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "新建失败";
+	} finally {
+		busyId.value = 0;
+	}
+}
+
+/** 管理员：D1 草稿直接写成仓库文件，不进审核队列 */
+async function onPublish(post: PostSummary): Promise<void> {
+	busyId.value = post.id;
+	errorText.value = "";
+	notice.value = "";
+	try {
+		await publishPost(post.id);
+		notice.value = `《${post.title}》已发布，约一分钟后站点上线`;
+		await refresh();
+	} catch (error) {
+		errorText.value = error instanceof Error ? error.message : "发布失败";
 	} finally {
 		busyId.value = 0;
 	}
@@ -215,7 +233,16 @@ onMounted(refresh);
 							{{ isEditable(post.status) ? "编辑" : "查看" }}
 						</button>
 						<button
-							v-if="isEditable(post.status)"
+							v-if="isEditable(post.status) && isAdmin"
+							type="button"
+							class="btn-ghost"
+							:disabled="busyId === post.id"
+							@click="onPublish(post)"
+						>
+							发布
+						</button>
+						<button
+							v-if="isEditable(post.status) && !isAdmin"
 							type="button"
 							class="btn-ghost"
 							:disabled="busyId === post.id"
@@ -249,7 +276,7 @@ onMounted(refresh);
 		<p class="footnote">
 			带「仓库」标签的是 <code>src/content/posts/</code> 里的已发布文章，编辑即改文件，
 			保存会提交一次 git 并触发构建；不带标签的是你在管理端建的稿子，存在 D1，
-			自动保存不产生提交。「待审」的先撤回再改。
+			自动保存不产生提交。管理员点「发布」直接上线，其他人的稿子才走「提交审核」。
 		</p>
 	</div>
 </template>

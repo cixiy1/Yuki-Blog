@@ -97,6 +97,14 @@ export async function deletePost(id: number): Promise<void> {
 	await api.delete(`/api/me/posts/${id}`);
 }
 
+/** 管理员直接发布：写成仓库文件并触发构建，不进审核队列 */
+export async function publishPost(id: number): Promise<PostDetail | null> {
+	const data = await api.post<{ post: PostDetail | null }>(
+		`/api/me/posts/${id}/publish`,
+	);
+	return data.post;
+}
+
 export async function submitPost(id: number): Promise<PostDetail | null> {
 	const data = await api.post<{ post: PostDetail | null }>(
 		`/api/me/posts/${id}/submit`,
