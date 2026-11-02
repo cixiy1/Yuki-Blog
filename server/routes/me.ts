@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { readRepoPosts, type RepoPost } from "../lib/post-index";
 import { isValidSlug, normalizeTags } from "../lib/validate";
 import { requireAuth } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
@@ -63,8 +64,47 @@ function parseMeta(raw: string | null): Record<string, unknown> {
 	}
 }
 
-function toSummary(row: PostRow): Record<string, unknown> {
+/** 毫秒时间戳：D1 的 datetime('now') 是 UTC 且不带时区标记，补 Z 再算 */
+function toMillis(value: unknown): number {
+	if (!value) return 0;
+	const raw = String(value);
+	const iso = raw.includes("T") ? raw : `${raw.replace(" ", "T")}Z`;
+	const at = Date.parse(iso);
+	return Number.isNaN(at) ? 0 : at;
+}
+
+/**
+ * 仓库里的文章映射成和 D1 行同一个形状。
+ * id 固定 0：它们没有 D1 记录，前端靠 origin 区分，不能拿去调 /posts/:id。
+ */
+function repoToSummary(post: RepoPost): Record<string, unknown> {
+	const published = new Date(post.published).toISOString();
+	const updated = post.updated ? new Date(post.updated).toISOString() : published;
 	return {
+		id: 0,
+		origin: "repo",
+		slug: post.slug,
+		title: post.title,
+		summary: post.description,
+		cover: post.cover,
+		tags: post.tags,
+		status: "published",
+		repo_path: post.repoPath,
+		submitted_at: null,
+		published_at: published,
+		reviewed_at: null,
+		review_note: null,
+		created_at: published,
+		updated_at: updated,
+		source_link: post.sourceLink,
+		author: post.author,
+	};
+}
+
+function toSummary(row: PostRow): Record<string, unknown> {
+	const meta = parseMeta(row.meta_json);
+	return {
+		origin: "db",
 		id: row.id,
 		slug: row.slug,
 		title: row.title,
@@ -73,6 +113,8 @@ function toSummary(row: PostRow): Record<string, unknown> {
 		tags: parseTags(row.tags),
 		status: row.status,
 		repo_path: row.repo_path,
+		source_link: typeof meta.sourceLink === "string" ? meta.sourceLink : "",
+		author: typeof meta.author === "string" ? meta.author : "",
 		submitted_at: row.submitted_at,
 		published_at: row.published_at,
 		reviewed_at: row.reviewed_at,
@@ -173,12 +215,32 @@ function readId(c: Context<AppEnv>): number | null {
 me.get("/posts", requireAuth, async (c) => {
 	const user = c.get("user");
 	if (!user) return c.json({ posts: [] });
+
 	const rows = await c.env.DB.prepare(
 		"SELECT * FROM posts WHERE uid = ?1 ORDER BY updated_at DESC, id DESC LIMIT 200",
 	)
 		.bind(user.uid)
 		.all<PostRow>();
-	return c.json({ posts: (rows.results ?? []).map(toSummary) });
+
+	const mine = (rows.results ?? []).map(toSummary);
+
+	// 仓库里在用户系统之前写的文章，从来没进过 D1。管理员（站主）把这些一并列出来，
+	// 否则「我的文章」只能看到新建的一两篇草稿，和站点上实际发布的文章对不上。
+	let fromRepo: Record<string, unknown>[] = [];
+	if (user.role === "admin") {
+		const known = new Set(mine.map((post) => String(post.slug)));
+		const posts = await readRepoPosts(c.env.ASSETS);
+		fromRepo = posts
+			.filter((post) => !known.has(post.slug))
+			.map((post) => repoToSummary(post));
+	}
+
+	const posts = [...mine, ...fromRepo].sort(
+		(a, b) =>
+			toMillis(b.published_at ?? b.updated_at) -
+			toMillis(a.published_at ?? a.updated_at),
+	);
+	return c.json({ posts });
 });
 
 me.post("/posts", requireAuth, requireJsonBody, sameOriginGuard, async (c) => {

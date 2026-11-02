@@ -122,7 +122,10 @@ onMounted(refresh);
 
 <template>
 	<div>
-		<PageHeader title="我的文章" desc="草稿存 D1，提交审核后才写进仓库。">
+		<PageHeader
+			title="我的文章"
+			desc="草稿存 D1，提交审核后才写进仓库；仓库里已有的文章一并列出，只读。"
+		>
 			<template #actions>
 				<button
 					type="button"
@@ -159,13 +162,19 @@ onMounted(refresh);
 		</div>
 
 		<ul v-else class="list">
-			<li v-for="post in visible" :key="post.id" class="row card-base">
+			<li
+				v-for="post in visible"
+				:key="post.origin === 'repo' ? `repo-${post.slug}` : `db-${post.id}`"
+				class="row card-base"
+			>
 				<div class="row-main">
 					<p class="row-title">
 						{{ post.title }}
 						<span class="badge" :data-status="post.status">
 							{{ STATUS_LABEL[post.status] ?? post.status }}
 						</span>
+						<span v-if="post.origin === 'repo'" class="badge src">仓库</span>
+						<span v-if="post.source_link" class="badge repost">转载</span>
 					</p>
 					<p class="row-meta">
 						<code>/posts/{{ post.slug }}/</code>
@@ -179,48 +188,60 @@ onMounted(refresh);
 					</p>
 				</div>
 				<div class="row-actions">
-					<button
-						type="button"
+					<a
+						v-if="post.origin === 'repo'"
 						class="btn-regular"
-						:disabled="busyId === post.id"
-						@click="go(`/posts/${post.id}`)"
+						:href="`/posts/${post.slug}/`"
+						target="_blank"
+						rel="noopener"
 					>
-						{{ isEditable(post.status) ? "编辑" : "查看" }}
-					</button>
-					<button
-						v-if="isEditable(post.status)"
-						type="button"
-						class="btn-ghost"
-						:disabled="busyId === post.id"
-						@click="onSubmit(post)"
-					>
-						提交审核
-					</button>
-					<button
-						v-if="post.status === 'pending'"
-						type="button"
-						class="btn-ghost"
-						:disabled="busyId === post.id"
-						@click="onWithdraw(post)"
-					>
-						撤回
-					</button>
-					<button
-						v-if="isEditable(post.status)"
-						type="button"
-						class="btn-ghost danger"
-						:disabled="busyId === post.id"
-						@click="onDelete(post)"
-					>
-						<AppIcon name="trash" :size="15" />
-					</button>
+						打开
+					</a>
+					<template v-else>
+						<button
+							type="button"
+							class="btn-regular"
+							:disabled="busyId === post.id"
+							@click="go(`/posts/${post.id}`)"
+						>
+							{{ isEditable(post.status) ? "编辑" : "查看" }}
+						</button>
+						<button
+							v-if="isEditable(post.status)"
+							type="button"
+							class="btn-ghost"
+							:disabled="busyId === post.id"
+							@click="onSubmit(post)"
+						>
+							提交审核
+						</button>
+						<button
+							v-if="post.status === 'pending'"
+							type="button"
+							class="btn-ghost"
+							:disabled="busyId === post.id"
+							@click="onWithdraw(post)"
+						>
+							撤回
+						</button>
+						<button
+							v-if="isEditable(post.status)"
+							type="button"
+							class="btn-ghost danger"
+							:disabled="busyId === post.id"
+							@click="onDelete(post)"
+						>
+							<AppIcon name="trash" :size="15" />
+						</button>
+					</template>
 				</div>
 			</li>
 		</ul>
 
 		<p class="footnote">
-			「待审」的文章还不能编辑，先撤回再改。审核通过后由后端写进
-			<code>src/content/posts/</code> 并触发构建，这一环在 P4。
+			带「仓库」标签的是 <code>src/content/posts/</code> 里已有的文章，读的是构建时的
+			frontmatter 快照，这里只能看不能改；在管理端新建的草稿存 D1，
+			「待审」的文章要先撤回再改，审核通过后由后端写进仓库并触发构建（P4）。
 		</p>
 	</div>
 </template>
@@ -340,6 +361,19 @@ onMounted(refresh);
 .badge[data-status="rejected"] {
 	background: color-mix(in oklab, var(--admonitions-color-caution) 16%, transparent);
 	color: var(--admonitions-color-caution);
+}
+
+/* 「仓库」表示这篇早于用户系统，只读；「转载」看 frontmatter 的 sourceLink */
+.badge.src {
+	background: transparent;
+	border: 1px solid var(--line-divider);
+	color: var(--fg-50);
+	padding: calc(0.06rem - 1px) calc(0.42rem - 1px);
+}
+
+.badge.repost {
+	background: color-mix(in oklab, var(--admonitions-color-note) 16%, transparent);
+	color: var(--admonitions-color-note);
 }
 
 .row-meta {

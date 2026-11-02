@@ -13,7 +13,8 @@
 			"/api",
 			"/api/*",
 			"!/api/dynamic.json",
-			"!/api/allPostMeta.json"
+			"!/api/allPostMeta.json",
+			"!/api/post-index.json"
 		]
 	},
 	"d1_databases": [

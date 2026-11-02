@@ -9,6 +9,8 @@ export type PostStatus =
 
 export interface PostSummary {
 	id: number;
+	/** db = D1 里的草稿/送审稿；repo = 仓库里早就存在的文章，只读 */
+	origin: "db" | "repo";
 	slug: string;
 	title: string;
 	summary: string;
@@ -16,6 +18,9 @@ export interface PostSummary {
 	tags: string[];
 	status: PostStatus;
 	repo_path: string;
+	/** 转载来源，空串表示原创 */
+	source_link: string;
+	author: string;
 	submitted_at: string | null;
 	published_at: string | null;
 	reviewed_at: string | null;
