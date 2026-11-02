@@ -493,9 +493,9 @@ onMounted(() => void refresh());
 		</div>
 
 		<div v-else class="layout">
-			<section class="main">
-				<p v-if="group?.desc" class="group-desc">{{ group.desc }}</p>
+			<p v-if="group?.desc" class="group-desc">{{ group.desc }}</p>
 
+			<section class="main">
 				<div
 					v-for="section in group?.sections ?? []"
 					:key="section.title"
@@ -764,26 +764,33 @@ onMounted(() => void refresh());
 <style scoped>
 .tabs {
 	display: flex;
-	gap: 0.25rem;
+	gap: 0.2rem;
 	overflow-x: auto;
-	margin-bottom: 0.9rem;
-	padding-bottom: 0.35rem;
-	border-bottom: 1px solid var(--line-divider);
+	margin-bottom: 1.1rem;
+	padding-bottom: 0.1rem;
+	scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+	display: none;
 }
 
 .tab {
 	flex: 0 0 auto;
 	border: none;
 	background: transparent;
-	padding: 0.45rem 0.7rem;
-	border-radius: 0.55rem;
-	font-size: 0.83rem;
+	padding: 0.42rem 0.75rem;
+	border-radius: 999px;
+	font-size: 0.82rem;
 	color: var(--fg-50);
 	cursor: pointer;
 	white-space: nowrap;
 	display: flex;
 	align-items: center;
 	gap: 0.3rem;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
 }
 
 .tab:hover {
@@ -792,13 +799,14 @@ onMounted(() => void refresh());
 }
 
 .tab.on {
-	background: var(--btn-regular-bg);
+	background: var(--tab-on-bg);
 	color: var(--btn-content);
 	font-weight: 600;
 }
 
 .group-desc {
-	margin: 0 0 0.7rem;
+	grid-column: 1 / -1;
+	margin: 0 0 0.2rem;
 	font-size: 0.78rem;
 	color: var(--fg-50);
 	line-height: 1.6;
@@ -806,25 +814,44 @@ onMounted(() => void refresh());
 
 .layout {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 300px;
-	gap: 1rem;
+	grid-template-columns: minmax(0, 1fr) 17rem;
+	gap: 0.9rem 1.25rem;
 	align-items: start;
+}
+
+.layout > .side {
+	position: sticky;
+	top: calc(var(--nav-height) + 1rem);
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.layout > .side .panel {
+	margin-bottom: 0;
 }
 
 @media (max-width: 1100px) {
 	.layout {
 		grid-template-columns: minmax(0, 1fr);
 	}
+
+	.layout > .side {
+		position: static;
+	}
 }
 
 .panel {
-	padding: 0.95rem 1rem;
-	margin-bottom: 0.75rem;
+	padding: 1.1rem 1.2rem;
+	margin-bottom: 1rem;
 }
 
 .panel h3 {
-	margin: 0 0 0.5rem;
-	font-size: 0.92rem;
+	margin: 0 0 0.7rem;
+	padding-bottom: 0.6rem;
+	border-bottom: 1px solid var(--line-divider);
+	font-size: 0.95rem;
+	font-weight: 600;
 	color: var(--fg-90);
 }
 
@@ -843,9 +870,9 @@ onMounted(() => void refresh());
 
 .row {
 	display: grid;
-	grid-template-columns: 220px minmax(0, 1fr);
-	gap: 0.9rem;
-	padding: 0.6rem 0;
+	grid-template-columns: 11rem minmax(0, 1fr);
+	gap: 1rem;
+	padding: 0.7rem 0;
 	border-top: 1px solid var(--line-divider);
 }
 

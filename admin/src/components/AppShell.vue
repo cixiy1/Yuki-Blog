@@ -1,4 +1,10 @@
 <script setup lang="ts">
+/**
+ * 管理端外壳，结构与主站页面保持一致：
+ * 一条贴顶的毛玻璃导航条（内容居中、底部圆角）+ 居中内容列。
+ * 之前是「左侧栏 + 顶栏」的后台壳，与博客的悬浮导航 + 卡片流是两种语言，
+ * 从主站点进来会像换了个产品。
+ */
 import { computed } from "vue";
 import { canReview, isAdmin, logout, user } from "../lib/auth";
 import { isDark, toggleTheme } from "../lib/theme";
@@ -31,7 +37,6 @@ interface NavItem {
 	label: string;
 	icon: string;
 	path: string;
-	role?: "review" | "admin";
 }
 
 interface NavGroup {
@@ -45,55 +50,24 @@ const navGroups = computed<NavGroup[]>(() => {
 			label: "内容",
 			items: [
 				{ key: "overview", label: "概览", icon: "overview", path: "/overview" },
-				{ key: "posts", label: "我的文章", icon: "posts", path: "/posts" },
-				{
-					key: "components",
-					label: "我的组件",
-					icon: "components",
-					path: "/components",
-				},
+				{ key: "posts", label: "文章", icon: "posts", path: "/posts" },
+				{ key: "components", label: "组件", icon: "components", path: "/components" },
 			],
 		},
 	];
 	if (canReview.value) {
 		groups.push({
 			label: "审核",
-			items: [
-				{
-					key: "review",
-					label: "审核队列",
-					icon: "review",
-					path: "/review",
-					role: "review",
-				},
-			],
+			items: [{ key: "review", label: "审核", icon: "review", path: "/review" }],
 		});
 	}
 	if (isAdmin.value) {
 		groups.push({
 			label: "管理",
 			items: [
-				{
-					key: "users",
-					label: "用户管理",
-					icon: "users",
-					path: "/users",
-					role: "admin",
-				},
-				{
-					key: "audit",
-					label: "审计日志",
-					icon: "audit",
-					path: "/audit",
-					role: "admin",
-				},
-				{
-					key: "settings",
-					label: "站点设置",
-					icon: "admin",
-					path: "/settings",
-					role: "admin",
-				},
+				{ key: "users", label: "用户", icon: "users", path: "/users" },
+				{ key: "audit", label: "审计", icon: "audit", path: "/audit" },
+				{ key: "settings", label: "站点设置", icon: "admin", path: "/settings" },
 			],
 		});
 	}
@@ -108,244 +82,221 @@ const activeKey = computed(() => {
 const displayName = computed(
 	() => user.value?.display_name || user.value?.email.split("@")[0] || "未命名",
 );
-
-const roleLabel = computed(() => {
-	const role = user.value?.role;
-	if (role === "admin") return "管理员";
-	if (role === "reviewer") return "审核员";
-	return "成员";
-});
 </script>
 
 <template>
-	<div class="shell">
-		<aside class="sidebar">
-			<a class="brand" href="#/overview" @click.prevent="go('/overview')">
-				<span class="brand-dot" />
-				<span class="brand-text">
-					Yuki Blog
-					<span class="brand-sub">管理端</span>
-				</span>
-			</a>
-
-			<nav class="nav">
-				<div v-for="group in navGroups" :key="group.label" class="nav-group">
-					<p class="nav-label">{{ group.label }}</p>
-					<a
-						v-for="item in group.items"
-						:key="item.key"
-						class="nav-item"
-						:class="{ active: activeKey === item.key }"
-						:href="`#${item.path}`"
-						@click.prevent="go(item.path)"
-					>
-						<AppIcon :name="item.icon" />
-						<span>{{ item.label }}</span>
+	<div class="app">
+		<header class="topbar">
+			<div class="surface">
+				<div class="bar">
+					<a class="brand" href="#/overview" @click.prevent="go('/overview')">
+						<span class="brand-dot" />
+						<span class="brand-name">Yuki Blog</span>
+						<span class="brand-tag">管理端</span>
 					</a>
-				</div>
-			</nav>
 
-			<div class="sidebar-foot">
-				<button type="button" class="foot-action" @click="toggleTheme()">
-					<AppIcon :name="isDark ? 'sun' : 'moon'" />
-					<span>{{ isDark ? "浅色模式" : "深色模式" }}</span>
-				</button>
-				<a class="foot-action" href="/">
-					<AppIcon name="back" />
-					<span>返回站点</span>
-				</a>
-			</div>
-		</aside>
+					<nav class="tabs" aria-label="管理端导航">
+						<div v-for="group in navGroups" :key="group.label" class="group">
+							<a
+								v-for="item in group.items"
+								:key="item.key"
+								class="tab"
+								:class="{ on: activeKey === item.key }"
+								:href="`#${item.path}`"
+								@click.prevent="go(item.path)"
+							>
+								<AppIcon :name="item.icon" :size="16" />
+								<span>{{ item.label }}</span>
+							</a>
+						</div>
+					</nav>
 
-		<div class="main">
-			<header class="topbar">
-				<div class="who">
-					<img
-						v-if="user?.avatar_url"
-						class="avatar"
-						:src="user.avatar_url"
-						:alt="displayName"
-					/>
-					<span v-else class="avatar avatar-fallback">
-						{{ displayName.slice(0, 1).toUpperCase() }}
-					</span>
-					<div class="who-text">
-						<p class="who-name">{{ displayName }}</p>
-						<p class="who-meta">{{ roleLabel }} · uid {{ user?.uid }}</p>
+					<div class="side">
+						<a
+							class="me"
+							href="/me/"
+							target="_blank"
+							rel="noopener"
+							:title="`${displayName} · 个人中心`"
+						>
+							<img
+								v-if="user?.avatar_url"
+								class="avatar"
+								:src="user.avatar_url"
+								:alt="displayName"
+							/>
+							<span v-else class="avatar avatar-fallback">
+								{{ displayName.slice(0, 1).toUpperCase() }}
+							</span>
+							<span class="me-name">{{ displayName }}</span>
+						</a>
+						<button
+							type="button"
+							class="icon"
+							:title="isDark ? '切换到浅色模式' : '切换到深色模式'"
+							@click="toggleTheme()"
+						>
+							<AppIcon :name="isDark ? 'sun' : 'moon'" :size="17" />
+						</button>
+						<a class="icon" href="/" title="返回站点">
+							<AppIcon name="back" :size="17" />
+						</a>
+						<button type="button" class="icon" title="退出登录" @click="logout()">
+							<AppIcon name="logout" :size="17" />
+						</button>
 					</div>
 				</div>
-				<div class="topbar-actions">
-					<a class="btn-ghost" href="/me/" target="_blank" rel="noopener">
-						<AppIcon name="external" :size="16" />
-						个人中心
-					</a>
-					<button type="button" class="btn-regular" @click="logout()">
-						<AppIcon name="logout" :size="16" />
-						退出
-					</button>
-				</div>
-			</header>
+			</div>
+		</header>
 
-			<main class="content">
+		<main class="page">
+			<div class="page-wrap">
 				<component :is="current" />
-			</main>
-		</div>
+			</div>
+		</main>
 	</div>
 </template>
 
 <style scoped>
-.shell {
-	display: flex;
+.app {
 	min-height: 100vh;
-	align-items: stretch;
-}
-
-.sidebar {
-	width: var(--sidebar-width);
-	flex: none;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	display: flex;
-	flex-direction: column;
-	gap: 1.25rem;
-	padding: 1.1rem 0.75rem;
-	border-right: 1px solid var(--line-divider);
-	background: var(--card-bg);
-}
-
-.brand {
-	display: flex;
-	align-items: center;
-	gap: 0.55rem;
-	padding: 0.25rem 0.5rem;
-	font-weight: 700;
-	color: var(--fg-90);
-}
-
-.brand-dot {
-	width: 0.65rem;
-	height: 0.65rem;
-	border-radius: 999px;
-	background: var(--primary);
-	box-shadow: 0 0 0 3px var(--btn-regular-bg);
-}
-
-.brand-text {
-	display: flex;
-	align-items: baseline;
-	gap: 0.35rem;
-	font-size: 0.95rem;
-	letter-spacing: 0.01em;
-}
-
-.brand-sub {
-	font-size: 0.7rem;
-	font-weight: 500;
-	color: var(--fg-50);
-}
-
-.nav {
-	display: flex;
-	flex-direction: column;
-	gap: 1rem;
-	flex: 1;
-	overflow-y: auto;
-}
-
-.nav-label {
-	margin: 0 0 0.3rem 0.55rem;
-	font-size: 0.68rem;
-	font-weight: 600;
-	letter-spacing: 0.08em;
-	color: var(--fg-30);
-}
-
-.nav-item {
-	display: flex;
-	align-items: center;
-	gap: 0.55rem;
-	padding: 0.45rem 0.6rem;
-	border-radius: 0.7rem;
-	font-size: 0.86rem;
-	color: var(--fg-75);
-	transition:
-		background-color 0.15s ease,
-		color 0.15s ease;
-}
-
-.nav-item:hover {
-	background: var(--btn-plain-bg-hover);
-	color: var(--btn-content);
-}
-
-.nav-item.active {
-	background: var(--btn-regular-bg);
-	color: var(--btn-content);
-	font-weight: 600;
-}
-
-.sidebar-foot {
-	display: flex;
-	flex-direction: column;
-	gap: 0.15rem;
-	padding-top: 0.6rem;
-	border-top: 1px solid var(--line-divider);
-}
-
-.foot-action {
-	display: flex;
-	align-items: center;
-	gap: 0.55rem;
-	width: 100%;
-	padding: 0.42rem 0.6rem;
-	border: none;
-	background: transparent;
-	border-radius: 0.7rem;
-	font-size: 0.82rem;
-	color: var(--fg-50);
-	text-align: left;
-	transition:
-		background-color 0.15s ease,
-		color 0.15s ease;
-}
-
-.foot-action:hover {
-	background: var(--btn-plain-bg-hover);
-	color: var(--btn-content);
-}
-
-.main {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
 }
 
 .topbar {
 	position: sticky;
 	top: 0;
-	z-index: 10;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	padding: 0.75rem 1.5rem;
-	background: color-mix(in oklab, var(--page-bg) 88%, transparent);
-	backdrop-filter: blur(10px);
-	border-bottom: 1px solid var(--line-divider);
+	z-index: 30;
 }
 
-.who {
+/* 贴顶全宽条：底色铺满、只有底部圆角，与主站 #navbar 一致 */
+.surface {
+	background: var(--nav-surface);
+	backdrop-filter: blur(20px) saturate(140%);
+	border-bottom: 1px solid var(--line-divider);
+	border-radius: 0 0 0.75rem 0.75rem;
+	box-shadow: var(--nav-shadow);
+}
+
+.bar {
 	display: flex;
 	align-items: center;
-	gap: 0.6rem;
+	gap: 1rem;
+	height: var(--nav-height);
+	max-width: var(--content-max);
+	margin: 0 auto;
+	padding: 0 0.5rem;
+}
+
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex: none;
+	color: var(--fg-90);
+	font-weight: 700;
+	letter-spacing: 0.01em;
+}
+
+.brand-dot {
+	width: 0.6rem;
+	height: 0.6rem;
+	border-radius: 999px;
+	background: var(--primary);
+	box-shadow: 0 0 0 3px var(--btn-regular-bg);
+}
+
+.brand-name {
+	font-size: 0.98rem;
+}
+
+.brand-tag {
+	padding: 0.1rem 0.4rem;
+	border-radius: 999px;
+	background: var(--btn-regular-bg);
+	color: var(--btn-content);
+	font-size: 0.66rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+}
+
+.tabs {
+	display: flex;
+	align-items: center;
+	gap: 0.15rem;
+	flex: 1;
 	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.group {
+	display: flex;
+	align-items: center;
+	gap: 0.15rem;
+	flex: none;
+}
+
+.group + .group {
+	margin-left: 0.35rem;
+	padding-left: 0.5rem;
+	border-left: 1px solid var(--line-divider);
+}
+
+.tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.38rem;
+	padding: 0.4rem 0.7rem;
+	border-radius: 0.7rem;
+	color: var(--fg-75);
+	font-size: 0.83rem;
+	white-space: nowrap;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.tab:hover {
+	background: var(--btn-plain-bg-hover);
+	color: var(--btn-content);
+}
+
+.tab.on {
+	background: var(--tab-on-bg);
+	color: var(--btn-content);
+	font-weight: 600;
+}
+
+.side {
+	display: flex;
+	align-items: center;
+	gap: 0.2rem;
+	flex: none;
+}
+
+.me {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0.2rem 0.55rem 0.2rem 0.2rem;
+	border-radius: 999px;
+	color: var(--fg-75);
+	font-size: 0.8rem;
+	transition: background-color 0.15s ease;
+}
+
+.me:hover {
+	background: var(--btn-plain-bg-hover);
+	color: var(--btn-content);
 }
 
 .avatar {
-	width: 2rem;
-	height: 2rem;
+	width: 1.7rem;
+	height: 1.7rem;
 	border-radius: 999px;
 	object-fit: cover;
 	border: 1px solid var(--line-divider);
@@ -356,103 +307,57 @@ const roleLabel = computed(() => {
 	place-items: center;
 	background: var(--btn-regular-bg);
 	color: var(--btn-content);
-	font-size: 0.85rem;
+	font-size: 0.76rem;
 	font-weight: 700;
 }
 
-.who-text {
-	min-width: 0;
-}
-
-.who-name {
-	margin: 0;
-	font-size: 0.86rem;
-	font-weight: 600;
-	color: var(--fg-90);
-	white-space: nowrap;
+.me-name {
+	max-width: 7rem;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.who-meta {
-	margin: 0;
-	font-size: 0.72rem;
+.icon {
+	display: grid;
+	place-items: center;
+	width: 2rem;
+	height: 2rem;
+	border: none;
+	border-radius: 0.7rem;
+	background: transparent;
 	color: var(--fg-50);
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
 }
 
-.topbar-actions {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	flex: none;
+.icon:hover {
+	background: var(--btn-plain-bg-hover);
+	color: var(--btn-content);
 }
 
-.content {
-	padding: 1.5rem;
-	width: 100%;
-	max-width: var(--shell-max);
+.page {
+	padding-top: 0.25rem;
 }
 
-@media (max-width: 900px) {
-	.shell {
-		flex-direction: column;
-	}
-
-	.sidebar {
-		position: static;
-		width: 100%;
+@media (max-width: 880px) {
+	.bar {
 		height: auto;
-		flex-direction: row;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.6rem 0.9rem;
-		border-right: none;
-		border-bottom: 1px solid var(--line-divider);
-		overflow-x: auto;
+		flex-wrap: wrap;
+		gap: 0.35rem 0.75rem;
+		padding: 0.5rem 0.4rem 0.45rem;
 	}
 
-	.brand {
-		flex: none;
-		padding: 0;
+	.tabs {
+		order: 3;
+		width: 100%;
+		flex: 1 0 100%;
+		padding-bottom: 0.1rem;
 	}
 
-	.nav {
-		flex-direction: row;
-		gap: 0.35rem;
-		overflow: visible;
-	}
-
-	.nav-group {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-	}
-
-	.nav-label {
+	.me-name {
 		display: none;
-	}
-
-	.nav-item {
-		white-space: nowrap;
-		padding: 0.35rem 0.55rem;
-	}
-
-	.sidebar-foot {
-		flex-direction: row;
-		border-top: none;
-		padding-top: 0;
-	}
-
-	.foot-action span {
-		display: none;
-	}
-
-	.topbar {
-		padding: 0.6rem 1rem;
-	}
-
-	.content {
-		padding: 1rem;
 	}
 }
 </style>

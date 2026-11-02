@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview, isAdmin, user } from "../lib/auth";
+import { listPosts } from "../lib/posts";
 import { go } from "../router";
 
 const entries = [
@@ -40,6 +42,22 @@ const entries = [
 ].filter((item) => item.show);
 
 const name = user.value?.display_name || user.value?.email.split("@")[0] || "";
+
+/** 概览只有入口卡会显得空，补一组自己的内容计数，顺手让「有几篇待审」一眼可见 */
+const counts = ref<{ draft: number; pending: number; published: number } | null>(null);
+
+onMounted(async () => {
+	try {
+		const posts = await listPosts();
+		counts.value = {
+			draft: posts.filter((post) => post.status === "draft").length,
+			pending: posts.filter((post) => post.status === "pending").length,
+			published: posts.filter((post) => post.status === "published").length,
+		};
+	} catch {
+		// 未登录或接口不可用时不显示统计，页面其余部分照常
+	}
+});
 </script>
 
 <template>
@@ -62,6 +80,25 @@ const name = user.value?.display_name || user.value?.email.split("@")[0] || "";
 			</a>
 		</div>
 
+		<section v-if="counts" class="stats card-base">
+			<div class="stat">
+				<span class="num">{{ counts.draft }}</span>
+				<span class="label">草稿</span>
+			</div>
+			<div class="stat">
+				<span class="num">{{ counts.pending }}</span>
+				<span class="label">待审</span>
+			</div>
+			<div class="stat">
+				<span class="num">{{ counts.published }}</span>
+				<span class="label">已发布</span>
+			</div>
+			<a class="stat-go" href="#/posts" @click.prevent="go('/posts')">
+				去看文章
+				<AppIcon name="external" :size="14" />
+			</a>
+		</section>
+
 		<section class="note card-base">
 			<p class="note-title">当前阶段</p>
 			<ul>
@@ -76,7 +113,7 @@ const name = user.value?.display_name || user.value?.email.split("@")[0] || "";
 <style scoped>
 .grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
 	gap: 0.85rem;
 }
 
@@ -117,8 +154,63 @@ const name = user.value?.display_name || user.value?.email.split("@")[0] || "";
 }
 
 .note {
-	margin-top: 1.25rem;
+	margin-top: 1rem;
 	padding: 1rem 1.15rem;
+}
+
+.stats {
+	display: flex;
+	align-items: center;
+	gap: 2.25rem;
+	margin-top: 1rem;
+	padding: 0.9rem 1.2rem;
+}
+
+.stat {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+}
+
+.stat .num {
+	font-size: 1.35rem;
+	font-weight: 700;
+	line-height: 1.2;
+	color: var(--fg-90);
+	font-variant-numeric: tabular-nums;
+}
+
+.stat .label {
+	font-size: 0.72rem;
+	color: var(--fg-50);
+}
+
+.stat-go {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	padding: 0.4rem 0.75rem;
+	border-radius: 999px;
+	background: var(--btn-regular-bg);
+	color: var(--btn-content);
+	font-size: 0.78rem;
+	font-weight: 600;
+}
+
+.stat-go:hover {
+	background: var(--btn-regular-bg-hover);
+}
+
+@media (max-width: 560px) {
+	.stats {
+		gap: 1.4rem;
+		padding: 0.8rem 1rem;
+	}
+
+	.stat .num {
+		font-size: 1.15rem;
+	}
 }
 
 .note-title {
@@ -134,5 +226,33 @@ const name = user.value?.display_name || user.value?.email.split("@")[0] || "";
 	font-size: 0.78rem;
 	color: var(--fg-50);
 	line-height: 1.9;
+}
+
+/* 手机上一个卡片占满整屏太浪费，改成两列紧凑卡 */
+@media (max-width: 560px) {
+	.grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.6rem;
+	}
+
+	.entry {
+		padding: 0.75rem 0.8rem;
+	}
+
+	.entry-icon {
+		width: 1.7rem;
+		height: 1.7rem;
+		border-radius: 0.55rem;
+	}
+
+	.entry-title {
+		margin-top: 0.45rem;
+		font-size: 0.85rem;
+	}
+
+	.entry-desc {
+		font-size: 0.72rem;
+		line-height: 1.55;
+	}
 }
 </style>

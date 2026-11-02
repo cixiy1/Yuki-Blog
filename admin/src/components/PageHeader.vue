@@ -5,7 +5,7 @@ defineProps<{ title: string; desc?: string }>();
 <template>
 	<div class="page-header">
 		<div class="text">
-			<h2>{{ title }}</h2>
+			<h1>{{ title }}</h1>
 			<p v-if="desc">{{ desc }}</p>
 		</div>
 		<div class="actions">
@@ -19,22 +19,24 @@ defineProps<{ title: string; desc?: string }>();
 	display: flex;
 	align-items: flex-end;
 	justify-content: space-between;
-	gap: 1rem;
-	margin-bottom: 1.1rem;
+	gap: 1rem 1.25rem;
+	margin-bottom: 1.35rem;
 	flex-wrap: wrap;
 }
 
-.text h2 {
+.text h1 {
 	margin: 0;
-	font-size: 1.15rem;
+	font-size: 1.5rem;
 	font-weight: 700;
+	line-height: 1.3;
 	color: var(--fg-90);
-	letter-spacing: -0.01em;
+	letter-spacing: -0.02em;
 }
 
 .text p {
-	margin: 0.2rem 0 0;
-	font-size: 0.8rem;
+	margin: 0.3rem 0 0;
+	font-size: 0.85rem;
+	line-height: 1.7;
 	color: var(--fg-50);
 }
 
@@ -42,5 +44,6 @@ defineProps<{ title: string; desc?: string }>();
 	display: flex;
 	align-items: center;
 	gap: 0.45rem;
+	flex-wrap: wrap;
 }
 </style>

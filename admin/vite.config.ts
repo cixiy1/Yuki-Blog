@@ -22,6 +22,18 @@ export default defineConfig({
 				target: "http://127.0.0.1:8787",
 				changeOrigin: false,
 			},
+			// 站点设置的默认值由构建期从 config/*.ts 导出，dev 下本地没有这份文件，
+			// 转发到 wrangler dev 的构建产物，表单才不会只剩 placeholder。
+			"/site-defaults.json": {
+				target: "http://127.0.0.1:8787",
+				changeOrigin: false,
+			},
+			// Vditor 自托管在主站 public/admin/vditor/，dev 下 5173 上没有这份文件，
+			// 不转发的话编辑器初始化会静默失败（只有白框，没有工具栏）。
+			"/admin/vditor": {
+				target: "http://127.0.0.1:8787",
+				changeOrigin: false,
+			},
 		},
 	},
 });

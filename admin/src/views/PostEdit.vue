@@ -512,6 +512,8 @@ watch(isDark, (dark) => {
 .editor :deep(.vditor-toolbar) {
 	background: transparent;
 	border-bottom-color: var(--line-divider);
+	/* Vditor 会用行内 padding-left 把工具栏居中，与整站的左对齐语言不一致 */
+	padding-left: 0.6rem !important;
 }
 
 .editor :deep(.vditor-reset) {

@@ -77,7 +77,7 @@ onMounted(() => void refresh());
 		<div v-else-if="rows.length === 0" class="state">还没有记录。</div>
 
 		<ul v-else class="list">
-			<li v-for="row in rows" :key="row.id" class="row card-base">
+			<li v-for="row in rows" :key="row.id" class="row">
 				<button type="button" class="row-head" @click="toggle(row.id)">
 					<span class="badge">{{ ACTION_LABEL[row.action] ?? row.action }}</span>
 					<span class="target">{{ row.target ?? "—" }}</span>
@@ -116,12 +116,19 @@ onMounted(() => void refresh());
 .filters {
 	display: flex;
 	gap: 0.5rem;
-	margin-bottom: 0.85rem;
+	padding: 0.7rem;
+	margin-bottom: 1rem;
+	background: var(--card-bg);
+	border: 1px solid var(--line-divider);
+	border-radius: var(--radius-large);
+	box-shadow: var(--card-shadow);
 }
 
 .filters .field {
 	width: auto;
-	min-width: 14rem;
+	flex: 1 1 14rem;
+	max-width: 22rem;
+	height: 2.35rem;
 }
 
 .error {
@@ -144,14 +151,20 @@ onMounted(() => void refresh());
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	display: flex;
-	flex-direction: column;
-	gap: 0.45rem;
+	background: var(--card-bg);
+	border: 1px solid var(--line-divider);
+	border-radius: var(--radius-large);
+	box-shadow: var(--card-shadow);
+	overflow: hidden;
 }
 
 .row {
 	padding: 0;
-	overflow: hidden;
+	border-top: 1px solid var(--line-divider);
+}
+
+.row:first-child {
+	border-top: none;
 }
 
 .row-head {

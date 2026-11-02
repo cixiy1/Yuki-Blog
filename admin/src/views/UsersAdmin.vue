@@ -220,13 +220,23 @@ onMounted(() => void refresh());
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.5rem;
-	margin-bottom: 0.85rem;
+	padding: 0.7rem;
+	margin-bottom: 1rem;
+	background: var(--card-bg);
+	border: 1px solid var(--line-divider);
+	border-radius: var(--radius-large);
+	box-shadow: var(--card-shadow);
 }
 
 .filters .field {
 	width: auto;
 	flex: 1 1 10rem;
 	min-width: 8rem;
+	height: 2.35rem;
+}
+
+.filters .btn-primary {
+	height: 2.35rem;
 }
 
 .notice {
@@ -256,29 +266,38 @@ onMounted(() => void refresh());
 
 .table-wrap {
 	overflow-x: auto;
-	padding: 0.25rem 0.5rem;
+	padding: 0;
 }
 
 .table {
 	width: 100%;
 	border-collapse: collapse;
-	font-size: 0.8rem;
+	font-size: 0.82rem;
 }
 
 .table th {
 	text-align: left;
 	font-weight: 600;
 	color: var(--fg-50);
-	padding: 0.6rem 0.5rem;
+	padding: 0.7rem 0.9rem;
+	background: color-mix(in srgb, var(--primary) 8%, var(--card-bg));
 	border-bottom: 1px solid var(--line-divider);
 	white-space: nowrap;
 }
 
 .table td {
-	padding: 0.55rem 0.5rem;
+	padding: 0.7rem 0.9rem;
 	border-bottom: 1px solid var(--line-divider);
 	vertical-align: middle;
 	color: var(--fg-90);
+}
+
+.table tbody tr {
+	transition: background-color 0.12s ease;
+}
+
+.table tbody tr:hover {
+	background: var(--btn-plain-bg-hover);
 }
 
 .table tr:last-child td {

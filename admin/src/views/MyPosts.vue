@@ -251,7 +251,7 @@ onMounted(refresh);
 }
 
 .tab.active {
-	background: var(--btn-regular-bg);
+	background: var(--tab-on-bg);
 	color: var(--btn-content);
 	font-weight: 600;
 }
@@ -381,9 +381,9 @@ onMounted(refresh);
 }
 
 .footnote {
-	margin: 1rem 0 0;
-	font-size: 0.75rem;
-	color: var(--fg-30);
+	margin: 1.1rem 0 0;
+	font-size: 0.76rem;
+	color: var(--fg-50);
 	line-height: 1.8;
 }
 
