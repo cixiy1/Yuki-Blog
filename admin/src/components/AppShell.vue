@@ -117,7 +117,6 @@ const roleLabel = computed(() => {
 	<div class="app">
 		<aside class="sidebar">
 			<a class="brand" href="#/overview" @click.prevent="go('/overview')">
-				<span class="brand-dot" />
 				<span class="brand-name">Yuki Blog</span>
 				<span class="brand-tag">管理端</span>
 			</a>
@@ -221,19 +220,11 @@ const roleLabel = computed(() => {
 	display: flex;
 	align-items: center;
 	gap: 0.45rem;
-	padding: 0.15rem 0.35rem;
+	/* 与导航项同一档左内边距，字和下面的图标对齐成一条线 */
+	padding: 0.15rem 0.6rem;
 	flex: none;
 	color: var(--fg-90);
 	font-weight: 700;
-}
-
-.brand-dot {
-	width: 0.6rem;
-	height: 0.6rem;
-	border-radius: 999px;
-	background: var(--primary);
-	box-shadow: 0 0 0 3px var(--btn-regular-bg);
-	flex: none;
 }
 
 .brand-name {
