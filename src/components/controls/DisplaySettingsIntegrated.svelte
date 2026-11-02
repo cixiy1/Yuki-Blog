@@ -617,11 +617,20 @@ onMount(() => {
 
 	window.addEventListener("wallpaperModeChange", handleWallpaperModeChange);
 
+	// 管理端「立即应用」过来的热色相：面板的 hue 状态是挂载时读的，
+	// 那时接口还没回，得在这里同步一次，否则下一次 setHue 会把色相按回旧值。
+	const handleHotHue = (event: Event) => {
+		const detail = (event as CustomEvent<{ hue: number }>).detail;
+		if (typeof detail?.hue === "number") hue = detail.hue;
+	};
+	window.addEventListener("yb-hot-hue", handleHotHue);
+
 	return () => {
 		window.removeEventListener(
 			"wallpaperModeChange",
 			handleWallpaperModeChange,
 		);
+		window.removeEventListener("yb-hot-hue", handleHotHue);
 	};
 });
 

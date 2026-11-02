@@ -23,9 +23,26 @@ export type AuditAction =
 	| "org.invite.create"
 	| "org.invite.revoke"
 	| "org.invite.accept"
-	| "admin.org.review";
+	| "admin.org.review"
+	| "admin.settings.save"
+	| "admin.settings.apply"
+	| "admin.settings.publish"
+	| "admin.settings.publish_failed"
+	| "admin.settings.rollback"
+	| "admin.secrets.write";
 
-const DETAIL_KEYS = new Set(["from", "to", "method", "reason", "org_id"]);
+const DETAIL_KEYS = new Set([
+	"from",
+	"to",
+	"method",
+	"reason",
+	"org_id",
+	"keys",
+	"sha",
+	"status",
+	"cleared",
+	"version",
+]);
 
 export interface AuditInput {
 	actorUid?: number | null;

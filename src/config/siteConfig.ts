@@ -1,6 +1,7 @@
 import type { SiteConfig } from "@/types/siteConfig";
 import { resolvePageToggles } from "../utils/page-toggle-utils";
 import { resolveSiteLang } from "../utils/site-config-utils";
+import { applySiteOverrides } from "./site-overrides";
 
 // 定义站点语言
 // 语言代码，例如：'zh_CN', 'zh_TW', 'en', 'ja', 'ru', 'ko'。
@@ -40,7 +41,7 @@ const pages = resolvePageToggles({
 	sponsor: true,
 });
 
-export const siteConfig: SiteConfig = {
+const siteConfigBase: SiteConfig = {
 	// 站点标题
 	title: "Yuki Blog",
 
@@ -363,3 +364,9 @@ export const siteConfig: SiteConfig = {
 	// 页面开关配置，在本配置文件顶部pages定义
 	pages,
 };
+
+/**
+ * 对外导出的站点配置 = 上面的默认值 + `config/site.json` 的覆盖。
+ * 别的地方一律 import 这个，不要绕过它直接读 siteConfigBase。
+ */
+export const siteConfig: SiteConfig = applySiteOverrides(siteConfigBase);

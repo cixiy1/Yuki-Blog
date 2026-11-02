@@ -12,7 +12,7 @@ export type RouteName =
 	| "review"
 	| "users"
 	| "audit"
-	| "admin";
+	| "settings";
 
 export interface Route {
 	name: RouteName;
@@ -28,7 +28,7 @@ const ROUTES: RouteName[] = [
 	"review",
 	"users",
 	"audit",
-	"admin",
+	"settings",
 ];
 
 function parse(hash: string): Route {

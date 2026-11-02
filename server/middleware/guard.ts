@@ -1,9 +1,10 @@
 import type { MiddlewareHandler } from "hono";
 
-/** 认证相关的响应一律不缓存；媒体直出是例外，它按 id 内容寻址，可以长缓存 */
+/** 认证相关的响应一律不缓存；媒体直出与站点配置自检例外，它们按内容寻址或允许短缓存 */
 export const noStore: MiddlewareHandler = async (c, next) => {
 	await next();
 	if (c.req.method === "GET" && c.req.path.startsWith("/api/media/")) return;
+	if (c.req.method === "GET" && c.req.path === "/api/site-config") return;
 	c.header("Cache-Control", "no-store");
 };
 

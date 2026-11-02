@@ -82,6 +82,25 @@
       停用后其旧 cookie 401、重新登录 403；恢复并改角色 200；写 deleted 400；
       审计按动作筛选可用且 detail 里没有密码
 
+## P3.7 站点设置（管理端配置全站，2026-11-02）
+
+已完成，本地验收通过，未部署。设计与落地细节见 `site-config-design.md`。
+
+- [x] `config/site.json` 改为分区文档（site / profile / music / friends / banner / announcement）
+- [x] 六个 config 模块接覆盖层：`siteConfig` / `profileConfig` / `musicConfig` / `friendsConfig` / `backgroundWallpaper` / `announcementConfig`
+- [x] `src/utils/deep-merge.ts` + `src/config/site-overrides.ts`：只合并 patch 里真实存在的键，数组整体替换
+- [x] `0007_site_config_versions.sql`：发布历史表
+- [x] `server/lib/site-config.ts`：嵌套白名单 `CONFIG_SPEC`（含 list 类型）、草稿/已发布读写、密钥加密存取
+- [x] `server/routes/site-config.ts`：公开热字段接口 + 草稿/发布/回滚/立即应用/密钥六组端点
+- [x] `server/lib/github-contents.ts`：Contents API 写文件（GET sha → PUT，冲突报 409）
+- [x] `src/pages/site-defaults.json.ts`：构建期导出六分区默认值，给管理端当表单底座
+- [x] 管理端 `/admin/#/settings` 九组 tab + 字段级热/冷标记 + 列表编辑器 + 状态卡 + 版本历史
+- [x] 热通道：`src/utils/hot-config.ts` 运行时改 `--hue`，`hueAuto` 区分「热配置」与「访客自选」，`yb-hot-hue` 同步设置面板
+- [x] 移除占位的「站点管理」页
+- [x] 验收：六分区覆盖均进构建产物；接口 13 项（六分区保存、未知分区/字段、类型、越界、枚举、列表项、列表上限、立即应用、无令牌 412、公开接口只吐热字段）；浏览器 16 步（含列表增删移动、保存不丢、热色相跨刷新保持、访客自选不被覆盖）
+- [ ] 发布链路需要 fine-grained PAT，未跑通真实写入；无令牌时只能「导出 JSON」手动提交
+- [ ] 导航项/侧栏组件/书签导航/追番类未纳入（结构性配置，JSON 表达不清）
+
 ## P4 审核与发布
 
 - [ ] `inbox/` 目录约定与写入逻辑

@@ -30,11 +30,11 @@ const entries = [
 		show: canReview.value,
 	},
 	{
-		key: "admin",
+		key: "settings",
 		icon: "admin",
-		title: "站点管理",
-		desc: "用户、组织、设置与审计。",
-		path: "/admin",
+		title: "站点设置",
+		desc: "标题、外观、页面开关与密钥。",
+		path: "/settings",
 		show: isAdmin.value,
 	},
 ].filter((item) => item.show);

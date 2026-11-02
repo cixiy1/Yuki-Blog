@@ -6,6 +6,7 @@ import { auth } from "./routes/auth";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
+import { siteConfig } from "./routes/site-config";
 import type { AppEnv } from "./types";
 
 export const app: Hono<AppEnv> = new Hono<AppEnv>();
@@ -18,6 +19,8 @@ app.route("/api", health);
 app.route("/api/auth", auth);
 app.route("/api/me", me);
 app.route("/api/media", media);
+// 站点配置：公开的热字段 + 管理端草稿/发布/密钥，路径自己带 /admin 前缀
+app.route("/api", siteConfig);
 app.route("/api/admin", admin);
 
 // API 未命中返回 JSON，不要落成 HTML 404。

@@ -1,9 +1,11 @@
+import { mergeConfig } from "@/utils/deep-merge";
 import type { FriendLink, FriendsPageConfig } from "../types/friendsConfig";
+import { overrideFor } from "./site-overrides";
 
 // 可以在src/content/spec/friends.md中编写友链页面下方的自定义内容
 
-// 友链页面配置
-export const friendsPageConfig: FriendsPageConfig = {
+// 友链页面配置（默认值；管理端发布后由 site.json 的 `friends.page` 覆盖）
+const friendsPageConfigBase: FriendsPageConfig = {
 	// 页面标题，如果留空则使用 i18n 中的翻译
 	title: "",
 
@@ -20,8 +22,8 @@ export const friendsPageConfig: FriendsPageConfig = {
 	randomizeSort: false,
 };
 
-// 友链配置
-export const friendsConfig: FriendLink[] = [
+// 友链配置（默认值；管理端发布后由 site.json 的 `friends.links` 整体替换）
+const friendsLinksBase: FriendLink[] = [
 	{
 		title: "Firefly Docs",
 		imgurl: "https://docs-firefly.cuteleaf.cn/logo.png",
@@ -41,6 +43,21 @@ export const friendsConfig: FriendLink[] = [
 		enabled: true,
 	},
 ];
+
+/** 覆盖层的 friends 分区：page 合并、links 整体替换 */
+const friendsOverride = overrideFor<{
+	page?: FriendsPageConfig;
+	links?: FriendLink[];
+}>("friends");
+
+export const friendsPageConfig: FriendsPageConfig = mergeConfig(
+	friendsPageConfigBase,
+	friendsOverride.page ?? {},
+);
+
+export const friendsConfig: FriendLink[] = Array.isArray(friendsOverride.links)
+	? friendsOverride.links
+	: friendsLinksBase;
 
 // 获取启用的友链并进行排序
 export const getEnabledFriends = (): FriendLink[] => {

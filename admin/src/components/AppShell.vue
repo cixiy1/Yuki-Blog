@@ -9,7 +9,7 @@ import MyPosts from "../views/MyPosts.vue";
 import Overview from "../views/OverviewPage.vue";
 import PostEdit from "../views/PostEdit.vue";
 import ReviewQueue from "../views/ReviewQueue.vue";
-import SiteAdmin from "../views/SiteAdmin.vue";
+import SiteSettings from "../views/SiteSettings.vue";
 import UsersAdmin from "../views/UsersAdmin.vue";
 import AppIcon from "./AppIcon.vue";
 
@@ -21,7 +21,7 @@ const VIEWS: Record<RouteName, unknown> = {
 	review: ReviewQueue,
 	users: UsersAdmin,
 	audit: AuditLog,
-	admin: SiteAdmin,
+	settings: SiteSettings,
 };
 
 const current = computed(() => VIEWS[route.value.name] ?? Overview);
@@ -88,10 +88,10 @@ const navGroups = computed<NavGroup[]>(() => {
 					role: "admin",
 				},
 				{
-					key: "admin",
-					label: "站点管理",
+					key: "settings",
+					label: "站点设置",
 					icon: "admin",
-					path: "/admin",
+					path: "/settings",
 					role: "admin",
 				},
 			],

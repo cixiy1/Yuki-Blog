@@ -73,6 +73,65 @@ function aadFor(uid: number): ArrayBuffer {
 	return toArrayBuffer(encoder.encode(`yb-pw:${VERSION}:${uid}`));
 }
 
+/**
+ * 通用信封封装：密码之外的密钥（GitHub PAT、Resend key）也走同一套。
+ * 与密码共用根密钥，靠 AAD 做域分隔——`yb-secret:v1:<name>` 的密文
+ * 搬到密码列上解不开，反之亦然。
+ */
+export async function sealSecret(
+	secret: string,
+	name: string,
+	plain: string,
+): Promise<string | null> {
+	const key = await deriveKey(secret);
+	if (!key) return null;
+	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+	const cipher = await crypto.subtle.encrypt(
+		{
+			name: "AES-GCM",
+			iv: toArrayBuffer(iv),
+			additionalData: toArrayBuffer(
+				encoder.encode(`yb-secret:${VERSION}:${name}`),
+			),
+			tagLength: 128,
+		},
+		key,
+		toArrayBuffer(encoder.encode(plain)),
+	);
+	return `${VERSION}.${bytesToBase64Url(iv)}.${bytesToBase64Url(new Uint8Array(cipher))}`;
+}
+
+export async function openSecret(
+	secret: string,
+	name: string,
+	envelope: string,
+): Promise<string | null> {
+	const parts = envelope.split(".");
+	if (parts.length !== 3 || parts[0] !== VERSION) return null;
+	const key = await deriveKey(secret);
+	if (!key) return null;
+	const iv = base64UrlToBytes(parts[1]);
+	const data = base64UrlToBytes(parts[2]);
+	if (!iv || iv.byteLength !== IV_BYTES || !data) return null;
+	try {
+		const plain = await crypto.subtle.decrypt(
+			{
+				name: "AES-GCM",
+				iv: toArrayBuffer(iv),
+				additionalData: toArrayBuffer(
+					encoder.encode(`yb-secret:${VERSION}:${name}`),
+				),
+				tagLength: 128,
+			},
+			key,
+			toArrayBuffer(data),
+		);
+		return decoder.decode(plain);
+	} catch {
+		return null;
+	}
+}
+
 /** 加密；密钥未配置或格式不对返回 null，由调用方转 500 server_misconfigured */
 export async function encryptPassword(
 	secret: string,
