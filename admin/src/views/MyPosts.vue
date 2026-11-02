@@ -15,7 +15,7 @@ import {
 	submitPost,
 	withdrawPost,
 } from "../lib/posts";
-import { go } from "../router";
+import { go, goRepoEdit } from "../router";
 
 const posts = ref<PostSummary[]>([]);
 const loading = ref(true);
@@ -124,7 +124,7 @@ onMounted(refresh);
 	<div>
 		<PageHeader
 			title="我的文章"
-			desc="只有你自己写的稿子。站点上已发布的文章在「全站文章」里。"
+			desc="署名为你的全部文章：草稿在 D1，已发布的在仓库；「全站文章」是站点的全部。"
 		>
 			<template #actions>
 				<button
@@ -162,13 +162,18 @@ onMounted(refresh);
 		</div>
 
 		<ul v-else class="list">
-			<li v-for="post in visible" :key="post.id" class="row card-base">
+			<li
+				v-for="post in visible"
+				:key="post.origin === 'repo' ? `repo-${post.slug}` : `db-${post.id}`"
+				class="row card-base"
+			>
 				<div class="row-main">
 					<p class="row-title">
 						{{ post.title }}
 						<span class="badge" :data-status="post.status">
 							{{ STATUS_LABEL[post.status] ?? post.status }}
 						</span>
+						<span v-if="post.origin === 'repo'" class="badge src">仓库</span>
 						<span v-if="post.source_link" class="badge repost">转载</span>
 					</p>
 					<p class="row-meta">
@@ -183,48 +188,68 @@ onMounted(refresh);
 					</p>
 				</div>
 				<div class="row-actions">
-					<button
-						type="button"
-						class="btn-regular"
-						:disabled="busyId === post.id"
-						@click="go(`/posts/${post.id}`)"
-					>
-						{{ isEditable(post.status) ? "编辑" : "查看" }}
-					</button>
-					<button
-						v-if="isEditable(post.status)"
-						type="button"
-						class="btn-ghost"
-						:disabled="busyId === post.id"
-						@click="onSubmit(post)"
-					>
-						提交审核
-					</button>
-					<button
-						v-if="post.status === 'pending'"
-						type="button"
-						class="btn-ghost"
-						:disabled="busyId === post.id"
-						@click="onWithdraw(post)"
-					>
-						撤回
-					</button>
-					<button
-						v-if="isEditable(post.status)"
-						type="button"
-						class="btn-ghost danger"
-						:disabled="busyId === post.id"
-						@click="onDelete(post)"
-					>
-						<AppIcon name="trash" :size="15" />
-					</button>
+					<template v-if="post.origin === 'repo'">
+						<button
+							type="button"
+							class="btn-regular"
+							@click="goRepoEdit(post.slug)"
+						>
+							编辑
+						</button>
+						<a
+							class="btn-ghost"
+							:href="`/posts/${post.slug}/`"
+							target="_blank"
+							rel="noopener"
+						>
+							<AppIcon name="external" :size="15" />
+						</a>
+					</template>
+					<template v-else>
+						<button
+							type="button"
+							class="btn-regular"
+							:disabled="busyId === post.id"
+							@click="go(`/posts/${post.id}`)"
+						>
+							{{ isEditable(post.status) ? "编辑" : "查看" }}
+						</button>
+						<button
+							v-if="isEditable(post.status)"
+							type="button"
+							class="btn-ghost"
+							:disabled="busyId === post.id"
+							@click="onSubmit(post)"
+						>
+							提交审核
+						</button>
+						<button
+							v-if="post.status === 'pending'"
+							type="button"
+							class="btn-ghost"
+							:disabled="busyId === post.id"
+							@click="onWithdraw(post)"
+						>
+							撤回
+						</button>
+						<button
+							v-if="isEditable(post.status)"
+							type="button"
+							class="btn-ghost danger"
+							:disabled="busyId === post.id"
+							@click="onDelete(post)"
+						>
+							<AppIcon name="trash" :size="15" />
+						</button>
+					</template>
 				</div>
 			</li>
 		</ul>
 
 		<p class="footnote">
-			这里的草稿存在 D1，自动保存不会产生 git 提交。「待审」的文章要先撤回再改；
-			审核通过后由后端写进 <code>src/content/posts/</code> 并触发构建（P4）。
+			带「仓库」标签的是 <code>src/content/posts/</code> 里的已发布文章，编辑即改文件，
+			保存会提交一次 git 并触发构建；不带标签的是你在管理端建的稿子，存在 D1，
+			自动保存不产生提交。「待审」的先撤回再改。
 		</p>
 	</div>
 </template>
@@ -344,6 +369,14 @@ onMounted(refresh);
 .badge[data-status="rejected"] {
 	background: color-mix(in oklab, var(--admonitions-color-caution) 16%, transparent);
 	color: var(--admonitions-color-caution);
+}
+
+/* 「仓库」表示这篇来自 src/content/posts，编辑即改文件；「转载」看 sourceLink */
+.badge.src {
+	background: transparent;
+	border: 1px solid var(--line-divider);
+	color: var(--fg-50);
+	padding: calc(0.06rem - 1px) calc(0.42rem - 1px);
 }
 
 /* 「转载」看 frontmatter 的 sourceLink */

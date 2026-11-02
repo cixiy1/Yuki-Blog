@@ -229,6 +229,13 @@ function readId(c: Context<AppEnv>): number | null {
 	return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/**
+ * 我的文章 = 自己在 D1 里的稿子 + 仓库里署名为自己的已发布文章。
+ *
+ * 站点上现有的文章都写在用户系统之前，frontmatter 没有 author 字段——那批算站主的。
+ * 「全站文章」是另一栏，两者在多作者之前内容基本一样，但语义要对：
+ * 别人写的不会出现在这里。
+ */
 me.get("/posts", requireAuth, async (c) => {
 	const user = c.get("user");
 	if (!user) return c.json({ posts: [] });
@@ -239,7 +246,25 @@ me.get("/posts", requireAuth, async (c) => {
 		.bind(user.uid)
 		.all<PostRow>();
 
-	return c.json({ posts: (rows.results ?? []).map(toSummary) });
+	const mine = (rows.results ?? []).map(toSummary);
+	const known = new Set(mine.map((post) => String(post.slug)));
+
+	let owned: Record<string, unknown>[] = [];
+	if (user.role === "admin") {
+		// 站内目前只有站主一个作者，仓库里的文章都算他的。
+		// 不能拿 frontmatter 的 author 过滤：那栏在转载文章里写的是原文出处
+		//（比如「腾讯云开发者社区」），不是站内作者。
+		owned = (await readRepoPosts(c.env.ASSETS))
+			.filter((post) => !known.has(post.slug))
+			.map((post) => repoToSummary(post));
+	}
+
+	const posts = [...mine, ...owned].sort(
+		(a, b) =>
+			toMillis(b.published_at ?? b.updated_at) -
+			toMillis(a.published_at ?? a.updated_at),
+	);
+	return c.json({ posts });
 });
 
 /**
