@@ -71,12 +71,23 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api", "/api/*", "!/api/dynamic.json", "!/api/allPostMeta.json"]
   },
-  "d1_databases": [{ "binding": "DB", "database_name": "yuki-blog", "database_id": "..." }],
-  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "yuki-blog-media" }]
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yuki-blog",
+      "database_id": "b1a82660-fba5-4586-9799-a73ce5b04ab7",
+      "migrations_dir": "server/db/migrations"
+    }
+  ]
+  // r2_buckets 待账号开通 R2 后加，媒体上线前补
 }
 ```
+
+`run_worker_first` 里的 `!` 取反优先级高于通配，作用是把两个静态 JSON 端点留在 Assets 直出：它们本来就是 Astro 构建产物，不该因为 Worker 故障跟着挂。`not_found_handling: "404-page"` 让未匹配路径返回 `dist/404.html`（默认值 `none` 会返回 Cloudflare 自己的 404 页）。
 
 请求分流：
 
@@ -218,9 +229,12 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 
 ### P1 Worker 运行时骨架
 
+已完成于 `89bb9aa5`，本地验收全部通过，未部署。
+
 - `server/` 目录（Hono 入口）、`wrangler.jsonc` 升级、D1 建库与迁移脚本
 - 只加一个 `GET /api/health` 返回 `{ ok, db, time }`
-- 验收：`wrangler dev` 下 `/api/health` 通；`wrangler deploy` 后主站 11 个页面仍 200，`/api/dynamic.json` 仍是静态文件
+- 验收：`wrangler dev` 下 `/api/health` 通；`wrangler deploy --dry-run` 打包 81 KiB（gzip 20 KiB）；主站页面与两个静态 JSON 与改动前逐字节一致；`pnpm build` 产物 22 篇文章 / 385 个文件不变
+- 遗留：R2 未开通（账号报 code 10042），`r2_buckets` 绑定留到媒体阶段；远端 D1 未 apply 迁移，等 P2 真要用再跑 `db:migrate:remote`
 
 ### P2 认证
 
