@@ -1,0 +1,13 @@
+---
+import AuthPanel from "@/components/user/AuthPanel.astro";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+const title = "注册";
+const description =
+	"注册 Yuki Blog 账号：填邮箱、登录名和密码，邮件验证后即可登录。";
+---
+
+<MainGridLayout title={title} description={description}>
+	<meta slot="head" name="robots" content="noindex, nofollow" />
+	<AuthPanel mode="register" />
+</MainGridLayout>

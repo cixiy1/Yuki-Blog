@@ -8,6 +8,56 @@ function bytesToHex(bytes: Uint8Array): string {
 	return out;
 }
 
+/** 十六进制字符串 → 字节；长度奇数或含非法字符返回 null */
+export function hexToBytes(hex: string): Uint8Array | null {
+	if (hex.length === 0 || hex.length % 2 !== 0) return null;
+	if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+	const bytes = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < bytes.length; i += 1) {
+		bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+	}
+	return bytes;
+}
+
+/**
+ * 拷成独立 ArrayBuffer。
+ * TS 5.7 起 Uint8Array 带 ArrayBufferLike 泛型，crypto.subtle 与 Response 都只收
+ * ArrayBuffer 视图，直接把 Uint8Array 传进去会报类型不兼容；拷一份最省事。
+ */
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+	const copy = new ArrayBuffer(bytes.byteLength);
+	new Uint8Array(copy).set(bytes);
+	return copy;
+}
+
+/** 字节 → 无 padding 的 base64url（不含 "."，可直接用作分隔符分段） */
+export function bytesToBase64Url(bytes: Uint8Array): string {
+	let binary = "";
+	for (const byte of bytes) {
+		binary += String.fromCharCode(byte);
+	}
+	return btoa(binary)
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_")
+		.replace(/=+$/, "");
+}
+
+export function base64UrlToBytes(value: string): Uint8Array | null {
+	if (!/^[A-Za-z0-9_-]*$/.test(value)) return null;
+	let base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+	while (base64.length % 4 !== 0) base64 += "=";
+	try {
+		const binary = atob(base64);
+		const bytes = new Uint8Array(binary.length);
+		for (let i = 0; i < binary.length; i += 1) {
+			bytes[i] = binary.charCodeAt(i);
+		}
+		return bytes;
+	} catch {
+		return null;
+	}
+}
+
 export async function sha256Hex(input: string): Promise<string> {
 	const digest = await crypto.subtle.digest("SHA-256", encoder.encode(input));
 	return bytesToHex(new Uint8Array(digest));

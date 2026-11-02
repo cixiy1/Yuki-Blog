@@ -1,9 +1,9 @@
-import type { SessionUser } from "./lib/session";
+import type { SessionUser } from "./lib/users";
 
 export type AppEnv = {
 	Bindings: Env;
 	Variables: {
-		/** loadSession 会在链首置 null，命中会话后填值 */
+		/** loadSession 会在链首置 null，命中会话并查库成功后填值 */
 		user: SessionUser | null;
 	};
 };

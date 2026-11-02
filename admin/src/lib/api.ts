@@ -3,15 +3,14 @@
  * 服务端错误体固定是 { error, message }，见 server/routes 各路由。
  */
 export interface SessionUser {
-	id: number;
 	uid: number;
+	account: string;
 	email: string;
 	role: string;
 	status: string;
 	email_verified: number;
 	display_name: string;
 	avatar_url: string | null;
-	expires_at: string;
 }
 
 export class ApiError extends Error {

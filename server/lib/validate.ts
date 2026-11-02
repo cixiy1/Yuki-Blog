@@ -13,9 +13,58 @@ export function normalizeEmail(raw: unknown): string | null {
 	return email;
 }
 
-/** 6 位数字，允许前导零 */
-export function isLoginCode(raw: unknown): raw is string {
-	return typeof raw === "string" && /^\d{6}$/.test(raw);
+/**
+ * 登录名：3–20 位小写字母、数字、下划线，必须字母或数字开头。
+ * 一律转小写后存储与比较，避免 Alice / alice 变成两个账号。
+ * 保留字用于以后可能出现的路径或功能位（/admin、/support 之类）。
+ */
+const ACCOUNT_RE = /^[a-z0-9][a-z0-9_]{2,19}$/;
+const RESERVED_ACCOUNTS = new Set([
+	"admin",
+	"administrator",
+	"root",
+	"system",
+	"support",
+	"moderator",
+	"reviewer",
+	"yuki",
+	"yukiho",
+]);
+
+export function normalizeAccount(raw: unknown): string | null {
+	if (typeof raw !== "string") return null;
+	const account = raw.trim().toLowerCase();
+	if (!ACCOUNT_RE.test(account)) return null;
+	if (RESERVED_ACCOUNTS.has(account)) return null;
+	return account;
+}
+
+export interface PasswordPolicyResult {
+	ok: boolean;
+	value?: string;
+	message?: string;
+}
+
+/**
+ * 密码策略：NFC 归一后 8–128 个码点，至少一个字母 + 一个数字。
+ * 不 trim——首尾空格是合法字符，trim 掉会让用户下次登录失败。
+ */
+export function checkPasswordPolicy(raw: unknown): PasswordPolicyResult {
+	if (typeof raw !== "string") {
+		return { ok: false, message: "密码格式不正确" };
+	}
+	if (raw.length > 512) {
+		return { ok: false, message: "密码过长" };
+	}
+	const value = raw.normalize("NFC");
+	const length = [...value].length;
+	if (length < 8 || length > 128) {
+		return { ok: false, message: "密码长度需在 8–128 位之间" };
+	}
+	if (!/[A-Za-z]/.test(value) || !/[0-9]/.test(value)) {
+		return { ok: false, message: "密码至少要包含一个字母和一个数字" };
+	}
+	return { ok: true, value };
 }
 
 export function clientIp(request: Request): string {

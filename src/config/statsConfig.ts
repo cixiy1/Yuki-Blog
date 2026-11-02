@@ -49,7 +49,14 @@ export const statsConfig: StatsConfig = {
 	leaderboardCacheTtlMs: 60 * 60 * 1000,
 
 	// 前缀匹配（site-stats.js 里是 indexOf === 0），登录页与个人中心不计入访问统计
-	excludePaths: ["/login", "/me"],
+	excludePaths: [
+		"/login",
+		"/me",
+		"/register",
+		"/forgot-password",
+		"/reset-password",
+		"/verify",
+	],
 
 	debug: false,
 

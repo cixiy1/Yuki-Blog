@@ -239,11 +239,16 @@ export default defineConfig({
 				// 根据页面开关配置过滤sitemap
 				const url = new URL(page);
 				const pathname = url.pathname;
-				// 登录页与个人中心是纯交互页，自带 noindex，不进 sitemap
-				if (pathname === "/login/" || pathname === "/login") {
-					return false;
-				}
-				if (pathname === "/me/" || pathname === "/me") {
+				// 认证相关页面都是纯交互页，自带 noindex，不进 sitemap
+				const authPaths = [
+					"/login",
+					"/me",
+					"/register",
+					"/forgot-password",
+					"/reset-password",
+					"/verify",
+				];
+				if (authPaths.some((p) => pathname === `${p}/` || pathname === p)) {
 					return false;
 				}
 				if (pathname === "/dynamic/" && !siteConfig.pages.dynamic) {
@@ -358,9 +363,7 @@ export default defineConfig({
 		}),
 	},
 	vite: {
-		plugins: [
-			tailwindcss(),
-		],
+		plugins: [tailwindcss()],
 		server: {
 			watch: {
 				ignored: ["**/package/**", "**/Firefly-docs/**"],

@@ -3,7 +3,7 @@
  * 账号中心：登录表单 + 已登录信息，`/login/` 与 `/me/` 共用。
  *
  * mode="login"  —— 只有表单；登录后显示账号摘要与「进入个人中心」
- * mode="center" —— 表单；登录后显示账号信息 + 管理中心（仅 admin）+ 我的组织
+ * mode="center" —— 表单；登录后显示账号信息 + 账号安全 + 管理中心（admin）+ 我的组织
  *
  * 登录态只能在客户端拿到（静态构建），所以两块都 SSR 出来，由 <account-center>
  * 的脚本按 /api/auth/me 的结果切换。不用 visibility:hidden 藏整卡——无 JS 时会永久空白。
@@ -40,44 +40,62 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				<h2 class="text-2xl font-bold text-90">
 					{isCenter ? "登录后进入个人中心" : "登录 Yuki Blog"}
 				</h2>
-				<p class="mt-1.5 text-sm text-50">邮箱验证码登录，首次登录自动注册。</p>
+				<p class="mt-1.5 text-sm text-50">用账号或邮箱加密码登录。</p>
 			</div>
 
 			<form data-role="form" novalidate class="space-y-3">
 				<label class="block">
-					<span class="mb-1.5 block text-xs text-50">邮箱</span>
+					<span class="mb-1.5 block text-xs text-50">账号或邮箱</span>
 					<input
-						data-role="email"
-						type="email"
-						name="email"
-						autocomplete="email"
-						inputmode="email"
-						placeholder="you@example.com"
+						data-role="identifier"
+						name="identifier"
+						type="text"
+						autocomplete="username"
+						autocapitalize="off"
+						placeholder="account 或 you@example.com"
 						required
 						class={inputClass}
 					/>
 				</label>
 
-				<button data-role="send" type="button" class={regularBtnClass}>
-					发送验证码
-				</button>
+				<label class="block">
+					<span class="mb-1.5 block text-xs text-50">密码</span>
+					<input
+						data-role="password"
+						name="password"
+						type="password"
+						autocomplete="current-password"
+						placeholder="至少 8 位，含字母和数字"
+						required
+						class={inputClass}
+					/>
+				</label>
 
-				<div data-role="code-block" hidden class="space-y-3">
-					<label class="block">
-						<span class="mb-1.5 block text-xs text-50">验证码</span>
+				<div class="flex items-center justify-between gap-3 text-xs">
+					<label class="flex cursor-pointer items-center gap-2 text-50">
 						<input
-							data-role="code"
-							name="code"
-							inputmode="numeric"
-							autocomplete="one-time-code"
-							maxlength="6"
-							placeholder="6 位数字"
-							class={inputClass}
+							data-role="remember"
+							type="checkbox"
+							class="h-3.5 w-3.5 accent-(--primary)"
 						/>
+						记住我（30 天）
 					</label>
-					<button type="submit" class={primaryBtnClass}>登录</button>
+					<a data-role="forgot" href={url("/forgot-password/")} class="text-(--btn-content) hover:underline">
+						忘记密码
+					</a>
 				</div>
+
+				<button data-role="submit" type="submit" class={primaryBtnClass}>
+					登录
+				</button>
 			</form>
+
+			<p class="mt-3 text-xs text-50">
+				还没有账号？
+				<a data-role="register" href={url("/register/")} class="text-(--btn-content) hover:underline">
+					注册一个
+				</a>
+			</p>
 
 			<div class="my-5 flex items-center gap-3 text-xs text-50">
 				<span class="h-px flex-1 bg-(--line-divider)"></span>
@@ -101,6 +119,15 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				class="mt-3 min-h-5 text-xs text-50"
 			>
 			</p>
+
+			<button
+				data-role="resend-verify"
+				type="button"
+				hidden
+				class="btn-regular mt-2 h-9 w-full rounded-lg text-xs font-medium"
+			>
+				重新发送验证邮件
+			</button>
 		</section>
 
 		{/* 已登录 */}
@@ -131,6 +158,10 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 
 			<dl class="mt-5 divide-y divide-(--line-divider) text-sm">
 				<div class="flex items-center justify-between gap-3 py-2.5">
+					<dt class="shrink-0 text-50">登录名</dt>
+					<dd data-role="account" class="truncate text-90"></dd>
+				</div>
+				<div class="flex items-center justify-between gap-3 py-2.5">
 					<dt class="shrink-0 text-50">邮箱</dt>
 					<dd class="flex min-w-0 items-center gap-2 text-90">
 						<span data-role="email" class="truncate"></span>
@@ -140,17 +171,51 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 							class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--btn-content)"
 							>已验证</span
 						>
+						<span
+							data-role="unverified"
+							hidden
+							class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--admonitions-color-caution)"
+							>未验证</span
+						>
 					</dd>
-				</div>
-				<div class="flex items-center justify-between gap-3 py-2.5">
-					<dt class="shrink-0 text-50">会话有效期至</dt>
-					<dd data-role="expiry" class="text-90 tabular-nums"></dd>
 				</div>
 			</dl>
 
 			{
 				isCenter && (
 					<div class="mt-6 space-y-3">
+						<div class="rounded-xl border border-(--line-divider) p-4">
+							<div class="flex items-center gap-2 text-sm font-semibold text-90">
+								<Icon
+									name="material-symbols:lock-outline"
+									class="text-base text-(--primary)"
+								/>
+								修改密码
+							</div>
+							<form data-role="pw-form" novalidate class="mt-3 space-y-2.5">
+								<input
+									data-role="pw-current"
+									type="password"
+									autocomplete="current-password"
+									placeholder="当前密码（第一次设密码可留空）"
+									class={inputClass}
+								/>
+								<input
+									data-role="pw-new"
+									type="password"
+									autocomplete="new-password"
+									placeholder="新密码：至少 8 位，含字母和数字"
+									class={inputClass}
+								/>
+								<button type="submit" class={regularBtnClass}>
+									保存新密码
+								</button>
+								<p class="text-[11px] text-30">
+									改完会强制所有设备重新登录，当前浏览器自动续上。
+								</p>
+							</form>
+						</div>
+
 						<div
 							data-role="admin-block"
 							hidden
@@ -172,6 +237,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 								进入管理中心
 							</button>
 						</div>
+
 						<div class="rounded-xl border border-(--line-divider) p-4">
 							<div class="flex items-center gap-2 text-sm font-semibold text-90">
 								<Icon
@@ -197,6 +263,9 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 						</a>
 					)
 				}
+				<button data-role="logout-all" type="button" class={regularBtnClass}>
+					退出所有设备
+				</button>
 				<button data-role="logout" type="button" class={regularBtnClass}>
 					退出登录
 				</button>
@@ -232,8 +301,10 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 
 	interface MeUser {
 		uid: number;
+		account: string;
 		email: string;
 		role: Role;
+		status: string;
 		display_name: string;
 		avatar_url: string | null;
 		email_verified: number;
@@ -242,26 +313,14 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 	interface MeResponse {
 		authenticated: boolean;
 		user?: MeUser;
-		session?: { expires_at: string | null };
 		error?: string;
 		message?: string;
 	}
 
-	interface CodeResponse {
-		ok?: boolean;
-		expires_in?: number;
-		resend_after?: number;
-		debug_code?: string;
-		error?: string;
-		message?: string;
-		retry_after?: number;
-	}
-
-	interface VerifyResponse {
+	interface BasicResponse {
 		ok?: boolean;
 		error?: string;
 		message?: string;
-		remaining?: number;
 		retry_after?: number;
 	}
 
@@ -279,27 +338,24 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 		github_exchange_failed: "与 GitHub 换取凭证失败，请重试",
 		github_email_unverified: "GitHub 账号没有已验证的邮箱",
 		state_invalid: "登录状态校验失败，请重新发起",
-		account_suspended: "账号已被停用",
+		account_disabled: "账号已被停用",
 		login_failed: "登录失败，请重试",
 	};
 
-	class AccountCenter extends HTMLElement {
-		#timer: number | null = null;
+	const QUERY_NOTE: Record<string, string> = {
+		verified: "邮箱已验证，欢迎回来",
+		reset: "密码已重置，用新密码登录即可",
+		registered: "验证邮件已发出，去邮箱点链接即可激活",
+	};
 
+	class AccountCenter extends HTMLElement {
 		connectedCallback(): void {
 			if (this.dataset.ready === "1") return;
 			this.dataset.ready = "1";
 			this.#bind();
 			this.#fixGithubHref();
-			void this.#refresh();
 			this.#showOauthError();
-		}
-
-		disconnectedCallback(): void {
-			if (this.#timer !== null) {
-				window.clearInterval(this.#timer);
-				this.#timer = null;
-			}
+			void this.#refresh();
 		}
 
 		/** 切页时新旧 DOM 可能短暂共存，一律在元素内查 */
@@ -329,13 +385,26 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			return { ok: res.ok, status: res.status, data };
 		}
 
+		#post<T>(path: string, body: unknown) {
+			return this.#call<T>(path, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			});
+		}
+
 		#bind(): void {
-			this.#q("send")?.addEventListener("click", () => void this.#send());
 			this.#q("form")?.addEventListener("submit", (event) => {
 				event.preventDefault();
-				void this.#verify();
+				void this.#login();
 			});
-			this.#q("logout")?.addEventListener("click", () => void this.#logout());
+			this.#q("logout")?.addEventListener("click", () => void this.#logout(false));
+			this.#q("logout-all")?.addEventListener("click", () => void this.#logout(true));
+			this.#q("resend-verify")?.addEventListener("click", () => void this.#resend());
+			this.#q("pw-form")?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.#changePassword();
+			});
 			// 用整页跳转而不是 <a href>：/admin/ 是独立 SPA，不能被 Swup 接管替换容器
 			this.#q("admin-open")?.addEventListener("click", () => {
 				location.assign("/admin/");
@@ -360,18 +429,29 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 		}
 
 		#showOauthError(): void {
-			const error = new URLSearchParams(location.search).get("error");
-			if (!error) return;
-			this.#say("msg", OAUTH_ERROR[error] ?? "登录失败，请重试", "error");
-			const clean = location.pathname;
-			history.replaceState(null, "", clean);
+			const params = new URLSearchParams(location.search);
+			const error = params.get("error");
+			if (error) {
+				this.#say("msg", OAUTH_ERROR[error] ?? "登录失败，请重试", "error");
+				history.replaceState(null, "", location.pathname);
+				return;
+			}
+			for (const [key, text] of Object.entries(QUERY_NOTE)) {
+				if (params.get(key) === "1") {
+					this.#say("msg", text, "ok");
+					history.replaceState(null, "", location.pathname);
+					return;
+				}
+			}
 		}
 
-		#showGuest(msg = ""): void {
+		#showGuest(msg = "", allowResend = false): void {
 			const guest = this.#q("guest");
 			const logged = this.#q("logged");
 			if (guest) guest.hidden = false;
 			if (logged) logged.hidden = true;
+			const resend = this.#q("resend-verify");
+			if (resend) resend.hidden = !allowResend;
 			if (msg) this.#say("msg", msg, "error");
 		}
 
@@ -384,7 +464,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			if (guest) guest.hidden = true;
 			if (logged) logged.hidden = false;
 
-			const name = user.display_name || user.email.split("@")[0];
+			const name = user.display_name || user.account || user.email.split("@")[0];
 			const nameEl = this.#q("name");
 			if (nameEl) nameEl.textContent = name;
 
@@ -394,19 +474,16 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			const uidEl = this.#q("uid");
 			if (uidEl) uidEl.textContent = String(user.uid);
 
+			const accountEl = this.#q("account");
+			if (accountEl) accountEl.textContent = user.account || "—";
+
 			const emailEl = this.#q("email");
 			if (emailEl) emailEl.textContent = user.email;
 
 			const verifiedEl = this.#q("verified");
 			if (verifiedEl) verifiedEl.hidden = !user.email_verified;
-
-			const expiryEl = this.#q("expiry");
-			if (expiryEl) {
-				const iso = me.session?.expires_at;
-				expiryEl.textContent = iso
-					? new Date(iso).toLocaleString("zh-CN", { hour12: false })
-					: "—";
-			}
+			const unverifiedEl = this.#q("unverified");
+			if (unverifiedEl) unverifiedEl.hidden = Boolean(user.email_verified);
 
 			const avatar = this.#q<HTMLImageElement>("avatar");
 			const fallback = this.#q("avatar-fallback");
@@ -433,122 +510,117 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				this.#showLogged(r.data);
 				return;
 			}
-			this.#showGuest(
-				r.data.error === "account_suspended" ? "账号已被停用" : "",
-			);
+			if (r.status === 403 && r.data.error === "email_unverified") {
+				this.#showGuest("邮箱还没验证，先去收信里的链接", true);
+				return;
+			}
+			if (r.status === 403 && r.data.error === "account_disabled") {
+				this.#showGuest("账号已被停用", false);
+				return;
+			}
+			this.#showGuest();
 		}
 
-		#cooldown(seconds: number): void {
-			const btn = this.#q<HTMLButtonElement>("send");
-			if (!btn) return;
-			if (this.#timer !== null) {
-				window.clearInterval(this.#timer);
-				this.#timer = null;
+		async #login(): Promise<void> {
+			const identifier = this.#q<HTMLInputElement>("identifier")?.value.trim() ?? "";
+			const password = this.#q<HTMLInputElement>("password")?.value ?? "";
+			const remember = this.#q<HTMLInputElement>("remember")?.checked === true;
+
+			if (!identifier || !password) {
+				this.#say("msg", "账号和密码都要填", "error");
+				return;
 			}
-			let left = seconds;
-			btn.disabled = true;
-			btn.textContent = `重新发送 (${left}s)`;
-			this.#timer = window.setInterval(() => {
-				left -= 1;
-				if (left <= 0) {
-					if (this.#timer !== null) window.clearInterval(this.#timer);
-					this.#timer = null;
-					btn.disabled = false;
-					btn.textContent = "重新发送";
+
+			const submit = this.#q<HTMLButtonElement>("submit");
+			if (submit) submit.disabled = true;
+			this.#say("msg", "登录中…", "");
+
+			const r = await this.#post<BasicResponse & { email?: string }>(
+				"/api/auth/login",
+				{ identifier, password, remember },
+			);
+
+			if (submit) submit.disabled = false;
+
+			if (r.ok) {
+				this.#say("msg", "", "");
+				const next = this.#nextTarget();
+				if (next) {
+					location.assign(next);
 					return;
 				}
-				btn.textContent = `重新发送 (${left}s)`;
-			}, 1000);
+				await this.#refresh();
+				return;
+			}
+
+			if (r.data.error === "email_unverified") {
+				const resend = this.#q("resend-verify");
+				if (resend) resend.hidden = false;
+				this.#say("msg", "邮箱还没验证，先去收信，或点下面的按钮重发", "error");
+				return;
+			}
+			if (r.data.error === "account_disabled") {
+				this.#say("msg", "账号已被停用", "error");
+				return;
+			}
+			if (r.status === 429 && r.data.retry_after) {
+				this.#say(
+					"msg",
+					`尝试太频繁，${r.data.retry_after} 秒后再试`,
+					"error",
+				);
+				return;
+			}
+			this.#say("msg", r.data.message || "账号或密码不正确", "error");
 		}
 
-		async #send(): Promise<void> {
-			const emailInput = this.#q<HTMLInputElement>("email");
-			const email = emailInput?.value.trim() ?? "";
-			if (!email) {
+		async #resend(): Promise<void> {
+			const email = this.#q("email")?.textContent?.trim() ?? "";
+			const identifier =
+				email || (this.#q<HTMLInputElement>("identifier")?.value.trim() ?? "");
+			if (!identifier) {
 				this.#say("msg", "先填邮箱", "error");
 				return;
 			}
-			this.#say("msg", "发送中…", "");
-			const r = await this.#call<CodeResponse>("/api/auth/email-code", {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ email }),
+			const r = await this.#post<BasicResponse>("/api/auth/resend-verification", {
+				email: identifier,
 			});
-
-			if (!r.ok) {
-				let hint = r.data.message || "发送失败";
-				if (r.status === 429 && r.data.retry_after) {
-					hint += `（${r.data.retry_after} 秒后可重试）`;
-				}
-				this.#say("msg", hint, "error");
+			if (r.status === 429 && r.data.retry_after) {
+				this.#say("msg", `刚发过，${r.data.retry_after} 秒后再试`, "error");
 				return;
 			}
-
-			const block = this.#q("code-block");
-			if (block) block.hidden = false;
-			const codeInput = this.#q<HTMLInputElement>("code");
-			codeInput?.focus();
-
-			if (r.data.debug_code && codeInput) {
-				codeInput.value = r.data.debug_code;
-				this.#say(
-					"msg",
-					`本地调试模式，验证码已自动填入：${r.data.debug_code}`,
-					"ok",
-				);
-			} else {
-				this.#say("msg", "验证码已发送，10 分钟内有效", "ok");
-			}
-
-			this.#cooldown(r.data.resend_after ?? 60);
+			this.#say("msg", "验证邮件已发出，去邮箱看看", "ok");
 		}
 
-		async #verify(): Promise<void> {
-			const emailInput = this.#q<HTMLInputElement>("email");
-			const codeInput = this.#q<HTMLInputElement>("code");
-			const email = emailInput?.value.trim() ?? "";
-			const code = codeInput?.value.trim() ?? "";
-
-			if (!/^\d{6}$/.test(code)) {
-				this.#say("msg", "验证码是 6 位数字", "error");
+		async #changePassword(): Promise<void> {
+			const current =
+				this.#q<HTMLInputElement>("pw-current")?.value ?? "";
+			const next = this.#q<HTMLInputElement>("pw-new")?.value ?? "";
+			if (!next) {
+				this.#say("me-msg", "先填新密码", "error");
 				return;
 			}
-			this.#say("msg", "登录中…", "");
-			const r = await this.#call<VerifyResponse>("/api/auth/verify", {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ email, code }),
+			const r = await this.#post<BasicResponse>("/api/auth/password", {
+				current_password: current,
+				password: next,
 			});
-
 			if (!r.ok) {
-				let hint = r.data.message || "登录失败";
-				if (r.data.error === "code_mismatch") {
-					hint = `验证码不对，还可以试 ${r.data.remaining ?? 0} 次`;
-				} else if (r.status === 429 && r.data.retry_after) {
-					hint += `（${r.data.retry_after} 秒后可重试）`;
-				}
-				this.#say("msg", hint, "error");
+				this.#say("me-msg", r.data.message || "改密失败，请重试", "error");
 				return;
 			}
-
-			this.#say("msg", "", "");
-			if (codeInput) codeInput.value = "";
-			const block = this.#q("code-block");
-			if (block) block.hidden = true;
-			const next = this.#nextTarget();
-			if (next) {
-				location.assign(next);
-				return;
-			}
-			await this.#refresh();
+			const currentInput = this.#q<HTMLInputElement>("pw-current");
+			const nextInput = this.#q<HTMLInputElement>("pw-new");
+			if (currentInput) currentInput.value = "";
+			if (nextInput) nextInput.value = "";
+			this.#say("me-msg", "密码已更新，其它设备需要重新登录", "ok");
 		}
 
-		async #logout(): Promise<void> {
-			const r = await this.#call("/api/auth/logout", {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-			});
-			if (!r.ok) {
+		async #logout(allDevices: boolean): Promise<void> {
+			const r = await this.#post<BasicResponse>(
+				allDevices ? "/api/auth/logout-all" : "/api/auth/logout",
+				{},
+			);
+			if (!r.ok && r.status !== 401) {
 				this.#say("me-msg", "退出失败，请重试", "error");
 				return;
 			}

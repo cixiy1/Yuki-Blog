@@ -1,15 +1,23 @@
 # 复制成 .dev.vars 后填值（.dev.vars 已被 gitignore，不要提交）
 #
-# AUTH_PEPPER 必填：验证码与 IP 哈希的机密盐，缺失时认证接口一律 500。
-#   生成：openssl rand -hex 32
-# RESEND_API_KEY 留空时验证码不发信、只打到 console；本地验收靠 AUTH_DEBUG。
+# AUTH_PEPPER 必填：IP / 登录标识哈希的机密盐，缺失时认证接口一律 500。
+# SESSION_SECRET 必填：无状态会话 cookie 的 HMAC 密钥。
+# PASSWORD_ENC_KEY 必填：密码加密密钥，hex(32 字节)。丢了等于所有密码作废。
+#   三个都用 openssl rand -hex 32 生成，且**必须互不相同**。
+# PASSWORD_ENC_KEY_PREV 只在轮换密钥时填：旧密钥解出的密码会惰性用新密钥重写。
+# RESEND_API_KEY 留空时不发信、只打 console，本地验收靠 AUTH_DEBUG 回显链接。
 # MAIL_FROM 用已在 Resend 验证过的域名下的地址。
 # GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET 留空时 /api/auth/github/start 返回 503。
-# AUTH_DEBUG=1 只在本地开：它要求同时满足「回环地址」，生产永远吐不出 debug_code。
+# AUTH_DEBUG=1 只在本地开：它还要求回环地址，生产永远吐不出 debug_link。
+# SITE_ORIGIN 用于拼邮件里的链接；留空时用请求自身 origin。
 
 AUTH_PEPPER=
+SESSION_SECRET=
+PASSWORD_ENC_KEY=
+PASSWORD_ENC_KEY_PREV=
 RESEND_API_KEY=
 MAIL_FROM="Yuki Blog <mail@yiyu14.top>"
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
+SITE_ORIGIN=
 AUTH_DEBUG=1

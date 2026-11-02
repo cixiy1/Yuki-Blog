@@ -348,3 +348,92 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 - **普通用户能否直接用 `src/components/widget/` 里的公共组件**（如 `ClassSchedule`）？如果能，课表数据谁维护？
 - **组织是用邀请制还是也允许申请加入**？邀请已定，申请加入是否需要？
 - **组织的分类维度与现有 category 如何共存**：文章可同时挂 org 与 category，前端两个入口是否都要出现在导航？
+
+---
+
+## 十二、账号系统重建（P3.5，2026-11-02）
+
+> 本节**取代**第七、八节里关于认证的描述。原「邮箱验证码登录、不存密码」方案已下线，
+> 参考 `cixiy1/Fatfish-Study-Platform` 的账号模型重做：账号 + 密码 + 邮件激活 + 找回密码。
+
+### 为什么改
+
+验证码登录只适合「只读 + 偶尔发帖」的轻量场景。这个站要长成有作者、有审核、有组织的地方，
+需要长期稳定的身份（登录名）、可找回的凭据、可封禁可下线的能力。密码体系麻烦，但这些它都能给。
+
+### 决定性取舍
+
+| 议题 | 结论 | 代价 / 说明 |
+| --- | --- | --- |
+| 密码存储 | **AES-256-GCM 可逆加密**（不是哈希） | 见下节风险说明；这是产品决策，不是安全最佳实践 |
+| 会话 | **无状态 HMAC 签名 cookie**，不留会话表 | 单设备登出不彻底；全量失效靠 `users.session_epoch` |
+| 每请求成本 | `loadSession` 每个 `/api/*` 查一次 `users`（uid 唯一索引） | 用一次索引读换「改角色/封禁立刻生效」 |
+| 登出入口 | 单设备（删 cookie）、全部设备（epoch+1） | 前者对已流出的票无效力，后者才是硬失效 |
+| 会话时效 | 不勾记住我 12 小时 + 会话 cookie；勾了 30 天 | 不做滑动续期，GET 不写 cookie |
+| 限流 | D1 `rate_limits` 固定窗口计数 | Worker 无进程内 Map；边界处最多 2 倍突发 |
+
+### 密码存储的风险与缓解（必读）
+
+**性质**：可解密意味着「拿到密钥 = 拿到全部明文密码」。这与哈希有本质区别，
+任何安全评审都会先拍这一条。写在这里是为了让后来的人知道这是**知情选择**，不是疏漏。
+
+| 泄露组合 | 后果 | 缓解 |
+| --- | --- | --- |
+| 只有 D1 泄露（备份外流、误导出、注入） | 密码安全（密文无密钥解不开） | 密钥只在 Worker secret，库里没有任何派生材料 |
+| 只有密钥泄露（env 外流、代码执行） | 也拿不到历史密码（没有密文） | 密钥不放 `wrangler.jsonc` 的 vars、不打日志 |
+| 两者同时泄露 | 全部明文密码 | 不提供任何解密端点；`password_enc` 不进 API / 日志 / 审计；登录页提示「别复用重要密码」 |
+| 用户在别处用同一密码 | 连带外站 | 只能靠提示；这也是「不该存可逆密码」的根本理由 |
+
+**减少损害的具体做法**：
+
+- 信封格式 `v1.<iv>.<ct>`，AAD 绑 `yb-pw:v1:<uid>`——把 A 行的密文搬到 B 行，解密直接失败
+- 密钥 `PASSWORD_ENC_KEY`（hex 32 字节）经 HKDF-SHA256 派生，salt/info 与 `SESSION_SECRET` 做域分隔
+- 轮换：`PASSWORD_ENC_KEY_PREV` 解出来的密码在登录时**惰性用新密钥重写**，用户无感
+- 版本前缀留好位：将来若要改回哈希，登录成功后按 `version !== "v2"` 渐进重写即可，不需要一次性迁移
+
+### 数据模型变化（0005 / 0006）
+
+`users` 重建后：`account`（唯一、登录名）、`password_enc`（NULL = 纯 OAuth 账号）、
+`password_updated_at`、`email_verified_at`、`session_epoch`；
+`status` 改为 `pending / active / disabled / deleted`（原 `suspended` → `disabled`，`active` 但没验证过 → `pending`）；
+`role` 默认值显式写成 `'user'`（参考实现这里是 `'admin'`，一次漏写字段就是提权）。
+
+删表：`sessions`（改无状态 cookie）、`email_codes`（验证码链路下线）。
+新表：`email_verification_tokens`（24h）、`password_reset_tokens`（1h）、`rate_limits`（固定窗口计数）。
+两张 token 表都**只存 sha256**，明文只在邮件链接里出现一次。
+
+⚠️ `0005` 含重建表的破坏性语句，**不可重复执行**，幂等性由 `d1_migrations` 保证；
+本地要从零重来：`rm -rf .wrangler/state && pnpm db:migrate:local`。
+
+### 端点（全部 `/api`，写操作一律 `sameOriginGuard` + `requireJsonBody`）
+
+| 方法 | 路径 | 权限 | 关键行为 |
+| --- | --- | --- | --- |
+| POST | `/auth/register` | 公开 | **恒 202**；邮箱已存在只发「你已有账号」提醒，不建号 |
+| POST | `/auth/login` | 公开 | 账号或邮箱 + 密码；错密码统一 401；只有状态不对才 403 |
+| POST | `/auth/logout` | 公开 | 幂等，删 cookie |
+| POST | `/auth/logout-all` | 登录 | `session_epoch + 1` |
+| GET | `/auth/me` | 公开 | 未登录 401 + `authenticated:false` |
+| POST | `/auth/verify-email` | 公开 | **POST 消费 token**（不用 GET，避免邮件扫描器烧掉链接），成功后自动登录 |
+| POST | `/auth/resend-verification` | 公开 | 恒 202，只对 `pending` 真发信 |
+| POST | `/auth/forgot-password` | 公开 | 恒 202，只对存在且设过密码的发信，1 小时有效 |
+| POST | `/auth/reset-password` | 公开 | 消费 token → 改密 → 补验证 → `epoch+1`；**不自动登录** |
+| POST | `/auth/password` | 登录 | 改密，当前浏览器自动续票，其它设备失效 |
+| GET | `/auth/github/start`、`/callback` | 公开 | 三级匹配：绑定表 → 同邮箱并号 → 新建；不拿占位邮箱凑数 |
+
+限流桶：`register:ip` 5/1h、`register:email` 1/10min、`login:ip` 30/15min、`login:id` 10/15min、
+`verify:resend` 1/10min、`reset:email` 3/1h、`reset:ip` 10/1h、`notice:email` 1/1h。登录成功清空 `login:*`。
+
+### 页面
+
+`/login/`（账号或邮箱 + 密码 + 记住我 + 注册/忘记密码入口）、`/register/`、`/forgot-password/`、
+`/reset-password/?token=`、`/verify/?token=`。全部 `noindex`、不进 sitemap 与统计；
+涉及 token 的三个页面加 `no-referrer` 并在用完后抹掉 query。
+
+### 已知偏差
+
+- **没配 `RESEND_API_KEY` 时注册会 202 但发不出信**，账号停在 `pending` 无法登录。
+  本地靠 `AUTH_DEBUG=1` 的 `debug_link`；生产必须先配好 Resend 再开注册
+- **管理员角色不能在界面里增删**（只能改普通用户 / 审核员），防止误封锁死站点；需要时走 `wrangler d1 execute`
+- `pending` 僵尸账号不清理（没有 Cron Trigger）
+- 老的 `yb_session` cookie 在本次上线后全部失效，所有人需重新登录

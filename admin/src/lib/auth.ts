@@ -37,8 +37,13 @@ export async function loadSession(): Promise<void> {
 		authStatus.value = "anon";
 	} catch (error) {
 		user.value = null;
-		if (error instanceof ApiError && error.status === 401) {
+		// 401 未登录、403 未验证/停用，都回到登录页；后者把原因带到地址上
+		if (
+			error instanceof ApiError &&
+			(error.status === 401 || error.status === 403)
+		) {
 			authStatus.value = "anon";
+			authError.value = error.message;
 			return;
 		}
 		authError.value = error instanceof Error ? error.message : "无法连接服务端";

@@ -43,8 +43,16 @@ interface Env {
 	DB: D1Database;
 	ASSETS: AssetsFetcher;
 
-	/** 验证码与 IP 哈希的机密盐，缺失时认证接口一律 500 */
+	/** IP / 标识哈希的机密盐，缺失时认证接口一律 500 */
 	AUTH_PEPPER?: string;
+	/** 无状态会话 cookie 的 HMAC 密钥，hex，缺失时认证接口一律 500 */
+	SESSION_SECRET?: string;
+	/** 密码加密密钥，hex(32 字节)，缺失时注册与改密一律 500 */
+	PASSWORD_ENC_KEY?: string;
+	/** 上一把密码密钥，仅用于惰性重加密，可缺省 */
+	PASSWORD_ENC_KEY_PREV?: string;
+	/** 邮件里链接的站点根地址；缺省时用请求自身 origin */
+	SITE_ORIGIN?: string;
 	/** Resend API key，缺失时只打 console 不发信 */
 	RESEND_API_KEY?: string;
 	/** 发件人，形如 `Yuki Blog <mail@yiyu14.top>` */

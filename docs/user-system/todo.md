@@ -52,6 +52,22 @@
 - [ ] 用户级组件管理 —— 移入 P4（要写进 `src/components/user/<uid>/` 才能 import，依赖 Contents API）
 - [ ] 页面型文章的实时预览 iframe —— 移入 P4（依赖发布链路）
 
+## P3.5 账号系统重建（2026-11-02，参考 Fatfish-Study-Platform）
+
+已完成，本地验收通过，未部署。详见 design.md 第十二节。
+
+- [x] `0005_accounts.sql`：重建 users（account / password_enc / email_verified_at / session_epoch，status 改 pending/active/disabled/deleted），删 sessions 与 email_codes
+- [x] `0006_auth_tokens.sql`：email_verification_tokens / password_reset_tokens / rate_limits + 审计索引
+- [x] `server/lib/password.ts`：HKDF + AES-256-GCM，信封 `v1.<iv>.<ct>`，AAD 绑 uid，`PASSWORD_ENC_KEY_PREV` 惰性重加密
+- [x] `server/lib/session.ts`：无状态 HMAC cookie，载荷只有 uid/epoch/时间戳；`__Host-` 双轨
+- [x] `server/lib/ratelimit.ts`：D1 固定窗口计数，替掉进程内 Map 式的思路
+- [x] `server/lib/tokens.ts` / `users.ts` / `audit.ts`：一次性 token 原子消费、用户查询、审计写入
+- [x] 认证端点重写：注册 / 登录 / 登出 / 退出所有设备 / me / 验证邮箱 / 重发验证 / 忘记密码 / 重置密码 / 改密
+- [x] GitHub OAuth 走三级匹配，去掉占位邮箱
+- [x] 前端：登录表单换密码、账号安全块（改密 + 退出所有设备），新增注册 / 找回 / 重置 / 验证四个页面
+- [x] sitemap、统计、robots 同步排除新页面
+- [x] 验收：注册 202 → 激活自动登录 → 账号与邮箱两种 identifier 登录 → 错密码 401 → 未验证 403 → 禁用 403 → 第 11 次错密码 429 → 篡改 cookie 401 → 封禁后旧票失效
+
 ## P4 审核与发布
 
 - [ ] `inbox/` 目录约定与写入逻辑

@@ -1,0 +1,376 @@
+---
+/**
+ * 认证页面板：注册 / 找回密码 / 重置密码 / 验证邮箱 四合一。
+ *
+ * 四个页面各自 SSR 出对应表单，<auth-panel data-mode> 的脚本只处理自己那一支。
+ * 与 AccountCenter 同一套约定：元素内查询、dataset.ready 去重、整页跳转。
+ */
+import { url } from "@/utils/url-utils";
+
+interface Props {
+	mode: "register" | "forgot" | "reset" | "verify";
+}
+
+const { mode } = Astro.props;
+
+const inputClass =
+	"w-full px-4 py-2.5 rounded-xl border border-(--line-divider) bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-(--primary) focus:ring-1 focus:ring-(--primary) outline-none transition-all duration-200 text-sm";
+const primaryBtnClass =
+	"w-full h-10 rounded-xl bg-(--primary) text-sm font-semibold text-white dark:text-black/70 hover:opacity-90 active:opacity-80 transition-opacity duration-150 disabled:opacity-60 disabled:pointer-events-none";
+
+const titles: Record<Props["mode"], { title: string; desc: string }> = {
+	register: {
+		title: "注册账号",
+		desc: "填好邮箱、登录名和密码，我们会发一封验证邮件。",
+	},
+	forgot: {
+		title: "找回密码",
+		desc: "填注册用的邮箱，我们发一条重置链接给你。",
+	},
+	reset: {
+		title: "设置新密码",
+		desc: "链接 1 小时内有效，只能用一次。",
+	},
+	verify: {
+		title: "验证邮箱",
+		desc: "正在核对你邮件里的链接。",
+	},
+};
+
+const { title, desc } = titles[mode];
+---
+
+<auth-panel data-mode={mode} class="block w-full">
+	<div class="flex w-full flex-col items-center" data-pagefind-ignore>
+		<section class="card-base w-full max-w-[28rem] px-6 py-8 md:px-8">
+			<div class="mb-6">
+				<h2 class="text-2xl font-bold text-90">{title}</h2>
+				<p class="mt-1.5 text-sm text-50">{desc}</p>
+			</div>
+
+			{
+				mode === "register" && (
+					<form data-role="form" novalidate class="space-y-3">
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">邮箱</span>
+							<input
+								data-role="email"
+								type="email"
+								autocomplete="email"
+								inputmode="email"
+								placeholder="you@example.com"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">登录名</span>
+							<input
+								data-role="account"
+								type="text"
+								autocomplete="username"
+								autocapitalize="off"
+								placeholder="3–20 位小写字母、数字、下划线"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">密码</span>
+							<input
+								data-role="password"
+								type="password"
+								autocomplete="new-password"
+								placeholder="至少 8 位，含字母和数字"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">再输一次密码</span>
+							<input
+								data-role="confirm"
+								type="password"
+								autocomplete="new-password"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<button data-role="submit" type="submit" class={primaryBtnClass}>
+							注册
+						</button>
+					</form>
+				)
+			}
+
+			{
+				mode === "forgot" && (
+					<form data-role="form" novalidate class="space-y-3">
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">注册邮箱</span>
+							<input
+								data-role="email"
+								type="email"
+								autocomplete="email"
+								inputmode="email"
+								placeholder="you@example.com"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<button data-role="submit" type="submit" class={primaryBtnClass}>
+							发送重置链接
+						</button>
+					</form>
+				)
+			}
+
+			{
+				mode === "reset" && (
+					<form data-role="form" novalidate class="space-y-3">
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">新密码</span>
+							<input
+								data-role="password"
+								type="password"
+								autocomplete="new-password"
+								placeholder="至少 8 位，含字母和数字"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<label class="block">
+							<span class="mb-1.5 block text-xs text-50">再输一次</span>
+							<input
+								data-role="confirm"
+								type="password"
+								autocomplete="new-password"
+								required
+								class={inputClass}
+							/>
+						</label>
+						<button data-role="submit" type="submit" class={primaryBtnClass}>
+							保存新密码
+						</button>
+					</form>
+				)
+			}
+
+			<p
+				data-role="msg"
+				role="status"
+				aria-live="polite"
+				class="mt-3 min-h-5 text-xs text-50"
+			>
+			</p>
+
+			<a
+				data-role="debug-link"
+				hidden
+				class="btn-regular mt-2 flex h-9 items-center justify-center rounded-lg text-xs font-medium"
+			>
+				本地调试：直接打开链接
+			</a>
+
+			<p class="mt-5 text-xs text-50">
+				<a data-role="back" href={url("/login/")} class="text-(--btn-content) hover:underline">
+					← 回到登录
+				</a>
+			</p>
+		</section>
+	</div>
+</auth-panel>
+
+<style>
+	[hidden] {
+		display: none !important;
+	}
+	[data-role="msg"][data-state="ok"] {
+		color: var(--primary);
+	}
+	[data-role="msg"][data-state="error"] {
+		color: var(--admonitions-color-caution);
+	}
+</style>
+
+<script>
+	import {
+		ACCOUNT_RE,
+		passwordHint,
+		postJson,
+		readNext,
+		readToken,
+		readTokenAndClean,
+		say,
+	} from "./auth-client";
+
+	interface BasicResponse {
+		ok?: boolean;
+		error?: string;
+		message?: string;
+		retry_after?: number;
+		debug_link?: string;
+	}
+
+	class AuthPanel extends HTMLElement {
+		#mode = "register";
+		#token = "";
+
+		#q<T extends HTMLElement>(role: string): T | null {
+			return this.querySelector<T>(`[data-role="${role}"]`);
+		}
+
+		#say(text: string, state: "" | "ok" | "error"): void {
+			say(this.#q("msg"), text, state);
+		}
+
+		#debugLink(link?: string): void {
+			const el = this.#q<HTMLAnchorElement>("debug-link");
+			if (!el || !link) return;
+			el.href = link;
+			el.hidden = false;
+		}
+
+		connectedCallback(): void {
+			if (this.dataset.ready === "1") return;
+			this.dataset.ready = "1";
+			this.#mode = this.dataset.mode ?? "register";
+
+			this.#q("form")?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.#submit();
+			});
+
+			if (this.#mode === "verify") void this.#verify();
+			// 重置页不立刻清地址栏：刷新后还能继续填，提交成功再清
+			if (this.#mode === "reset") this.#token = readToken();
+		}
+
+		#value(role: string): string {
+			return this.#q<HTMLInputElement>(role)?.value ?? "";
+		}
+
+		async #submit(): Promise<void> {
+			if (this.#mode === "register") await this.#register();
+			else if (this.#mode === "forgot") await this.#forgot();
+			else if (this.#mode === "reset") await this.#reset();
+		}
+
+		async #register(): Promise<void> {
+			const email = this.#value("email").trim();
+			const account = this.#value("account").trim().toLowerCase();
+			const password = this.#value("password");
+			const confirm = this.#value("confirm");
+
+			if (!email) return this.#say("邮箱不能为空", "error");
+			if (!ACCOUNT_RE.test(account)) {
+				return this.#say(
+					"登录名 3–20 位，只能用小写字母、数字、下划线，且不能是保留字",
+					"error",
+				);
+			}
+			const hint = passwordHint(password);
+			if (hint) return this.#say(hint, "error");
+			if (password !== confirm) return this.#say("两次密码不一致", "error");
+
+			this.#say("提交中…", "");
+			const r = await postJson<BasicResponse>("/api/auth/register", {
+				email,
+				account,
+				password,
+			});
+
+			if (r.status === 409) {
+				return this.#say("这个登录名被占用了，换一个", "error");
+			}
+			if (!r.ok && r.status !== 202) {
+				if (r.status === 429) {
+					return this.#say(
+						`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
+						"error",
+					);
+				}
+				return this.#say(r.data.message ?? "注册失败，请重试", "error");
+			}
+
+			this.#say("验证邮件已发出，去邮箱点链接就能激活", "ok");
+			this.#debugLink(r.data.debug_link);
+			const form = this.#q<HTMLFormElement>("form");
+			if (form) {
+				for (const input of form.querySelectorAll("input")) input.disabled = true;
+				const submit = this.#q<HTMLButtonElement>("submit");
+				if (submit) submit.disabled = true;
+			}
+		}
+
+		async #forgot(): Promise<void> {
+			const email = this.#value("email").trim();
+			if (!email) return this.#say("邮箱不能为空", "error");
+
+			this.#say("发送中…", "");
+			const r = await postJson<BasicResponse>("/api/auth/forgot-password", {
+				email,
+			});
+			if (r.status === 429) {
+				return this.#say(
+					`操作太频繁，${r.data.retry_after ?? 60} 秒后再试`,
+					"error",
+				);
+			}
+			// 与后端一致：不管邮箱存不存在，都显示同一句
+			this.#say("如果这个邮箱注册过，重置链接已经发出", "ok");
+			this.#debugLink(r.data.debug_link);
+		}
+
+		async #reset(): Promise<void> {
+			const token = this.#token;
+			const password = this.#value("password");
+			const confirm = this.#value("confirm");
+
+			if (!token) return this.#say("链接里没有 token，回到登录页重新发起", "error");
+			const hint = passwordHint(password);
+			if (hint) return this.#say(hint, "error");
+			if (password !== confirm) return this.#say("两次密码不一致", "error");
+
+			this.#say("保存中…", "");
+			const r = await postJson<BasicResponse>("/api/auth/reset-password", {
+				token,
+				password,
+			});
+			if (!r.ok) {
+				return this.#say(
+					r.data.error === "token_invalid"
+						? "链接无效或已过期，重新发起一次"
+						: (r.data.message ?? "重置失败，请重试"),
+					"error",
+				);
+			}
+			history.replaceState(null, "", location.pathname);
+			this.#say("密码已重置，正在跳到登录页…", "ok");
+			setTimeout(() => location.assign("/login/?reset=1"), 1200);
+		}
+
+		async #verify(): Promise<void> {
+			const token = readTokenAndClean();
+			if (!token) return this.#say("链接里没有 token，回到登录页重新登录", "error");
+
+			this.#say("验证中…", "");
+			const r = await postJson<BasicResponse>("/api/auth/verify-email", {
+				token,
+			});
+			if (!r.ok) {
+				const text =
+					r.status === 403
+						? "账号已被停用"
+						: "链接无效或已过期，去登录页重新发一封";
+				return this.#say(text, "error");
+			}
+			this.#say("验证成功，正在进入个人中心…", "ok");
+			setTimeout(() => location.assign(readNext() ?? "/me/"), 900);
+		}
+	}
+
+	if (!customElements.get("auth-panel")) {
+		customElements.define("auth-panel", AuthPanel);
+	}
+</script>

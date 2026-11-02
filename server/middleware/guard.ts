@@ -37,6 +37,14 @@ export const requireJsonBody: MiddlewareHandler = async (c, next) => {
  * 这样既挡住跨站表单与 fetch，又不影响命令行验收。
  */
 export const sameOriginGuard: MiddlewareHandler = async (c, next) => {
+	// 现代浏览器会给跨站请求带上这个头，比 Origin 更难伪造（页面脚本改不了）
+	if (c.req.header("sec-fetch-site") === "cross-site") {
+		return c.json(
+			{ error: "cross_origin_blocked", message: "跨站请求被拒绝" },
+			403,
+		);
+	}
+
 	const origin = c.req.header("origin");
 	if (origin !== undefined) {
 		const self = new URL(c.req.url).origin;
