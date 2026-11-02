@@ -800,7 +800,7 @@ onMounted(() => void refresh());
 
 .tab.on {
 	background: var(--tab-on-bg);
-	color: var(--btn-content);
+	color: var(--accent-text);
 	font-weight: 600;
 }
 
@@ -1007,7 +1007,7 @@ onMounted(() => void refresh());
 	padding: 0.12rem 0.4rem;
 	border-radius: 0.35rem;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	display: inline-flex;
 	align-items: center;
 	gap: 0.25rem;
@@ -1090,7 +1090,7 @@ onMounted(() => void refresh());
 
 .op:hover:not(:disabled) {
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .op:disabled {
@@ -1170,7 +1170,7 @@ onMounted(() => void refresh());
 }
 
 .facts dd.on {
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-weight: 600;
 }
 
@@ -1274,7 +1274,7 @@ onMounted(() => void refresh());
 
 .notice {
 	font-size: 0.8rem;
-	color: var(--btn-content);
+	color: var(--fg-90);
 	margin: 0 0 0.6rem;
 }
 

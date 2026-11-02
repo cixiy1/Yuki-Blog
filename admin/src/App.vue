@@ -90,7 +90,7 @@ watch(authStatus, (status) => {
 
 .boot-desc code {
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	padding: 0.1rem 0.35rem;
 	border-radius: 0.4rem;
 	font-size: 0.75rem;
@@ -104,7 +104,7 @@ watch(authStatus, (status) => {
 
 .boot-link {
 	font-size: 0.78rem;
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .spinner {

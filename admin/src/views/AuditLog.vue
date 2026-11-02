@@ -189,7 +189,7 @@ onMounted(() => void refresh());
 	padding: 0.08rem 0.45rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.7rem;
 	font-weight: 600;
 }

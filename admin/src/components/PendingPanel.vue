@@ -32,7 +32,7 @@ defineProps<{ title: string; desc?: string; points?: string[] }>();
 	padding: 0.12rem 0.5rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.7rem;
 	font-weight: 600;
 }

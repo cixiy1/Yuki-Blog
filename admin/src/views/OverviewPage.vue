@@ -137,7 +137,7 @@ onMounted(async () => {
 	height: 2.1rem;
 	border-radius: 0.7rem;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .entry-title {
@@ -193,7 +193,7 @@ onMounted(async () => {
 	padding: 0.4rem 0.75rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.78rem;
 	font-weight: 600;
 }

@@ -247,12 +247,12 @@ onMounted(refresh);
 
 .tab:hover {
 	background: var(--btn-plain-bg-hover);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .tab.active {
 	background: var(--tab-on-bg);
-	color: var(--btn-content);
+	color: var(--accent-text);
 	font-weight: 600;
 }
 
@@ -267,7 +267,7 @@ onMounted(refresh);
 	padding: 0.45rem 0.7rem;
 	border-radius: 0.6rem;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.8rem;
 }
 
@@ -324,7 +324,7 @@ onMounted(refresh);
 	padding: 0.06rem 0.42rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .badge[data-status="pending"] {

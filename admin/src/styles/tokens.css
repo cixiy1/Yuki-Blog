@@ -7,29 +7,31 @@
 :root {
 	--radius-large: 1rem;
 
-	/* 管理端不跟主题色相：站点色相 180 时，所有「淡色底 + 深色字」的强调件
-	   （导航选中、页签、标签胶囊、按钮）整片泛绿，跟纯白/纯黑的底子打架。
-	   这里把强调色收成中性：实心件用近黑，淡色件用黑的一档透明度 */
-	--primary: #141416;
+	/* 绿色仍然是强调色，但只留给「当前状态」：侧栏选中、页签选中、主按钮、开关。
+	   其余填充件（hover 底、标签胶囊、次级按钮）改走中性灰——以前它们也是淡绿，
+	   相邻两块颜色只差一点，看起来像一块绿叠在另一块绿上面 */
+	--primary: oklch(0.7 0.14 var(--hue));
 	/* 页面底色用中性灰、不带色相：卡片是纯白，靠这一档灰度分开层次。
 	   以前两边都是 #fff，侧栏和筛选条只剩一条 10% 的描边，看起来像粘在一起 */
 	--page-bg: #f6f6f7;
 	--card-bg: #ffffff;
 
 	--btn-content: var(--fg-90);
+	/* 选中态的文字色：比 --primary 深一档，淡绿底上才读得清 */
+	--accent-text: oklch(0.45 0.11 var(--hue));
 	--btn-regular-bg: rgba(0, 0, 0, 0.055);
 	--btn-regular-bg-hover: rgba(0, 0, 0, 0.085);
 	--btn-regular-bg-active: rgba(0, 0, 0, 0.115);
 
-	--btn-plain-bg-hover: rgba(0, 0, 0, 0.05);
-	--btn-plain-bg-active: rgba(0, 0, 0, 0.07);
+	--btn-plain-bg-hover: rgba(0, 0, 0, 0.045);
+	--btn-plain-bg-active: rgba(0, 0, 0, 0.06);
 
 	--line-divider: rgba(0, 0, 0, 0.1);
 	--line-color: rgba(0, 0, 0, 0.12);
 	--content-meta: rgba(0, 0, 0, 0.7);
 
-	--muted: rgba(0, 0, 0, 0.04);
-	--selection-bg: rgba(0, 0, 0, 0.12);
+	--muted: oklch(0.93 0.015 var(--hue));
+	--selection-bg: oklch(0.9 0.05 var(--hue));
 	--codeblock-bg: oklch(0.17 0.015 var(--hue));
 	--float-panel-bg: white;
 	--license-block-bg: rgba(0, 0, 0, 0.03);
@@ -53,31 +55,32 @@
 	/* ---- 骨架尺寸：左侧卡片式侧栏 + 内容列 ---- */
 	--shell-gap: 1.25rem;
 	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-	/* 选中态胶囊加深一档，白卡上才看得出选中 */
-	--tab-on-bg: rgba(0, 0, 0, 0.07);
+	/* 选中态：淡绿胶囊。比 hover 的灰底明显深一档，两者不会看成一块 */
+	--tab-on-bg: color-mix(in srgb, var(--primary) 13%, var(--card-bg));
 }
 
 :root.dark {
-	--primary: #f4f4f6;
+	--primary: oklch(0.75 0.14 var(--hue));
 	--page-bg: #000000;
 	/* 纯黑底上的卡片要明显抬起一档。原来 #0c0c0e 只比黑亮 5%，侧栏、筛选条、
 	   表格卡在深色下全糊成一块，分不清边界 */
 	--card-bg: #1e1e22;
 
 	--btn-content: var(--fg-90);
+	--accent-text: oklch(0.82 0.1 var(--hue));
 	--btn-regular-bg: rgba(255, 255, 255, 0.09);
 	--btn-regular-bg-hover: rgba(255, 255, 255, 0.13);
 	--btn-regular-bg-active: rgba(255, 255, 255, 0.17);
 
-	--btn-plain-bg-hover: rgba(255, 255, 255, 0.06);
-	--btn-plain-bg-active: rgba(255, 255, 255, 0.04);
+	--btn-plain-bg-hover: rgba(255, 255, 255, 0.065);
+	--btn-plain-bg-active: rgba(255, 255, 255, 0.045);
 
 	--line-divider: rgba(255, 255, 255, 0.12);
 	--line-color: rgba(255, 255, 255, 0.14);
 	--content-meta: rgba(255, 255, 255, 0.6);
 
-	--muted: rgba(255, 255, 255, 0.07);
-	--selection-bg: rgba(255, 255, 255, 0.2);
+	--muted: oklch(0.25 0.015 var(--hue));
+	--selection-bg: oklch(0.4 0.08 var(--hue));
 	--codeblock-bg: oklch(0.17 0.015 var(--hue));
 	--float-panel-bg: oklch(0.19 0.015 var(--hue));
 	--license-block-bg: var(--codeblock-bg);
@@ -93,7 +96,7 @@
 	--fg-50: rgba(255, 255, 255, 0.5);
 	--fg-30: rgba(255, 255, 255, 0.3);
 
-	--tab-on-bg: rgba(255, 255, 255, 0.11);
+	--tab-on-bg: color-mix(in srgb, var(--primary) 26%, var(--card-bg));
 	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 	/* 深色下侧栏比内容卡暗一档：黑底 → 侧栏 → 卡片，三层才分得开 */
 	--sidebar-bg: #131316;
@@ -177,7 +180,8 @@ select {
 	border: none;
 	border-radius: 0.75rem;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	/* 灰底配绿字会显脏，文字跟正文同色；绿色留给主按钮和选中态 */
+	color: var(--fg-90);
 	font-weight: 600;
 	transition: background-color 0.15s ease;
 }

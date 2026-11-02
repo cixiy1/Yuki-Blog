@@ -225,7 +225,7 @@ const roleLabel = computed(() => {
 	padding: 0.08rem 0.38rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.64rem;
 	font-weight: 600;
 	letter-spacing: 0.04em;
@@ -235,14 +235,23 @@ const roleLabel = computed(() => {
 .nav {
 	display: flex;
 	flex-direction: column;
-	gap: 1rem;
+	/* 分组之间 24px，组内项目之间 8px（见 .group），4 的倍数 */
+	gap: 1.5rem;
 	flex: 1;
 	overflow-y: auto;
 	min-height: 0;
 }
 
+/* 项目之间留 8px：原来没有 gap，选中项的淡绿块和相邻项直接相接，
+   看起来像一块绿叠在另一块上 */
+.group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
 .group-label {
-	margin: 0 0 0.3rem 0.55rem;
+	margin: 0 0 0 0.55rem;
 	font-size: 0.68rem;
 	font-weight: 600;
 	letter-spacing: 0.08em;
@@ -264,12 +273,12 @@ const roleLabel = computed(() => {
 
 .nav-item:hover {
 	background: var(--btn-plain-bg-hover);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .nav-item.on {
 	background: var(--tab-on-bg);
-	color: var(--btn-content);
+	color: var(--accent-text);
 	font-weight: 600;
 }
 
@@ -308,7 +317,7 @@ const roleLabel = computed(() => {
 	display: grid;
 	place-items: center;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.8rem;
 	font-weight: 700;
 }
@@ -355,7 +364,7 @@ const roleLabel = computed(() => {
 
 .icon:hover {
 	background: var(--btn-plain-bg-hover);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .page {
