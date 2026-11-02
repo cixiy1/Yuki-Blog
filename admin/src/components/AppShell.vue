@@ -360,6 +360,8 @@ const roleLabel = computed(() => {
 
 .page {
 	min-width: 0;
+	/* 短页面也撑到与侧栏底边齐平，右侧不会剩一块「到此为止」的空白 */
+	min-height: calc(100vh - var(--shell-gap) * 2);
 	padding-bottom: 2.5rem;
 }
 

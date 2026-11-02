@@ -19,6 +19,7 @@ defineProps<{ title: string; desc?: string; points?: string[] }>();
 
 <style scoped>
 .pending {
+	max-width: 46rem;
 	padding: 1.4rem 1.5rem;
 	display: flex;
 	flex-direction: column;

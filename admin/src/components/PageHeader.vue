@@ -28,7 +28,7 @@ defineProps<{ title: string; desc?: string }>();
 	margin: 0;
 	font-size: 1.5rem;
 	font-weight: 700;
-	line-height: 1.3;
+	line-height: 1.2;
 	color: var(--fg-90);
 	letter-spacing: -0.02em;
 }

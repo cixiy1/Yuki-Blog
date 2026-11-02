@@ -8,9 +8,9 @@
 	--radius-large: 1rem;
 
 	--primary: oklch(0.7 0.14 var(--hue));
-	/* 底色不跟主题色相走：主站壁纸挡着看不出来，管理端整页铺开就会显出一层绿 */
-	--page-bg: oklch(0.968 0.002 250);
-	--card-bg: white;
+	/* 底色用纯白：管理端没有壁纸挡着，任何色度铺满整页都会显出一层色 */
+	--page-bg: #ffffff;
+	--card-bg: #ffffff;
 
 	--btn-content: oklch(0.55 0.12 var(--hue));
 	--btn-regular-bg: oklch(0.95 0.025 var(--hue));
@@ -20,8 +20,8 @@
 	--btn-plain-bg-hover: oklch(0.95 0.025 var(--hue));
 	--btn-plain-bg-active: oklch(0.98 0.01 var(--hue));
 
-	--line-divider: rgba(0, 0, 0, 0.08);
-	--line-color: rgba(0, 0, 0, 0.1);
+	--line-divider: rgba(0, 0, 0, 0.1);
+	--line-color: rgba(0, 0, 0, 0.12);
 	--content-meta: rgba(0, 0, 0, 0.7);
 
 	--muted: oklch(0.93 0.015 var(--hue));
@@ -53,8 +53,9 @@
 
 :root.dark {
 	--primary: oklch(0.75 0.14 var(--hue));
-	--page-bg: oklch(0.168 0.004 250);
-	--card-bg: oklch(0.225 0.004 250);
+	--page-bg: #000000;
+	/* 纯黑底上的卡片要抬一点点，否则只剩一条描边 */
+	--card-bg: #0c0c0e;
 
 	--btn-content: oklch(0.75 0.1 var(--hue));
 	--btn-regular-bg: oklch(0.33 0.035 var(--hue));
