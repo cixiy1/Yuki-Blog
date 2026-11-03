@@ -70,6 +70,10 @@ export interface SettingSection {
 
 export interface SettingGroup {
 	key: string;
+	/** 左侧分类列表的图标名（AppIcon），缺省用 info */
+	icon?: string;
+	/** 图标底色，CSS 颜色；缺省跟随主题色 */
+	tone?: string;
 	label: string;
 	desc: string;
 	sections: SettingSection[];
@@ -93,6 +97,8 @@ const switchField = (
 export const SETTING_GROUPS: SettingGroup[] = [
 	{
 		key: "basic",
+		icon: "info",
+		tone: "oklch(0.64 0.06 250)",
 		label: "基本信息",
 		desc: "站点标题、描述、语言与时区。改这些会进 <title>、RSS 与分享卡片，必须发布。",
 		sections: [
@@ -171,6 +177,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "appearance",
+		icon: "palette",
+		tone: "oklch(0.66 0.14 300)",
 		label: "外观",
 		desc: "主题色、布局与导航栏。只有色相能「立即应用」，其余需要发布。",
 		sections: [
@@ -271,6 +279,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "pages",
+		icon: "components",
+		tone: "oklch(0.64 0.13 250)",
 		label: "页面",
 		desc: "页面开关直接决定路由是否存在：关掉后该页返回 404，导航项也会消失。必须发布。",
 		sections: [
@@ -310,6 +320,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "post",
+		icon: "posts",
+		tone: "oklch(0.66 0.11 200)",
 		label: "文章页",
 		desc: "文章详情页的附加模块。OG 图与沉浸阅读这类会影响构建产物，需要发布。",
 		sections: [
@@ -360,6 +372,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "home",
+		icon: "overview",
+		tone: "oklch(0.72 0.13 65)",
 		label: "首页",
 		desc: "首页横幅与公告栏。都写在 HTML 里，必须发布。",
 		sections: [
@@ -474,6 +488,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "profile",
+		icon: "users",
+		tone: "oklch(0.68 0.12 15)",
 		label: "个人资料",
 		desc: "侧栏资料卡与社交图标。发布后生效。",
 		sections: [
@@ -538,6 +554,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "music",
+		icon: "music",
+		tone: "oklch(0.62 0.16 25)",
 		label: "音乐",
 		desc: "播放器入口与本地歌单。歌单第一首是默认曲目。发布后生效。",
 		sections: [
@@ -649,6 +667,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	},
 	{
 		key: "friends",
+		icon: "link",
+		tone: "oklch(0.66 0.12 155)",
 		label: "友链",
 		desc: "友链页文案与条目。发布后生效。",
 		sections: [
