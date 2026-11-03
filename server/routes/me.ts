@@ -248,18 +248,33 @@ me.get("/posts", requireAuth, async (c) => {
 		.bind(user.uid)
 		.all<PostRow>();
 
-	const mine = (rows.results ?? []).map(toSummary);
-	const known = new Set(mine.map((post) => String(post.slug)));
+	// 仓库里的文章都算站主的。不能拿 frontmatter 的 author 过滤：那栏在转载
+	// 文章里写的是原文出处（比如「腾讯云开发者社区」），不是站内作者。
+	const isAdmin = user.role === "admin";
+	const repoPosts = isAdmin ? await readRepoPosts(c.env.ASSETS) : [];
+	const repoBySlug = new Map(repoPosts.map((post) => [post.slug, post]));
 
-	let owned: Record<string, unknown>[] = [];
-	if (user.role === "admin") {
-		// 站内目前只有站主一个作者，仓库里的文章都算他的。
-		// 不能拿 frontmatter 的 author 过滤：那栏在转载文章里写的是原文出处
-		//（比如「腾讯云开发者社区」），不是站内作者。
-		owned = (await readRepoPosts(c.env.ASSETS))
-			.filter((post) => !known.has(post.slug))
-			.map((post) => repoToSummary(post));
+	/*
+	 * 已经落到仓库的 D1 行（发布时写了 repo_path）按仓库文章呈现。
+	 * 不这么处理会掉进死胡同：它停在 status=published，前端只给「查看」，
+	 * 进去是只读页；而仓库里那份同名文章又被下面的去重挡掉了，编辑入口彻底消失。
+	 * 快照里已经有同名文件时直接丢掉 D1 行，让仓库那份（标题、更新时间以文件为准）顶上。
+	 */
+	const mine: Record<string, unknown>[] = [];
+	for (const row of rows.results ?? []) {
+		const inRepo = isAdmin && row.status === "published" && row.repo_path;
+		if (!inRepo) {
+			mine.push(toSummary(row));
+			continue;
+		}
+		if (repoBySlug.has(row.slug)) continue;
+		mine.push({ ...toSummary(row), origin: "repo", id: 0 });
 	}
+
+	const known = new Set(mine.map((post) => String(post.slug)));
+	const owned: Record<string, unknown>[] = repoPosts
+		.filter((post) => !known.has(post.slug))
+		.map((post) => repoToSummary(post));
 
 	const posts = [...mine, ...owned].sort(
 		(a, b) =>
