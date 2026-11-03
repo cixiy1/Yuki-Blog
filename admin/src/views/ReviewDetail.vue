@@ -46,6 +46,9 @@ const busy = ref(false);
 const rejecting = ref(false);
 const rejectNote = ref("");
 const bodyEl = ref<HTMLDivElement | null>(null);
+/** Vditor 会把宿主元素本身变成 .vditor，所以再套一层子节点给它 */
+const editorEl = ref<HTMLDivElement | null>(null);
+let vditor: Vditor | null = null;
 
 /** 划词后浮在选区上方的小按钮 */
 const picker = ref({ show: false, top: 0, left: 0, quote: "" });
@@ -113,30 +116,83 @@ const publishPath = computed(() =>
 	post.value ? `src/content/posts/${post.value.slug}.md` : "",
 );
 
-async function renderBody(): Promise<void> {
-	const target = bodyEl.value;
-	const body = post.value?.body;
-	if (!target || !body) return;
-	rendering.value = true;
+function destroyEditor(): void {
+	if (!vditor) return;
 	try {
-		await Vditor.preview(target, body, {
-			mode: isDark.value ? "dark" : "light",
-			cdn: "/admin/vditor",
-			lang: "zh_CN",
-			theme: { current: isDark.value ? "dark" : "light" },
-			hljs: { style: isDark.value ? "monokai" : "github", lineNumber: true },
-			math: { engine: "KaTeX" },
-			anchor: 0,
-		});
-		markNotes();
-	} catch (error) {
-		errorText.value = error instanceof Error ? error.message : "正文渲染失败";
-	} finally {
-		rendering.value = false;
+		vditor.destroy();
+	} catch {
+		// 视图已经卸下，销毁失败不影响下一次创建
 	}
+	vditor = null;
+}
+
+/**
+ * 正文用写作页同款编辑器（Vditor 即时渲染）打开再禁用编辑：
+ * 作者写的时候看到什么排版，审核读到的就是什么，划词拿到的文字与作者端一致。
+ * 只读页不走 sv 模式——那是给 MDX 源码用的，行号栏没有阅读价值。
+ */
+function renderBody(): Promise<void> {
+	const target = editorEl.value;
+	const body = post.value?.body;
+	if (!target || !body) {
+		rendering.value = false;
+		return Promise.resolve();
+	}
+	destroyEditor();
+	target.innerHTML = "";
+	rendering.value = true;
+
+	return new Promise((resolve) => {
+		let settled = false;
+		const done = () => {
+			if (settled) return;
+			settled = true;
+			rendering.value = false;
+			markNotes();
+			resolve();
+		};
+		// 渲染器没加载出来时不能一直挂在「正在渲染」
+		const fallback = window.setTimeout(() => {
+			vditor?.disabled();
+			done();
+		}, 8000);
+		vditor = new Vditor(target, {
+			cdn: "/admin/vditor",
+			value: body,
+			mode: "ir",
+			lang: "zh_CN",
+			theme: isDark.value ? "dark" : "classic",
+			cache: { enable: false },
+			toolbar: [],
+			resize: { enable: false },
+			counter: { enable: false },
+			preview: {
+				theme: { current: isDark.value ? "dark" : "light" },
+				hljs: { style: isDark.value ? "monokai" : "github", lineNumber: true },
+				math: { engine: "KaTeX" },
+			},
+			after: () => {
+				// after 可能在构造函数返回前就触发，那时外层的 vditor 还是 null，
+				// 推到微任务里，赋值已经完成，才禁得掉编辑
+				queueMicrotask(() => {
+					window.clearTimeout(fallback);
+					vditor?.disabled();
+					done();
+				});
+			},
+		});
+	});
 }
 
 /* ---------- 正文里的批注高亮 ---------- */
+
+/** 正文真正落在编辑器渲染出来的 .vditor-reset 里，外层还套着编辑器骨架。
+ *  Vditor 会同时建出 wysiwyg / sv / preview 几个面板，只有 ir 那份是当前可见的正文。 */
+function noteRoot(): HTMLElement | null {
+	return (
+		bodyEl.value?.querySelector<HTMLElement>(".vditor-ir .vditor-reset") ?? null
+	);
+}
 
 /**
  * 把已存在的批注标回正文。
@@ -145,7 +201,7 @@ async function renderBody(): Promise<void> {
  * 高亮错地方的误导比不高亮更大。
  */
 function markNotes(): void {
-	const root = bodyEl.value;
+	const root = noteRoot();
 	if (!root) return;
 
 	for (const mark of Array.from(root.querySelectorAll("mark.yb-note"))) {
@@ -191,7 +247,7 @@ function markNotes(): void {
 
 function onBodyMouseUp(): void {
 	const selection = window.getSelection();
-	const root = bodyEl.value;
+	const root = noteRoot();
 	if (!selection || selection.isCollapsed || !root) {
 		picker.value.show = false;
 		return;
@@ -341,7 +397,7 @@ async function onReject(): Promise<void> {
 	}
 }
 
-/** 正文切换过深浅主题：Vditor 的预览不会自己重画，得重新渲染一遍 */
+/** 正文切换过深浅主题：Vditor 的实例不会自己换肤，得整个重建 */
 watch(isDark, () => {
 	void renderBody();
 });
@@ -357,7 +413,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	stopRoute?.();
-	if (bodyEl.value) bodyEl.value.innerHTML = "";
+	destroyEditor();
 });
 </script>
 
@@ -421,12 +477,18 @@ onBeforeUnmount(() => {
 					</p>
 				</header>
 
-				<div class="doc-body" @mouseup="onBodyMouseUp">
-					<div ref="bodyEl" class="preview" />
+				<div class="doc-body">
+					<div
+						ref="bodyEl"
+						class="review-editor"
+						@mouseup="onBodyMouseUp"
+					>
+						<div ref="editorEl" class="editor-host" />
+					</div>
 					<p v-if="rendering" class="state">
 						正在渲染正文…（渲染器约 3 MB，首次打开要等一会儿，之后走缓存）
 					</p>
-					<p v-if="!rendering && wordCount === 0" class="state">
+					<p v-else-if="wordCount === 0" class="state">
 						这篇没有正文，只有标题和摘要。
 					</p>
 				</div>
@@ -724,33 +786,77 @@ onBeforeUnmount(() => {
 	padding-top: 1.2rem;
 }
 
-/* Vditor 预览自己不设宽度，跟着容器走；字号按正文字号收一档 */
-.preview :deep(.vditor-reset) {
+/* 编辑器骨架铺在卡片里：去掉 Vditor 自带的边框、底色、工具栏和固定高度，
+   只留正文本身，读起来才像一篇文章而不是一个输入框 */
+.review-editor :deep(.vditor) {
+	height: auto !important;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+}
+
+.review-editor :deep(.vditor-toolbar),
+.review-editor :deep(.vditor-resize) {
+	display: none;
+}
+
+/* 只读页跟整页一起滚，编辑器内部不再另出一根滚动条 */
+.review-editor :deep(.vditor-content) {
+	height: auto !important;
+	overflow: visible;
+	background: transparent;
+}
+
+.review-editor :deep(.vditor-ir .vditor-reset) {
+	padding: 0;
+	background: transparent;
+}
+
+/* Vditor 把「不可编辑」画成 30% 透明 + 禁用光标，那是给编辑器的禁用态；
+   审核员是要读，不是看一个置灰的框 */
+.review-editor :deep(.vditor-ir pre.vditor-reset[contenteditable="false"]) {
+	opacity: 1;
+	cursor: auto;
+}
+
+/* ir 模式会把 # 、- 这类 Markdown 标记浮在正文里，写的时候有用，读的时候是噪音 */
+.review-editor :deep(.vditor-ir .vditor-ir__marker) {
+	display: none !important;
+}
+
+/* marker 藏了，块级伪元素还在（标题左边挂的「H1」「H2」） */
+.review-editor :deep(.vditor-ir__node[data-marker]::before),
+.review-editor :deep(.vditor-ir__node[data-marker]::after) {
+	content: none !important;
+}
+
+/* 编辑器自己不设宽度，跟着容器走；字号按正文字号收一档 */
+.review-editor :deep(.vditor-reset) {
 	font-size: 0.95rem;
 	line-height: 1.85;
 	color: var(--fg-90);
 	padding: 0;
 }
 
-.preview :deep(.vditor-reset img) {
+.review-editor :deep(.vditor-reset img) {
 	max-width: 100%;
 	border-radius: 0.5rem;
 }
 
-.preview :deep(.vditor-reset pre) {
+.review-editor :deep(.vditor-reset pre) {
 	border-radius: 0.6rem;
 	/* 长代码行自己横向滚动，不然会把整页撑出横向滚动条 */
 	overflow-x: auto;
 	max-width: 100%;
 }
 
-.preview :deep(.vditor-reset table) {
+.review-editor :deep(.vditor-reset table) {
 	max-width: 100%;
 	overflow-x: auto;
 }
 
 /* 批注高亮：黄色底 + 右上角序号，和 WPS 的批注是一个意思 */
-.preview :deep(mark.yb-note) {
+.review-editor :deep(mark.yb-note) {
 	position: relative;
 	background: color-mix(in oklab, var(--admonitions-color-caution) 26%, transparent);
 	color: inherit;
@@ -760,7 +866,7 @@ onBeforeUnmount(() => {
 	box-decoration-break: clone;
 }
 
-.preview :deep(mark.yb-note::after) {
+.review-editor :deep(mark.yb-note::after) {
 	content: attr(data-idx);
 	position: absolute;
 	top: -0.6rem;
