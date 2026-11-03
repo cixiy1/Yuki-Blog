@@ -295,10 +295,14 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			this.setText("account", user.account);
 			this.setText("email", user.email);
 			this.setText("uid", String(user.uid));
-			this.querySelector('[data-role="verified"]')!.hidden =
-				!user.email_verified;
-			this.querySelector('[data-role="unverified"]')!.hidden =
-				Boolean(user.email_verified);
+			const verified = this.querySelector<HTMLElement>(
+				'[data-role="verified"]',
+			);
+			const unverified = this.querySelector<HTMLElement>(
+				'[data-role="unverified"]',
+			);
+			if (verified) verified.hidden = !user.email_verified;
+			if (unverified) unverified.hidden = Boolean(user.email_verified);
 		}
 
 		private setText(role: string, value: string): void {
