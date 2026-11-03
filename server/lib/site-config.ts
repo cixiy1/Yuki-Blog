@@ -16,8 +16,10 @@ export const KEY_SECRETS = "site.secrets";
 /** 密钥名白名单：只有这些能写，避免任意键塞进 settings */
 export const SECRET_NAMES = [
 	"github_token",
+	"github_client_id",
 	"github_client_secret",
 	"resend_api_key",
+	"smtp_pass",
 ] as const;
 export type SecretName = (typeof SECRET_NAMES)[number];
 

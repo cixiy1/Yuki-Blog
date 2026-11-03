@@ -5,13 +5,18 @@ import PageHeader from "../components/PageHeader.vue";
 import {
 	applyHot,
 	type ConfigVersion,
+	loadMailConfig,
 	loadSecrets,
 	loadSettings,
+	type MailConfig,
+	type MailTestResult,
 	publishDraft,
 	rollbackTo,
 	type SecretStatus,
 	saveDraft,
+	saveMailConfig,
 	saveSecret,
+	testMail,
 } from "../lib/settings";
 import {
 	ALL_FIELDS,
@@ -28,16 +33,28 @@ type Plain = Record<string, unknown>;
 
 const SECRET_LABELS: Record<string, string> = {
 	github_token: "GitHub 令牌（发布配置用）",
-	github_client_secret: "GitHub OAuth Secret",
-	resend_api_key: "Resend API Key（发信）",
+	github_client_id: "Client ID",
+	github_client_secret: "Client Secret",
+	resend_api_key: "Resend API Key",
+	smtp_pass: "SMTP 密码 / 授权码",
 };
 
 const SECRET_HELP: Record<string, string> = {
 	github_token:
 		"fine-grained PAT，只勾 cixiy1/Yuki-blog 的 Contents 读写。填了才能一键发布。",
-	github_client_secret: "GitHub OAuth App 的 Client Secret，用于第三方登录。",
-	resend_api_key: "注册验证邮件与找回密码邮件靠它发出。",
+	github_client_id:
+		"OAuth App 页面上的 Client ID，不是密钥但容易和 Secret 弄混，一起放这。",
+	github_client_secret:
+		"OAuth App 页面上的 Client Secret，只在授权码换 token 时用，别发到前端。",
+	resend_api_key:
+		"Resend 后台生成的 Key，以 re_ 开头。需要先在 Resend 验证发件域名。",
+	smtp_pass: "邮箱的 SMTP 授权码，不是登录密码。QQ / 163 都要单独生成。",
 };
+
+/** 三组密钥分别放在三张卡里，别混在一起 */
+const GITHUB_LOGIN_SECRETS = ["github_client_id", "github_client_secret"];
+const MAIL_SECRETS = ["resend_api_key", "smtp_pass"];
+const PUBLISH_SECRETS = ["github_token"];
 
 const tabs = [
 	...SETTING_GROUPS.map((g) => ({ key: g.key, label: g.label })),
@@ -58,6 +75,18 @@ const versions = ref<ConfigVersion[]>([]);
 const secrets = ref<SecretStatus[]>([]);
 const secretInput = ref<Record<string, string>>({});
 const tagInput = ref<Record<string, string>>({});
+
+/* ---------- 发信配置 ---------- */
+const mailConfig = ref<MailConfig>({
+	mode: "off",
+	from: "Yuki Blog <mail@yiyu14.top>",
+	smtp: { host: "", port: 465, security: "ssl", user: "" },
+});
+const mailBusy = ref(false);
+const mailTesting = ref(false);
+const mailResult = ref<(MailTestResult & { failed?: boolean }) | null>(null);
+/** OAuth 回调地址必须和 GitHub 上填的一字不差 */
+const callbackUrl = ref("");
 
 const group = computed(() => SETTING_GROUPS.find((g) => g.key === tab.value));
 
@@ -267,6 +296,8 @@ async function refresh(): Promise<void> {
 		draft0.value = clone(form.value);
 		versions.value = data.versions;
 		secrets.value = await loadSecrets();
+		mailConfig.value = await loadMailConfig();
+		callbackUrl.value = `${location.origin}/api/auth/github/callback`;
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "读取失败";
 	} finally {
@@ -380,6 +411,86 @@ function exportJson(): void {
 	notice.value = "已导出 site.json，放到仓库 config/ 下提交即可生效。";
 }
 
+function secretOf(name: string): SecretStatus | undefined {
+	return secrets.value.find((item) => item.name === name);
+}
+
+function isConfigured(name: string): boolean {
+	return secretOf(name)?.configured ?? false;
+}
+
+function secretHint(name: string): string {
+	const hint = secretOf(name)?.hint;
+	return hint ? `已配置 ${hint}` : "未配置";
+}
+
+async function copyCallback(): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(callbackUrl.value);
+		notice.value = "回调地址已复制。";
+	} catch {
+		notice.value = "复制失败，手动选中这行吧。";
+	}
+}
+
+async function onSaveMail(): Promise<void> {
+	mailBusy.value = true;
+	mailResult.value = null;
+	try {
+		mailConfig.value = await saveMailConfig(mailConfig.value);
+		notice.value = "发信配置已保存，点「发送测试邮件」确认能发出去。";
+	} catch (error) {
+		errorText.value = error instanceof Error ? error.message : "保存失败";
+	} finally {
+		mailBusy.value = false;
+	}
+}
+
+async function onTestMail(): Promise<void> {
+	mailTesting.value = true;
+	mailResult.value = null;
+	try {
+		mailResult.value = await testMail();
+	} catch (error) {
+		mailResult.value = {
+			ok: false,
+			sent: false,
+			mode: mailConfig.value.mode,
+			to: "",
+			from: mailConfig.value.from,
+			message: error instanceof Error ? error.message : "发送失败",
+			failed: true,
+		};
+	} finally {
+		mailTesting.value = false;
+	}
+}
+
+/** 空输入 + 已配置 = 清除，所以按钮文案和二次确认都要跟着变，避免手一点就抹掉密钥 */
+function secretActionLabel(name: string): string {
+	const typed = (secretInput.value[name] ?? "").trim();
+	if (typed) return "保存";
+	return isConfigured(name) ? "清除" : "保存";
+}
+
+function canSaveSecret(name: string): boolean {
+	return Boolean((secretInput.value[name] ?? "").trim()) || isConfigured(name);
+}
+
+function onSecretClick(name: string): void {
+	const typed = (secretInput.value[name] ?? "").trim();
+	if (!typed && isConfigured(name)) {
+		if (
+			!confirm(
+				`清除「${SECRET_LABELS[name] ?? name}」？清掉之后相关的功能会立刻失效。`,
+			)
+		) {
+			return;
+		}
+	}
+	void onSaveSecret(name);
+}
+
 async function onSaveSecret(name: string): Promise<void> {
 	const value = (secretInput.value[name] ?? "").trim();
 	busy.value = true;
@@ -459,37 +570,236 @@ onMounted(() => void refresh());
 
 		<div v-if="loading" class="state">读取中…</div>
 
-		<div v-else-if="tab === 'integrations'" class="card-base panel">
-			<h3>密钥</h3>
-			<p class="hint">
-				加密后存进数据库，只回显末四位。清空输入框并保存即删除。这些值不会进仓库，也不会出现在任何日志与审计里。
-			</p>
-			<div v-for="secret in secrets" :key="secret.name" class="secret">
-				<div class="secret-head">
-					<strong>{{ SECRET_LABELS[secret.name] ?? secret.name }}</strong>
-					<span :class="['tag', secret.configured ? 'ok' : 'off']">
-						{{ secret.configured ? `已配置 ${secret.hint ?? ""}` : "未配置" }}
-					</span>
+		<div v-else-if="tab === 'integrations'" class="layout">
+			<section class="main">
+				<div class="card-base panel">
+					<h3>GitHub 登录</h3>
+					<p class="hint">
+						去 GitHub → Settings → Developer settings → OAuth Apps → New OAuth App 建一个，
+						「Authorization callback URL」填下面这行，再把页面上给出的 Client ID 与 Client Secret 抄进来。
+						两项都填了登录页的 GitHub 按钮才会真的跳转。
+					</p>
+					<div class="row">
+						<div class="label">
+							<span class="name">回调地址</span>
+							<span class="hint">必须一字不差，http 与 https、末尾斜杠都算不同</span>
+						</div>
+						<div class="control copy-row">
+							<code class="copy-value">{{ callbackUrl }}</code>
+							<button type="button" class="btn-ghost" @click="copyCallback">复制</button>
+						</div>
+					</div>
+
+					<div v-for="name in GITHUB_LOGIN_SECRETS" :key="name" class="secret">
+						<div class="secret-head">
+							<strong>{{ SECRET_LABELS[name] }}</strong>
+							<span :class="['tag', isConfigured(name) ? 'ok' : 'off']">
+								{{ secretHint(name) }}
+							</span>
+						</div>
+						<p class="hint">{{ SECRET_HELP[name] }}</p>
+						<div class="secret-row">
+							<input
+								v-model="secretInput[name]"
+								class="field"
+								autocomplete="off"
+								:placeholder="isConfigured(name) ? '已配置，留空则清除' : '粘贴到这里'"
+							/>
+							<button
+								type="button"
+								class="btn-regular"
+								:disabled="busy || !canSaveSecret(name)"
+								@click="onSecretClick(name)"
+							>
+								{{ secretActionLabel(name) }}
+							</button>
+						</div>
+					</div>
 				</div>
-				<p class="hint">{{ SECRET_HELP[secret.name] }}</p>
-				<div class="secret-row">
-					<input
-						v-model="secretInput[secret.name]"
-						class="field"
-						type="password"
-						autocomplete="off"
-						:placeholder="secret.configured ? '留空表示不修改' : '粘贴密钥'"
-					/>
-					<button
-						type="button"
-						class="btn-regular"
-						:disabled="busy"
-						@click="onSaveSecret(secret.name)"
+
+				<div class="card-base panel">
+					<h3>发信</h3>
+					<p class="hint">
+						注册验证与找回密码靠这条通道。一条都没配时不会真发信，只写日志。
+						填完先点「发送测试邮件」，收得到再上生产。
+					</p>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">通道</span>
+							<span class="hint">Resend 是托管发信服务；SMTP 用你自己的邮箱发</span>
+						</div>
+						<div class="control">
+							<select v-model="mailConfig.mode" class="field">
+								<option value="off">关闭（只写日志）</option>
+								<option value="resend">Resend</option>
+								<option value="smtp">SMTP</option>
+							</select>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">发件人</span>
+							<span class="hint">写成「名字 &lt;地址&gt;」；地址必须是验证过的域名</span>
+						</div>
+						<div class="control">
+							<input
+								v-model="mailConfig.from"
+								class="field"
+								placeholder="Yuki Blog <mail@yiyu14.top>"
+							/>
+						</div>
+					</div>
+
+					<template v-if="mailConfig.mode === 'smtp'">
+						<div class="row">
+							<div class="label">
+								<span class="name">SMTP 主机</span>
+								<span class="hint">如 smtp.qq.com、smtp.resend.com</span>
+							</div>
+							<div class="control">
+								<input v-model="mailConfig.smtp.host" class="field" placeholder="smtp.qq.com" />
+							</div>
+						</div>
+						<div class="row">
+							<div class="label">
+								<span class="name">端口</span>
+								<span class="hint">SSL 一般 465，STARTTLS 一般 587</span>
+							</div>
+							<div class="control">
+								<input v-model.number="mailConfig.smtp.port" class="field" type="number" min="1" max="65535" />
+							</div>
+						</div>
+						<div class="row">
+							<div class="label">
+								<span class="name">加密方式</span>
+								<span class="hint">465 选 SSL，587 选 STARTTLS；内网中继才选不加密</span>
+							</div>
+							<div class="control">
+								<select v-model="mailConfig.smtp.security" class="field">
+									<option value="ssl">SSL（465）</option>
+									<option value="starttls">STARTTLS（587）</option>
+									<option value="none">不加密</option>
+								</select>
+							</div>
+						</div>
+						<div class="row">
+							<div class="label">
+								<span class="name">用户名</span>
+								<span class="hint">通常是完整邮箱地址</span>
+							</div>
+							<div class="control">
+								<input v-model="mailConfig.smtp.user" class="field" placeholder="you@example.com" />
+							</div>
+						</div>
+					</template>
+
+					<p class="hint">
+						<template v-if="mailConfig.mode === 'resend'">
+							Resend 要先在后台把发件域名加上并按提示配好 DNS，验证通过前只能发给账号自己的邮箱。
+						</template>
+						<template v-else-if="mailConfig.mode === 'smtp'">
+							QQ / 163 这类邮箱要用「授权码」当密码；发件人地址和登录账号不一致时可能被拒信。
+						</template>
+						<template v-else>
+							选一个通道并保存后，会接管所有验证邮件与找回密码邮件。
+						</template>
+					</p>
+
+					<div
+						v-for="name in MAIL_SECRETS.filter((item) => (mailConfig.mode === 'smtp' ? item === 'smtp_pass' : item === 'resend_api_key'))"
+						:key="name"
+						class="secret"
 					>
-						保存
-					</button>
+						<div class="secret-head">
+							<strong>{{ SECRET_LABELS[name] }}</strong>
+							<span :class="['tag', isConfigured(name) ? 'ok' : 'off']">
+								{{ secretHint(name) }}
+							</span>
+						</div>
+						<p class="hint">{{ SECRET_HELP[name] }}</p>
+						<div class="secret-row">
+							<input
+								v-model="secretInput[name]"
+								class="field"
+								type="password"
+								autocomplete="off"
+								:placeholder="isConfigured(name) ? '已配置，留空则清除' : '粘贴密钥'"
+							/>
+							<button
+								type="button"
+								class="btn-regular"
+								:disabled="busy || !canSaveSecret(name)"
+								@click="onSecretClick(name)"
+							>
+								{{ secretActionLabel(name) }}
+							</button>
+						</div>
+					</div>
+
+					<div class="mail-actions">
+						<button
+							type="button"
+							class="btn-regular"
+							:disabled="mailBusy"
+							@click="onSaveMail"
+						>
+							保存发信配置
+						</button>
+						<button
+							type="button"
+							class="btn-ghost"
+							:disabled="mailTesting || mailConfig.mode === 'off'"
+							@click="onTestMail"
+						>
+							{{ mailTesting ? "发送中…" : "发送测试邮件" }}
+						</button>
+					</div>
+					<p v-if="mailResult" :class="['mail-result', mailResult.ok ? 'ok' : 'bad']">
+						<template v-if="mailResult.ok">
+							已通过 {{ mailResult.mode === "smtp" ? "SMTP" : "Resend" }} 发给
+							{{ mailResult.to || "当前账号" }}，去收件箱看看（可能在垃圾箱）。
+						</template>
+						<template v-else>
+							{{ mailResult.message || "发送失败，检查配置后再试" }}
+						</template>
+					</p>
 				</div>
-			</div>
+
+				<div class="card-base panel">
+					<h3>发布用令牌</h3>
+					<p class="hint">
+						管理端改仓库文章、发布稿件都走这个 PAT。它和上面的 OAuth 登录是两回事，别混。
+					</p>
+					<div v-for="name in PUBLISH_SECRETS" :key="name" class="secret">
+						<div class="secret-head">
+							<strong>{{ SECRET_LABELS[name] }}</strong>
+							<span :class="['tag', isConfigured(name) ? 'ok' : 'off']">
+								{{ secretHint(name) }}
+							</span>
+						</div>
+						<p class="hint">{{ SECRET_HELP[name] }}</p>
+						<div class="secret-row">
+							<input
+								v-model="secretInput[name]"
+								class="field"
+								type="password"
+								autocomplete="off"
+								:placeholder="isConfigured(name) ? '已配置，留空则清除' : '粘贴令牌'"
+							/>
+							<button
+								type="button"
+								class="btn-regular"
+								:disabled="busy || !canSaveSecret(name)"
+								@click="onSecretClick(name)"
+							>
+								{{ secretActionLabel(name) }}
+							</button>
+						</div>
+					</div>
+				</div>
+			</section>
 		</div>
 
 		<div v-else class="layout">
@@ -1261,6 +1571,47 @@ onMounted(() => void refresh());
 	gap: 0.4rem;
 	margin-top: 0.4rem;
 }
+
+.copy-row {
+	display: flex;
+	/* .control 是 column，这里必须显式改回来 */
+	flex-direction: row;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.copy-value {
+	flex: 1;
+	min-width: 0;
+	padding: 0.25rem 0.5rem;
+	border: 1px dashed var(--line-divider);
+	border-radius: 0.4rem;
+	background: var(--btn-regular-bg);
+	font-size: 0.74rem;
+	word-break: break-all;
+	color: var(--fg-90);
+}
+
+.mail-actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.9rem;
+}
+
+.mail-result {
+	margin: 0.6rem 0 0;
+	font-size: 0.78rem;
+	line-height: 1.6;
+}
+
+.mail-result.ok {
+	color: var(--admonitions-color-tip);
+}
+
+.mail-result.bad {
+	color: var(--admonitions-color-caution);
+}
+
 
 .secret-row .field {
 	flex: 1;

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { writeAudit } from "../lib/audit";
 import { putRepoFile } from "../lib/github-contents";
+import { sendTestMail } from "../lib/mail";
+import { readMailSettings, writeMailSettings } from "../lib/mail-config";
 import {
 	checkConfig,
 	clearSecret,
@@ -333,6 +335,96 @@ admin.put("/secrets", sameOriginGuard, requireJsonBody, async (c) => {
 		detail: { cleared: !value },
 	});
 	return c.json({ ok: true, secrets: await secretStatus(c.env.DB, rootKey) });
+});
+
+/* ---------------------------- 发信配置 ---------------------------- */
+
+/** 管理端读：只有非密字段，密钥状态走 /secrets */
+admin.get("/mail-config", async (c) => {
+	return c.json({ config: await readMailSettings(c.env.DB) });
+});
+
+admin.put("/mail-config", sameOriginGuard, requireJsonBody, async (c) => {
+	const body = (await c.req.json().catch(() => null)) as Record<
+		string,
+		unknown
+	> | null;
+	const raw = (body?.config ?? {}) as Record<string, unknown>;
+	const smtp = (raw.smtp ?? {}) as Record<string, unknown>;
+
+	const actorUid = c.get("user")?.uid ?? null;
+	const config = await writeMailSettings(
+		c.env.DB,
+		{
+			mode: typeof raw.mode === "string" ? raw.mode : undefined,
+			from: typeof raw.from === "string" ? raw.from : undefined,
+			smtp: {
+				host: typeof smtp.host === "string" ? smtp.host : undefined,
+				port: Number(smtp.port) || undefined,
+				security: typeof smtp.security === "string" ? smtp.security : undefined,
+				user: typeof smtp.user === "string" ? smtp.user : undefined,
+			},
+		},
+		actorUid,
+	);
+
+	await writeAudit(c.env.DB, {
+		actorUid,
+		action: "admin.mail.save",
+		target: config.mode,
+		detail: { host: config.smtp.host, security: config.smtp.security },
+	});
+	return c.json({ ok: true, config });
+});
+
+/**
+ * 发一封测试邮件，验证发信配置真的能用。
+ * 默认发给当前登录管理员的邮箱——手填别人的地址等于给别人发垃圾邮件。
+ */
+admin.post("/mail-test", sameOriginGuard, requireJsonBody, async (c) => {
+	const me = c.get("user");
+	if (!me) return c.json({ error: "unauthorized" }, 401);
+	const body = (await c.req.json().catch(() => null)) as Record<
+		string,
+		unknown
+	> | null;
+	const typed = typeof body?.to === "string" ? body.to.trim() : "";
+
+	const row = await c.env.DB.prepare("SELECT email FROM users WHERE uid = ?1")
+		.bind(me.uid)
+		.first<{ email: string | null }>();
+	const to = typed || row?.email || "";
+	if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+		return c.json(
+			{ error: "bad_email", message: "你的账号还没填邮箱，先填一个再测" },
+			400,
+		);
+	}
+
+	const origin = new URL(c.req.url).origin;
+	const result = await sendTestMail(c.env, to, origin);
+
+	await writeAudit(c.env.DB, {
+		actorUid: me.uid,
+		action: "admin.mail.test",
+		target: to,
+		detail: { ok: result.ok, mode: result.mode ?? null },
+	});
+
+	// 没有可用通道时 sendMail 会返回 sent:false（不算错，但邮件确实没发出去）
+	const delivered = result.ok && result.sent;
+	return c.json({
+		ok: delivered,
+		sent: result.sent,
+		mode: result.mode ?? result.configMode,
+		to,
+		from: result.from,
+		message: delivered
+			? null
+			: (result.hint ??
+				result.providerMessage ??
+				"当前没有可用的发信通道，检查模式与密钥"),
+	});
 });
 
 siteConfig.route("/admin", admin);
