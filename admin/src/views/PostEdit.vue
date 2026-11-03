@@ -3,6 +3,7 @@ import Vditor from "vditor";
 import "vditor/dist/index.css";
 import {
 	computed,
+	defineAsyncComponent,
 	nextTick,
 	onBeforeUnmount,
 	onMounted,
@@ -15,6 +16,12 @@ import PageHeader from "../components/PageHeader.vue";
 import { ApiError } from "../lib/api";
 import { isAdmin } from "../lib/auth";
 import { uploadImage } from "../lib/media";
+import {
+	findMindmapBlocks,
+	type MindBlock,
+	parseMermaid,
+	replaceBlock,
+} from "../lib/mindmap";
 import {
 	bodyToPreview,
 	bodyToStorage,
@@ -254,6 +261,69 @@ const ready = ref(false);
 const saveState = ref<SaveState>("idle");
 const errorText = ref("");
 const lastSaved = ref<string | null>(null);
+
+/* ---------- 思维导图画布 ---------- */
+
+// 画布库有一百多 KB，只有点开时才下载，不拖慢编辑页本身
+const MindMapDialog = defineAsyncComponent(
+	() => import("../components/MindMapDialog.vue"),
+);
+
+const mmOpen = ref(false);
+/** 打开画布那一刻正文里的 mindmap 块；改的就是这一块 */
+const mmBlocks = ref<MindBlock[]>([]);
+const mmIndex = ref(0);
+/** 读不出来时的提示：宁可不覆盖，也不要拿空白画布把人家原来的图冲掉 */
+const mmNotice = ref("");
+
+const mmInitial = computed(() => {
+	const block = mmBlocks.value[mmIndex.value];
+	return block ? parseMermaid(block.source) : null;
+});
+
+const mmTargetLabel = computed(() => {
+	if (mmBlocks.value.length === 0) return "插入正文";
+	return mmBlocks.value.length > 1
+		? `更新第 ${mmIndex.value + 1} 幅`
+		: "更新正文";
+});
+
+function openMindMap(): void {
+	if (!editable.value) return;
+	const blocks = findMindmapBlocks(form.body);
+	const last = blocks[blocks.length - 1];
+	if (last && !parseMermaid(last.source)) {
+		// 里面可能有 icon / class 这类画布表达不了的写法，整块覆盖会丢东西
+		mmBlocks.value = [];
+		mmIndex.value = 0;
+		mmNotice.value =
+			"正文里那幅导图用了画布不支持的写法，这次会新增一幅，不会覆盖原来那张。";
+	} else {
+		mmBlocks.value = blocks;
+		// 一篇里有多幅时改最后画的那幅，新插入的永远在文末
+		mmIndex.value = Math.max(0, blocks.length - 1);
+		mmNotice.value = "";
+	}
+	mmOpen.value = true;
+}
+
+function applyMindMap(source: string): void {
+	mmOpen.value = false;
+	const block = mmBlocks.value[mmIndex.value];
+	if (block) {
+		const next = replaceBlock(form.body, block, source);
+		form.body = next;
+		vditor?.setValue(next, false);
+		vditor?.focus();
+	} else if (vditor) {
+		vditor.focus();
+		vditor.insertValue(`\n\`\`\`mermaid\n${source}\n\`\`\`\n`, true);
+		form.body = vditor.getValue();
+	} else {
+		form.body = `${form.body.trimEnd()}\n\n\`\`\`mermaid\n${source}\n\`\`\`\n`;
+	}
+	onFieldInput();
+}
 
 /** 仓库文章没有 D1 状态，能改就是能改；D1 文章要 draft/rejected 才能改 */
 const editable = computed(() =>
@@ -893,6 +963,16 @@ watch(isDark, (dark) => {
 									{{ isRepo ? "仓库文件" : statusLabel }}
 								</span>
 								<span v-if="isMdx" class="mdx-tag">MDX · 源码模式</span>
+								<button
+									type="button"
+									class="mm-launch"
+									:disabled="!editable"
+									title="用画布画思维导图，插入到正文光标处"
+									@click="openMindMap"
+								>
+									<AppIcon name="mindmap" :size="13" />
+									思维导图
+								</button>
 								<span class="doc-sub-key">正文 <code class="fm-key">body</code></span>
 							</div>
 						</div>
@@ -1096,6 +1176,16 @@ watch(isDark, (dark) => {
 				</aside>
 			</div>
 		</template>
+
+		<MindMapDialog
+			v-if="mmOpen"
+			:initial="mmInitial"
+			:dark="isDark"
+			:notice="mmNotice"
+			:target-label="mmTargetLabel"
+			@close="mmOpen = false"
+			@submit="applyMindMap"
+		/>
 	</div>
 </template>
 
@@ -1438,6 +1528,31 @@ watch(isDark, (dark) => {
 	color: var(--admonitions-color-note);
 	font-size: 0.64rem;
 	font-weight: 600;
+}
+
+/* 思维导图入口：贴在正文标签旁边，跟 slug / 状态这些胶囊同一档视觉重量 */
+.mm-launch {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.1rem 0.5rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--fg-75);
+	font-size: 0.66rem;
+	line-height: 1.5;
+	cursor: pointer;
+}
+
+.mm-launch:hover:not(:disabled) {
+	background: var(--btn-plain-bg-hover);
+	color: var(--fg-90);
+}
+
+.mm-launch:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 
 .save-state {
