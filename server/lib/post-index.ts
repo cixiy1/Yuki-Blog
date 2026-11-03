@@ -15,6 +15,8 @@ export interface RepoPost {
 	tags: string[];
 	category: string;
 	series: string;
+	/** 同系列内的排序号；老文章可能没写 */
+	seriesOrder: number | null;
 	cover: string;
 	sourceLink: string;
 	author: string;
@@ -26,11 +28,15 @@ const TTL_MS = 60_000;
 
 let cached: { at: number; data: RepoPost[] } | null = null;
 
-export async function readRepoPosts(assets: AssetsFetcher): Promise<RepoPost[]> {
+export async function readRepoPosts(
+	assets: AssetsFetcher,
+): Promise<RepoPost[]> {
 	if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
 
 	try {
-		const res = await assets.fetch(new URL("https://assets.local/api/post-index.json"));
+		const res = await assets.fetch(
+			new URL("https://assets.local/api/post-index.json"),
+		);
 		if (!res.ok) return cached?.data ?? [];
 		const data = (await res.json()) as RepoPost[];
 		cached = { at: Date.now(), data };

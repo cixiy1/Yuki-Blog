@@ -174,7 +174,6 @@ me.patch(
 	},
 );
 
-
 export interface PostRow {
 	id: number;
 	uid: number;
@@ -463,6 +462,108 @@ me.get("/all-posts", requireAuth, async (c) => {
 			toMillis(a.published_at ?? a.updated_at),
 	);
 	return c.json({ posts });
+});
+
+/** 系列里的一篇：编辑页据此提示「哪些序号已被占用」 */
+interface SeriesEntry {
+	slug: string;
+	title: string;
+	order: number | null;
+}
+
+/**
+ * 系列一览，给编辑页的「选系列」窗口用。
+ *
+ * 分组口径与站点一致：series 字符串 trim 后精确相等算同一个系列——所以这个接口
+ * 存在的意义就是让作者从列表里点，而不是手打一个「软件2615班务」出来分家。
+ * 数据来源：仓库快照（构建期生成）+ D1 里自己的稿子和所有已发布文章。
+ */
+me.get("/series", requireAuth, async (c) => {
+	const user = c.get("user");
+	if (!user) return c.json({ series: [] });
+
+	const groups = new Map<
+		string,
+		{ name: string; updated: number; posts: Map<string, SeriesEntry> }
+	>();
+
+	const put = (
+		name: string,
+		slug: string,
+		title: string,
+		order: number | null,
+		at: number,
+	): void => {
+		const key = String(name ?? "").trim();
+		if (!key || !slug) return;
+		let group = groups.get(key);
+		if (!group) {
+			group = { name: key, updated: 0, posts: new Map() };
+			groups.set(key, group);
+		}
+		// 仓库那份先入，D1 里的过渡行不覆盖它
+		if (group.posts.has(slug)) return;
+		group.posts.set(slug, { slug, title, order });
+		if (at > group.updated) group.updated = at;
+	};
+
+	const repo = await readRepoPosts(c.env.ASSETS);
+	const repoSlugs = new Set(repo.map((post) => post.slug));
+	for (const post of repo) {
+		put(
+			post.series,
+			post.slug,
+			post.title,
+			typeof post.seriesOrder === "number" ? post.seriesOrder : null,
+			post.updated ?? post.published,
+		);
+	}
+
+	const rows = await c.env.DB.prepare(
+		`SELECT slug, title, meta_json, published_at, updated_at FROM posts
+		 WHERE uid = ?1 OR status = 'published' LIMIT 500`,
+	)
+		.bind(user.uid)
+		.all<
+			Pick<
+				PostRow,
+				"slug" | "title" | "meta_json" | "published_at" | "updated_at"
+			>
+		>();
+
+	for (const row of rows.results ?? []) {
+		if (repoSlugs.has(row.slug)) continue;
+		const meta = parseMeta(row.meta_json);
+		const rawOrder = meta.seriesOrder;
+		const order = Number.isFinite(Number(rawOrder)) ? Number(rawOrder) : null;
+		put(
+			typeof meta.series === "string" ? meta.series : "",
+			row.slug,
+			row.title,
+			order,
+			toMillis(row.updated_at ?? row.published_at),
+		);
+	}
+
+	const series = [...groups.values()]
+		.map((group) => ({
+			name: group.name,
+			updated: group.updated,
+			posts: [...group.posts.values()].sort((a, b) => {
+				// 没写序号的一律排最后，与站点里的排序规则保持一致
+				if (a.order === null && b.order === null)
+					return a.title.localeCompare(b.title, "zh");
+				if (a.order === null) return 1;
+				if (b.order === null) return -1;
+				return a.order - b.order || a.title.localeCompare(b.title, "zh");
+			}),
+		}))
+		// 最近写过的系列排前面：新开的系列不用往下翻
+		.sort(
+			(a, b) => b.updated - a.updated || a.name.localeCompare(b.name, "zh"),
+		);
+
+	return c.json({ series });
 });
 
 me.post("/posts", requireAuth, requireJsonBody, sameOriginGuard, async (c) => {

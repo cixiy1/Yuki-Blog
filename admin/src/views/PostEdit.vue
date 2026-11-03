@@ -13,6 +13,7 @@ import {
 } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
+import SeriesPickerDialog from "../components/SeriesPickerDialog.vue";
 import { ApiError } from "../lib/api";
 import { isAdmin } from "../lib/auth";
 import { uploadImage } from "../lib/media";
@@ -32,10 +33,12 @@ import {
 	getPostNotes,
 	getRepoPost,
 	isEditable,
+	listSeries,
 	type PostDetail,
 	publishPost,
 	type RepoPostDetail,
 	type ReviewNoteView,
+	type SeriesItem,
 	savePost,
 	saveRepoPost,
 	submitPost,
@@ -73,6 +76,7 @@ type Kind =
 	| "url"
 	| "tags"
 	| "image"
+	| "series"
 	| "provenance";
 
 interface Def {
@@ -119,8 +123,8 @@ const GROUPS: Group[] = [
 			{
 				key: "series",
 				label: "系列",
-				kind: "text",
-				placeholder: "留空表示不属于系列",
+				kind: "series",
+				placeholder: "从列表里选，或新建一个",
 			},
 			{
 				key: "seriesOrder",
@@ -330,6 +334,88 @@ function applyMindMap(source: string): void {
 	onFieldInput();
 }
 
+/* ---------- 系列选择 ---------- */
+
+/*
+ * 系列的归属完全靠名字精确匹配（见 content-utils 的 getSeriesPosts），
+ * 手打一个「软件2615班务」就能把同一个系列拆成两堆，站点上分成两个系列页。
+ * 所以这里不给自由输入：要么从列表里点，要么显式新建。
+ */
+const seriesList = ref<SeriesItem[]>([]);
+const seriesLoading = ref(false);
+const seriesOpen = ref(false);
+
+/** 本篇的 slug：算「序号空位」时要排除自己，否则改自己的序号会撞自己 */
+const selfSlug = computed(() => loadedSlug.value || form.slug);
+
+const currentSeriesItem = computed(() => {
+	const name = textOf("series").trim();
+	if (!name) return null;
+	return seriesList.value.find((item) => item.name === name) ?? null;
+});
+
+/** 同系列里被别的篇占用的序号 */
+const takenOrders = computed<number[]>(() => {
+	const item = currentSeriesItem.value;
+	if (!item) return [];
+	const set = new Set<number>();
+	for (const post of item.posts) {
+		if (post.slug === selfSlug.value) continue;
+		if (typeof post.order === "number") set.add(post.order);
+	}
+	return [...set].sort((a, b) => a - b);
+});
+
+const nextFreeOrder = computed(() => {
+	const used = new Set(takenOrders.value);
+	let next = 1;
+	while (used.has(next)) next += 1;
+	return next;
+});
+
+const seriesOrderHint = computed(() => {
+	if (!textOf("series").trim()) return "";
+	if (seriesLoading.value) return "读取同系列篇目…";
+	if (takenOrders.value.length === 0) return "同系列还没有别的篇";
+	return `已被占用 ${takenOrders.value.join("、")}`;
+});
+
+/** 当前序号已经是下一个空位时就不推「填 N」，少一个碍眼的按钮 */
+const canSuggestOrder = computed(() => {
+	if (!textOf("series").trim()) return false;
+	return textOf("seriesOrder").trim() !== String(nextFreeOrder.value);
+});
+
+async function loadSeries(): Promise<void> {
+	if (seriesList.value.length > 0) return;
+	seriesLoading.value = true;
+	try {
+		seriesList.value = await listSeries();
+	} catch {
+		// 读不到就当没有：选择窗口里照样能新建
+	} finally {
+		seriesLoading.value = false;
+	}
+}
+
+function openSeries(): void {
+	if (!editable.value) return;
+	seriesOpen.value = true;
+	void loadSeries();
+}
+
+function applySeries(name: string, order: string): void {
+	seriesOpen.value = false;
+	vals.series = name;
+	vals.seriesOrder = order;
+	onFieldInput();
+}
+
+function useNextOrder(): void {
+	vals.seriesOrder = String(nextFreeOrder.value);
+	onFieldInput();
+}
+
 /** 仓库文章没有 D1 状态，能改就是能改；D1 文章要 draft/rejected 才能改 */
 const editable = computed(() =>
 	isRepo.value ? true : isEditable(status.value),
@@ -498,6 +584,7 @@ function loadFields(fields: Record<string, FieldValue>): void {
 }
 
 function fill(post: PostDetail): void {
+	loadedSlug.value = post.slug;
 	status.value = post.status;
 	lastSaved.value = formatTime(post.updated_at);
 	form.slug = post.slug;
@@ -867,6 +954,8 @@ onMounted(async () => {
 	if (local) fill(local);
 	if (remote) fillRepo(remote);
 	if (local || remote) createEditor();
+	// 系列列表只用来算序号提示，晚一步没关系，失败也不挡编辑
+	if (local || remote) void loadSeries();
 
 	window.addEventListener("keydown", onKeydown);
 	window.addEventListener("beforeunload", beforeUnload);
@@ -1099,6 +1188,23 @@ watch(isDark, (dark) => {
 								/>
 							</template>
 
+							<template v-else-if="def.kind === 'series'">
+								<button
+									type="button"
+									class="picker-btn"
+									:disabled="!editable"
+									@click="openSeries"
+								>
+									<span
+										class="picker-val"
+										:class="{ 'is-empty': !textOf('series').trim() }"
+									>
+										{{ textOf("series").trim() || def.placeholder }}
+									</span>
+									<AppIcon name="chevron" :size="14" />
+								</button>
+							</template>
+
 							<template v-else-if="def.kind === 'image'">
 								<div class="cover-row">
 									<img
@@ -1169,6 +1275,20 @@ watch(isDark, (dark) => {
 								:placeholder="def.placeholder"
 								@input="onFieldInput"
 							/>
+							<p
+								v-if="def.key === 'seriesOrder' && seriesOrderHint"
+								class="field-hint order-hint"
+							>
+								{{ seriesOrderHint }}
+								<button
+									v-if="editable && canSuggestOrder"
+									type="button"
+									class="hint-btn"
+									@click="useNextOrder"
+								>
+									填 {{ nextFreeOrder }}
+								</button>
+							</p>
 							<p v-if="def.hint" class="field-hint">{{ def.hint }}</p>
 						</div>
 					</section>
@@ -1215,6 +1335,17 @@ watch(isDark, (dark) => {
 				</aside>
 			</div>
 		</template>
+
+		<SeriesPickerDialog
+			v-if="seriesOpen"
+			:current="textOf('series')"
+			:order="textOf('seriesOrder')"
+			:series="seriesList"
+			:self-slug="selfSlug"
+			:loading="seriesLoading"
+			@close="seriesOpen = false"
+			@apply="applySeries"
+		/>
 
 		<MindMapDialog
 			v-if="mmOpen"
@@ -1446,6 +1577,72 @@ watch(isDark, (dark) => {
 .summary {
 	line-height: 1.55;
 	resize: vertical;
+}
+
+/* ---- 系列选择器：长得像输入框，点开是弹窗 ---- */
+.picker-btn {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.4rem;
+	width: 100%;
+	padding: 0.4rem 0.6rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.55rem;
+	background: rgba(0, 0, 0, 0.025);
+	color: var(--fg-90);
+	font-size: 0.78rem;
+	text-align: left;
+	transition:
+		border-color 0.15s ease,
+		background-color 0.15s ease;
+}
+
+:root.dark .picker-btn {
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.picker-btn:hover:not(:disabled) {
+	border-color: var(--primary);
+	background: var(--btn-plain-bg-hover);
+}
+
+.picker-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.picker-val {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.picker-val.is-empty {
+	color: var(--fg-30);
+}
+
+/* 序号提示后面挂一个「填 N」，省得自己数空位 */
+.order-hint {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.hint-btn {
+	padding: 0.04rem 0.4rem;
+	border: 1px dashed var(--line-color);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--fg-75);
+	font-size: 0.66rem;
+}
+
+.hint-btn:hover {
+	border-color: var(--primary);
+	color: var(--accent-text);
 }
 
 .cover-row {

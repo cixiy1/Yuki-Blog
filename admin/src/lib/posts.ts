@@ -179,6 +179,26 @@ export async function listAllPosts(): Promise<PostSummary[]> {
 	return data.posts ?? [];
 }
 
+/* ---------- 系列：编辑页选系列用 ---------- */
+
+export interface SeriesEntry {
+	slug: string;
+	title: string;
+	order: number | null;
+}
+
+export interface SeriesItem {
+	name: string;
+	/** 该系列最近一次改动的时间戳，用来把常用系列排前面 */
+	updated: number;
+	posts: SeriesEntry[];
+}
+
+export async function listSeries(): Promise<SeriesItem[]> {
+	const data = await api.get<{ series: SeriesItem[] }>("/api/me/series");
+	return data.series ?? [];
+}
+
 /**
  * 文章里的 `./images/a.webp` 是 Astro 的资产引用，构建时会被换成 `/_astro/hash.webp`，
  * 原路径在站点上不存在。编辑器直接渲染会 404，所以预览时换成仓库的 raw 地址，

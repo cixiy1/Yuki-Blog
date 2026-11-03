@@ -21,6 +21,8 @@ export async function GET(): Promise<Response> {
 			tags: post.data.tags,
 			category: post.data.category ?? "",
 			series: post.data.series,
+			// 编辑页选系列时要看同系列里哪些序号已被占用
+			seriesOrder: post.data.seriesOrder ?? null,
 			cover: post.data.image,
 			sourceLink: post.data.sourceLink,
 			author: post.data.author,
