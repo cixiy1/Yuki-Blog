@@ -61,7 +61,12 @@ async function applyHotConfig(): Promise<void> {
 	// 先把构建值记下来：下面会改 data-hue，改完再读就不是原值了
 	const buildHue = getDefaultHue();
 	const hue = readPath(payload, ["config", "site", "themeColor", "hue"]);
-	if (typeof hue === "number" && Number.isFinite(hue) && hue >= 0 && hue <= 360) {
+	if (
+		typeof hue === "number" &&
+		Number.isFinite(hue) &&
+		hue >= 0 &&
+		hue <= 360
+	) {
 		// 与构建产物一致就什么都不用做
 		if (hue !== buildHue) applyHue(hue);
 	}
