@@ -10,8 +10,8 @@ import {
 	type QueueItem,
 	rejectPost,
 } from "../lib/review";
-import { goReview } from "../router";
 import { preloadVditorCore } from "../lib/vditor-preload";
+import { goReview } from "../router";
 
 const items = ref<QueueItem[]>([]);
 const loading = ref(true);
@@ -21,6 +21,8 @@ const busyId = ref<number | null>(null);
 /** 正在写退回理由的那一条 */
 const rejectingId = ref<number | null>(null);
 const rejectNote = ref("");
+/** 已经点过一次「通过并发布」、等着再确认的那一条 */
+const confirmingId = ref<number | null>(null);
 
 const count = computed(() => items.value.length);
 
@@ -42,6 +44,7 @@ async function onApprove(item: QueueItem): Promise<void> {
 	try {
 		await approvePost(item.id);
 		items.value = items.value.filter((row) => row.id !== item.id);
+		confirmingId.value = null;
 		notice.value = `《${item.title}》已通过，约一分钟后上线`;
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "操作失败";
@@ -50,8 +53,20 @@ async function onApprove(item: QueueItem): Promise<void> {
 	}
 }
 
+/** 通过会直接写仓库并触发构建，列表上不给人一键滑走的机会，先转成确认态 */
+function startApprove(item: QueueItem): void {
+	confirmingId.value = item.id;
+	rejectingId.value = null;
+	errorText.value = "";
+}
+
+function cancelApprove(): void {
+	confirmingId.value = null;
+}
+
 function startReject(item: QueueItem): void {
 	rejectingId.value = item.id;
+	confirmingId.value = null;
 	rejectNote.value = "";
 	errorText.value = "";
 }
@@ -174,19 +189,33 @@ onMounted(() => {
 					</button>
 					<button
 						type="button"
-						class="btn-primary"
-						:disabled="busyId === item.id"
-						@click="onApprove(item)"
-					>
-						通过并发布
-					</button>
-					<button
-						type="button"
 						class="btn-regular"
 						:disabled="busyId === item.id"
 						@click="startReject(item)"
 					>
 						退回
+					</button>
+					<template v-if="confirmingId === item.id">
+						<button type="button" class="btn-ghost" @click="cancelApprove()">
+							取消
+						</button>
+						<button
+							type="button"
+							class="btn-primary"
+							:disabled="busyId === item.id"
+							@click="onApprove(item)"
+						>
+							{{ busyId === item.id ? "发布中…" : "确认发布" }}
+						</button>
+					</template>
+					<button
+						v-else
+						type="button"
+						class="btn-primary"
+						:disabled="busyId === item.id"
+						@click="startApprove(item)"
+					>
+						通过并发布
 					</button>
 				</div>
 			</li>

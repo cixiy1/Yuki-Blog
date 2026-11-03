@@ -9,7 +9,14 @@
  */
 import Vditor from "vditor";
 import "vditor/dist/index.css";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+	computed,
+	nextTick,
+	onBeforeUnmount,
+	onMounted,
+	ref,
+	watch,
+} from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview } from "../lib/auth";
@@ -79,7 +86,8 @@ const provenance = computed(() => {
 		const note = typeof value.note === "string" ? value.note : "";
 		const detail = [model, agent].filter(Boolean).join(" · ");
 		const label =
-			[PROV_LABEL[kind] ?? kind, detail].filter(Boolean).join(" · ") || "未标注";
+			[PROV_LABEL[kind] ?? kind, detail].filter(Boolean).join(" · ") ||
+			"未标注";
 		return {
 			label: note ? `${label}（${note}）` : label,
 			tone: PROV_TONE[kind] ?? "",
@@ -200,7 +208,10 @@ function onBodyMouseUp(): void {
 	picker.value = {
 		show: true,
 		top: Math.max(rect.top - 42, 8),
-		left: Math.min(Math.max(rect.left + rect.width / 2 - 48, 12), window.innerWidth - 120),
+		left: Math.min(
+			Math.max(rect.left + rect.width / 2 - 48, 12),
+			window.innerWidth - 120,
+		),
 		quote: text.slice(0, 300),
 	};
 }
@@ -228,11 +239,7 @@ async function saveNote(): Promise<void> {
 	savingNote.value = true;
 	errorText.value = "";
 	try {
-		const created = await addReviewNote(
-			id.value,
-			composerQuote.value,
-			note,
-		);
+		const created = await addReviewNote(id.value, composerQuote.value, note);
 		notes.value = [...notes.value, created];
 		cancelCompose();
 		await nextTick();
@@ -443,19 +450,19 @@ onBeforeUnmount(() => {
 				<template v-if="!rejecting">
 					<button
 						type="button"
-						class="btn-primary full"
-						:disabled="busy || !isPending"
-						@click="onApprove"
-					>
-						{{ approveAnyway ? "确认通过" : "通过并发布" }}
-					</button>
-					<button
-						type="button"
 						class="btn-regular full"
 						:disabled="busy || !isPending"
 						@click="rejecting = true"
 					>
 						打回修改
+					</button>
+					<button
+						type="button"
+						class="btn-primary full"
+						:disabled="busy || !isPending"
+						@click="onApprove"
+					>
+						{{ approveAnyway ? "确认通过" : "通过并发布" }}
 					</button>
 					<p class="hint">
 						通过会写到 <code>{{ publishPath }}</code
