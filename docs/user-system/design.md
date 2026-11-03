@@ -217,7 +217,7 @@ D1 表清单（字段略去 `created_at` 这类通用列）：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET/PATCH | `/api/admin/users`、`/api/admin/users/:uid` | 用户列表 / 改角色、封禁 |
+| GET/POST/PATCH/DELETE | `/api/admin/users`、`/api/admin/users/:uid` | 列表 / 新建 / 改资料、角色、状态、密码 / 软删除 |
 | GET/POST | `/api/admin/orgs` | 组织管理 |
 | GET/PUT | `/api/admin/settings` | 站点配置（含密钥写入，只写不回显） |
 | GET | `/api/admin/audit` | 审计日志 |

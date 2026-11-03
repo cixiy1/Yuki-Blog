@@ -28,8 +28,12 @@ export const AUDIT_ACTIONS: string[] = [
 	"auth.password_forgot",
 	"auth.password_reset",
 	"auth.password_change",
+	"admin.user.create",
+	"admin.user.delete",
 	"admin.user.status",
 	"admin.user.role",
+	"admin.user.profile",
+	"admin.user.password",
 ];
 
 export const ACTION_LABEL: Record<string, string> = {
@@ -42,8 +46,12 @@ export const ACTION_LABEL: Record<string, string> = {
 	"auth.password_forgot": "申请重置密码",
 	"auth.password_reset": "重置密码",
 	"auth.password_change": "修改密码",
+	"admin.user.create": "新建用户",
+	"admin.user.delete": "删除用户",
 	"admin.user.status": "改用户状态",
 	"admin.user.role": "改用户角色",
+	"admin.user.profile": "改用户资料",
+	"admin.user.password": "重置用户密码",
 };
 
 export async function listAudit(

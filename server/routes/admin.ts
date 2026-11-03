@@ -1,5 +1,12 @@
 import { type Context, Hono } from "hono";
 import { writeAudit } from "../lib/audit";
+import { encryptPassword } from "../lib/password";
+import { findByAccount, findByEmail, randomUid } from "../lib/users";
+import {
+	checkPasswordPolicy,
+	normalizeAccount,
+	normalizeEmail,
+} from "../lib/validate";
 import { requireRole } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
@@ -16,6 +23,33 @@ const LIST_COLUMNS =
 
 const ROLES = new Set(["user", "reviewer", "admin"]);
 const STATUSES = new Set(["pending", "active", "disabled", "deleted"]);
+
+const MAX_UID_RETRY = 5;
+const NAME_MAX = 32;
+
+/**
+ * 改/删管理员时唯一的硬约束：操作完得还有别人能管站点。
+ *
+ * 原来的做法是「管理员一律不可改」，安全但把一个功能废掉了——站点通常只有
+ * 一个管理员，于是那一行永远是锁的。现在按结果判断：只要还剩一个 active
+ * admin 就放行，剩下最后一个时拒绝。
+ */
+async function otherActiveAdmins(db: D1Database, excludeUid: number): Promise<number> {
+	const row = await db
+		.prepare(
+			"SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND status = 'active' AND uid <> ?1",
+		)
+		.bind(excludeUid)
+		.first<{ n: number }>();
+	return row?.n ?? 0;
+}
+
+function readName(raw: unknown): string | null {
+	if (typeof raw !== "string") return null;
+	const name = raw.trim();
+	if (!name || name.length > NAME_MAX) return null;
+	return name;
+}
 
 interface AdminUserRow {
 	uid: number;
@@ -174,6 +208,209 @@ admin.get("/users/:uid", requireRole("admin"), async (c) => {
 	});
 });
 
+admin.post(
+	"/users",
+	requireRole("admin"),
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
+		const key = c.env.PASSWORD_ENC_KEY;
+		if (!key) {
+			return c.json(
+				{ error: "misconfigured", message: "服务端没配 PASSWORD_ENC_KEY" },
+				500,
+			);
+		}
+
+		const body = await readJson(c);
+		const account = normalizeAccount(body?.account);
+		const email = normalizeEmail(body?.email);
+		const policy = checkPasswordPolicy(body?.password);
+
+		if (!account) {
+			return c.json(
+				{
+					error: "invalid_account",
+					message: "登录名 3–20 位，只能用小写字母、数字、下划线，且不能是保留字",
+					field: "account",
+				},
+				400,
+			);
+		}
+		if (!email) {
+			return c.json(
+				{ error: "invalid_email", message: "邮箱格式不正确", field: "email" },
+				400,
+			);
+		}
+		if (!policy.ok || !policy.value) {
+			return c.json(
+				{
+					error: "weak_password",
+					message: policy.message ?? "密码不符合要求",
+					field: "password",
+				},
+				400,
+			);
+		}
+
+		const name = readName(body?.display_name) ?? account;
+		const role = body?.role === undefined ? "user" : String(body?.role);
+		const status = body?.status === undefined ? "active" : String(body?.status);
+		if (!ROLES.has(role)) {
+			return c.json({ error: "invalid_role", message: "角色不合法" }, 400);
+		}
+		if (status !== "active" && status !== "pending") {
+			return c.json(
+				{ error: "invalid_status", message: "新建用户只能是正常或待验证" },
+				400,
+			);
+		}
+
+		if (await findByAccount(c.env.DB, account)) {
+			return c.json(
+				{ error: "account_taken", message: "这个登录名已被占用", field: "account" },
+				409,
+			);
+		}
+		if (await findByEmail(c.env.DB, email)) {
+			return c.json(
+				{ error: "email_taken", message: "这个邮箱已经注册过", field: "email" },
+				409,
+			);
+		}
+
+		let created: AdminUserRow | null = null;
+		let attempt = 0;
+		while (attempt < MAX_UID_RETRY && !created) {
+			attempt += 1;
+			const uid = randomUid();
+			// uid 参与 AAD，重试要针对新 uid 重新加密
+			const enc = await encryptPassword(key, uid, policy.value);
+			if (!enc) break;
+			try {
+				created = await c.env.DB.prepare(
+					`INSERT INTO users
+					   (uid, account, email, email_verified_at, role, status, display_name,
+					    password_enc, password_updated_at)
+					 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'))
+					 RETURNING ${LIST_COLUMNS.replaceAll("u.", "")}`,
+				)
+					.bind(
+						uid,
+						account,
+						email,
+						status === "active" ? new Date().toISOString() : null,
+						role,
+						status,
+						name,
+						enc,
+					)
+					.first<AdminUserRow>();
+			} catch (error) {
+				if (attempt >= MAX_UID_RETRY) {
+					console.error("[admin] 建号失败", error);
+					return c.json(
+						{ error: "create_failed", message: "创建失败，请重试" },
+						500,
+					);
+				}
+			}
+		}
+
+		if (!created) {
+			return c.json(
+				{ error: "create_failed", message: "创建失败，请换一个登录名重试" },
+				500,
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: me.uid,
+			action: "admin.user.create",
+			target: account,
+			detail: { uid: created.uid, role, status },
+		});
+
+		return c.json({ user: toPublic(created) }, 201);
+	},
+);
+
+admin.delete("/users/:uid", requireRole("admin"), sameOriginGuard, async (c) => {
+	const me = c.get("user");
+	if (!me) return c.json({ error: "unauthorized" }, 401);
+
+	const uid = Number(c.req.param("uid"));
+	if (!Number.isInteger(uid) || uid <= 0) {
+		return c.json({ error: "bad_request", message: "uid 非法" }, 400);
+	}
+	if (uid === me.uid) {
+		return c.json(
+			{ error: "self_forbidden", message: "不能删除自己的账号" },
+			409,
+		);
+	}
+
+	const row = await c.env.DB.prepare(
+		`SELECT ${LIST_COLUMNS} FROM users u WHERE u.uid = ?1`,
+	)
+		.bind(uid)
+		.first<AdminUserRow>();
+	if (!row) {
+		return c.json({ error: "user_not_found", message: "用户不存在" }, 404);
+	}
+	if (row.status === "deleted") {
+		return c.json({ error: "already_deleted", message: "这个账号已经删过" }, 409);
+	}
+	if (
+		row.role === "admin" &&
+		row.status === "active" &&
+		(await otherActiveAdmins(c.env.DB, uid)) === 0
+	) {
+		return c.json(
+			{ error: "last_admin", message: "这是最后一个可用管理员，不能删除" },
+			409,
+		);
+	}
+
+	// 软删除：账号名与邮箱要释放出来，不然本人想重新注册会被占用。
+	// 审计按 uid 留档，历史记录不受影响。
+	const deleted = await c.env.DB.prepare(
+		`UPDATE users
+		    SET status = 'deleted',
+		        account = ?1,
+		        email = ?2,
+		        display_name = '已注销用户',
+		        avatar_url = NULL,
+		        bio = NULL,
+		        password_enc = NULL,
+		        session_epoch = session_epoch + 1,
+		        updated_at = datetime('now')
+		  WHERE uid = ?3 AND status <> 'deleted'
+		 RETURNING ${LIST_COLUMNS.replaceAll("u.", "")}`,
+	)
+		.bind(`deleted_${uid}`, `deleted+${uid}@deleted.invalid`, uid)
+		.first<AdminUserRow>();
+
+	if (!deleted) {
+		return c.json(
+			{ error: "conflict", message: "这个用户刚被别人改过，刷新再试" },
+			409,
+		);
+	}
+
+	await writeAudit(c.env.DB, {
+		actorUid: me.uid,
+		action: "admin.user.delete",
+		target: row.account,
+		detail: { uid, role: row.role, status: row.status },
+	});
+
+	return c.json({ ok: true, user: toPublic(deleted) });
+});
+
 admin.patch(
 	"/users/:uid",
 	requireRole("admin"),
@@ -187,13 +424,6 @@ admin.patch(
 		if (!Number.isInteger(uid) || uid <= 0) {
 			return c.json({ error: "bad_request", message: "uid 非法" }, 400);
 		}
-		if (uid === me.uid) {
-			// 防呆：管理员把自己封了或被降权，就没人能管站点了
-			return c.json(
-				{ error: "self_forbidden", message: "不能修改自己的账号状态或角色" },
-				409,
-			);
-		}
 
 		const body = await readJson(c);
 		const row = await c.env.DB.prepare(
@@ -204,54 +434,153 @@ admin.patch(
 		if (!row) {
 			return c.json({ error: "user_not_found", message: "用户不存在" }, 404);
 		}
-		if (row.role === "admin") {
-			// 第二个硬约束：管理员之间不能互相改，避免误操作锁死
-			return c.json(
-				{ error: "admin_immutable", message: "管理员账号只能在库里改" },
-				409,
-			);
+		if (row.status === "deleted") {
+			return c.json({ error: "user_deleted", message: "这个账号已注销" }, 409);
 		}
 
-		const nextStatus = body?.status;
-		const nextRole = body?.role;
-		if (nextStatus === undefined && nextRole === undefined) {
+		const has = (key: string): boolean => body?.[key] !== undefined;
+		if (!["status", "role", "display_name", "email", "password"].some(has)) {
 			return c.json({ error: "no_change", message: "没有要改的字段" }, 400);
 		}
-		if (nextStatus !== undefined && !STATUSES.has(String(nextStatus))) {
-			return c.json({ error: "invalid_status", message: "状态不合法" }, 400);
-		}
-		if (String(nextStatus) === "deleted") {
-			return c.json(
-				{ error: "invalid_status", message: "删除用户只能走运维脚本" },
-				400,
-			);
-		}
-		if (nextRole !== undefined) {
-			if (!ROLES.has(String(nextRole))) {
-				return c.json({ error: "invalid_role", message: "角色不合法" }, 400);
-			}
-			if (String(nextRole) === "admin") {
+
+		// 自己那一行只放资料字段：角色/状态一改就可能把自己锁在门外，
+		// 密码走「改密码」入口（要验旧密码），不在这里重置。
+		if (uid === me.uid) {
+			const forbidden = ["status", "role", "password"].filter(has);
+			if (forbidden.length > 0) {
 				return c.json(
-					{ error: "admin_immutable", message: "不能通过接口把人提管理员" },
+					{
+						error: "self_forbidden",
+						message: "不能在这里改自己的角色、状态或密码",
+					},
 					409,
 				);
 			}
 		}
 
-		const status = nextStatus === undefined ? row.status : String(nextStatus);
-		const role = nextRole === undefined ? row.role : String(nextRole);
-		// 封禁即踢下线：session_epoch + 1，旧 cookie 立刻作废
-		const bumpEpoch = status === "disabled" && row.status !== "disabled";
+		const nextStatus = has("status") ? String(body?.status) : row.status;
+		const nextRole = has("role") ? String(body?.role) : row.role;
+		if (!STATUSES.has(nextStatus)) {
+			return c.json({ error: "invalid_status", message: "状态不合法" }, 400);
+		}
+		if (nextStatus === "deleted") {
+			return c.json(
+				{ error: "invalid_status", message: "删除用户请用删除按钮" },
+				400,
+			);
+		}
+		if (!ROLES.has(nextRole)) {
+			return c.json({ error: "invalid_role", message: "角色不合法" }, 400);
+		}
 
+		let nextName = row.display_name;
+		if (has("display_name")) {
+			const name = readName(body?.display_name);
+			if (!name) {
+				return c.json(
+					{
+						error: "invalid_name",
+						message: `昵称 1–${NAME_MAX} 个字符`,
+						field: "display_name",
+					},
+					400,
+				);
+			}
+			nextName = name;
+		}
+
+		let nextEmail = row.email;
+		let clearVerified = false;
+		if (has("email")) {
+			const email = normalizeEmail(body?.email);
+			if (!email) {
+				return c.json(
+					{ error: "invalid_email", message: "邮箱格式不正确", field: "email" },
+					400,
+				);
+			}
+			if (email !== row.email) {
+				const owner = await findByEmail(c.env.DB, email);
+				if (owner && owner.uid !== uid) {
+					return c.json(
+						{ error: "email_taken", message: "这个邮箱已经被别的账号用了" },
+						409,
+					);
+				}
+				nextEmail = email;
+				// 换了邮箱就不能再算已验证，等本人点新链接
+				clearVerified = true;
+			}
+		}
+
+		let enc: string | null = null;
+		if (has("password")) {
+			const key = c.env.PASSWORD_ENC_KEY;
+			const policy = checkPasswordPolicy(body?.password);
+			if (!key) {
+				return c.json({ error: "misconfigured", message: "服务端没配 PASSWORD_ENC_KEY" }, 500);
+			}
+			if (!policy.ok || !policy.value) {
+				return c.json(
+					{
+						error: "weak_password",
+						message: policy.message ?? "密码不符合要求",
+						field: "password",
+					},
+					400,
+				);
+			}
+			enc = await encryptPassword(key, uid, policy.value);
+			if (!enc) {
+				return c.json({ error: "encrypt_failed", message: "密码加密失败" }, 500);
+			}
+		}
+
+		// 唯一的不变式：操作之后至少还有一个能用（active）的管理员
+		const wasActiveAdmin = row.role === "admin" && row.status === "active";
+		const staysActiveAdmin = nextRole === "admin" && nextStatus === "active";
+		if (
+			wasActiveAdmin &&
+			!staysActiveAdmin &&
+			(await otherActiveAdmins(c.env.DB, uid)) === 0
+		) {
+			return c.json(
+				{
+					error: "last_admin",
+					message: "这是最后一个可用管理员，降级或停用后没人能管站点",
+				},
+				409,
+			);
+		}
+
+		const sets: string[] = [];
+		const binds: unknown[] = [];
+		const push = (sql: string, value: unknown): void => {
+			binds.push(value);
+			sets.push(sql.replace("?", `?${binds.length}`));
+		};
+		if (nextStatus !== row.status) push("status = ?", nextStatus);
+		if (nextRole !== row.role) push("role = ?", nextRole);
+		if (nextName !== row.display_name) push("display_name = ?", nextName);
+		if (nextEmail !== row.email) push("email = ?", nextEmail);
+		if (clearVerified) sets.push("email_verified_at = NULL");
+		if (enc) {
+			push("password_enc = ?", enc);
+			sets.push("password_updated_at = datetime('now')");
+		}
+		// 停用、改密要立刻踢掉旧会话
+		const bump =
+			(nextStatus === "disabled" && row.status !== "disabled") || enc !== null;
+		if (bump) sets.push("session_epoch = session_epoch + 1");
+		sets.push("updated_at = datetime('now')");
+
+		binds.push(uid, row.status, row.role);
 		const updated = await c.env.DB.prepare(
-			`UPDATE users
-			    SET status = ?1, role = ?2,
-			        session_epoch = session_epoch + ?3,
-			        updated_at = datetime('now')
-			  WHERE uid = ?4 AND status = ?5
+			`UPDATE users SET ${sets.join(", ")}
+			  WHERE uid = ?${binds.length - 2} AND status = ?${binds.length - 1} AND role = ?${binds.length}
 			 RETURNING ${LIST_COLUMNS.replaceAll("u.", "")}`,
 		)
-			.bind(status, role, bumpEpoch ? 1 : 0, uid, row.status)
+			.bind(...binds)
 			.first<AdminUserRow>();
 
 		if (!updated) {
@@ -261,20 +590,44 @@ admin.patch(
 			);
 		}
 
-		if (status !== row.status) {
+		if (nextStatus !== row.status) {
 			await writeAudit(c.env.DB, {
 				actorUid: me.uid,
 				action: "admin.user.status",
 				target: row.account,
-				detail: { from: row.status, to: status },
+				detail: { from: row.status, to: nextStatus },
 			});
 		}
-		if (role !== row.role) {
+		if (nextRole !== row.role) {
 			await writeAudit(c.env.DB, {
 				actorUid: me.uid,
 				action: "admin.user.role",
 				target: row.account,
-				detail: { from: row.role, to: role },
+				detail: { from: row.role, to: nextRole },
+			});
+		}
+		if (nextName !== row.display_name) {
+			await writeAudit(c.env.DB, {
+				actorUid: me.uid,
+				action: "admin.user.profile",
+				target: row.account,
+				detail: { field: "display_name", from: row.display_name, to: nextName },
+			});
+		}
+		if (nextEmail !== row.email) {
+			await writeAudit(c.env.DB, {
+				actorUid: me.uid,
+				action: "admin.user.profile",
+				target: row.account,
+				detail: { field: "email", from: row.email, to: nextEmail },
+			});
+		}
+		if (enc) {
+			await writeAudit(c.env.DB, {
+				actorUid: me.uid,
+				action: "admin.user.password",
+				target: row.account,
+				detail: { reset: true },
 			});
 		}
 

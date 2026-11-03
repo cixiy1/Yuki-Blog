@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
+import UserEditor from "../components/UserEditor.vue";
 import { ApiError } from "../lib/api";
 import { user as me } from "../lib/auth";
 import {
@@ -25,6 +26,36 @@ const notice = ref("");
 const query = ref("");
 const roleFilter = ref("");
 const statusFilter = ref("");
+
+/** 抽屉：新建或编辑。editing 为空表示没打开 */
+const editorOpen = ref(false);
+const editorMode = ref<"create" | "edit">("create");
+const editing = ref<AdminUser | null>(null);
+
+function openCreate(): void {
+	editorMode.value = "create";
+	editing.value = null;
+	editorOpen.value = true;
+}
+
+function openEdit(row: AdminUser): void {
+	editorMode.value = "edit";
+	editing.value = row;
+	editorOpen.value = true;
+}
+
+function onSaved(user: AdminUser): void {
+	const index = rows.value.findIndex((row) => row.uid === user.uid);
+	if (index >= 0) rows.value[index] = user;
+	else void refresh();
+	notice.value = `${user.account} 已更新`;
+}
+
+function onDeleted(uid: number): void {
+	rows.value = rows.value.filter((row) => row.uid !== uid);
+	total.value = Math.max(0, total.value - 1);
+	notice.value = "账号已删除";
+}
 
 const pages = computed(() => Math.max(1, Math.ceil(total.value / limit)));
 
@@ -89,17 +120,25 @@ function isSelf(row: AdminUser): boolean {
 	return row.uid === me.value?.uid;
 }
 
-function isLocked(row: AdminUser): boolean {
-	return isSelf(row) || row.role === "admin";
+/** 已注销的账号只留一行记录，不给改也不给再删 */
+function isDeleted(row: AdminUser): boolean {
+	return row.status === "deleted";
 }
+
+/** 自己那一行的角色/状态不给改：后端也会拒，干脆显示成文字并说清原因 */
+const SELF_LOCK_HINT = "不能改自己的角色或状态，避免把自己锁在门外";
 
 onMounted(() => void refresh());
 </script>
 
 <template>
 	<div>
-		<PageHeader title="用户管理" desc="改角色、停用账号。管理员账号只能改库。">
+		<PageHeader title="用户管理" desc="新建、改资料、停用或删除账号。管理员之间也能互相调整，只要还剩一个可用的。">
 			<template #actions>
+				<button type="button" class="btn-primary" @click="openCreate">
+					<AppIcon name="plus" :size="15" />
+					新建用户
+				</button>
 				<button type="button" class="btn-regular" @click="refresh()">
 					<AppIcon name="refresh" :size="15" />
 					刷新
@@ -125,6 +164,7 @@ onMounted(() => void refresh());
 				<option value="pending">待验证</option>
 				<option value="active">正常</option>
 				<option value="disabled">已停用</option>
+				<option value="deleted">已删除</option>
 			</select>
 			<button type="button" class="btn-primary" @click="refresh(true)">搜索</button>
 		</div>
@@ -145,6 +185,7 @@ onMounted(() => void refresh());
 						<th>状态</th>
 						<th>注册</th>
 						<th>最后登录</th>
+						<th>操作</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -161,10 +202,15 @@ onMounted(() => void refresh());
 							<span v-if="!row.email_verified" class="warn">未验证</span>
 						</td>
 						<td>
+							<span v-if="isSelf(row) || isDeleted(row)" class="ro" :title="isDeleted(row) ? '账号已注销' : SELF_LOCK_HINT">
+								{{ ROLE_LABEL[row.role] ?? row.role }}
+								<span v-if="isSelf(row)" class="lock">锁</span>
+							</span>
 							<select
+								v-else
 								class="field mini"
 								:value="row.role"
-								:disabled="isLocked(row) || busyUid === row.uid"
+								:disabled="busyUid === row.uid"
 								@change="onRole(row, $event)"
 							>
 								<option value="user">{{ ROLE_LABEL.user }}</option>
@@ -173,19 +219,36 @@ onMounted(() => void refresh());
 							</select>
 						</td>
 						<td>
+							<span v-if="isSelf(row) || isDeleted(row)" class="ro" :title="isDeleted(row) ? '账号已注销' : SELF_LOCK_HINT">
+								{{ STATUS_LABEL[row.status] ?? row.status }}
+								<span v-if="isSelf(row)" class="lock">锁</span>
+							</span>
 							<select
+								v-else
 								class="field mini"
 								:value="row.status"
-								:disabled="isLocked(row) || busyUid === row.uid"
+								:disabled="busyUid === row.uid"
 								@change="onStatus(row, $event)"
 							>
 								<option value="pending">{{ STATUS_LABEL.pending }}</option>
 								<option value="active">{{ STATUS_LABEL.active }}</option>
 								<option value="disabled">{{ STATUS_LABEL.disabled }}</option>
+								<!-- 已注销的行只读渲染，这个选项只是防止其它路径漏进来时显示空白 -->
+								<option value="deleted" disabled>{{ STATUS_LABEL.deleted }}</option>
 							</select>
 						</td>
 						<td class="dim">{{ formatTime(row.created_at) }}</td>
 						<td class="dim">{{ formatTime(row.last_login_at) }}</td>
+						<td>
+							<button
+								type="button"
+								class="btn-ghost tiny"
+								:disabled="isDeleted(row)"
+								@click="openEdit(row)"
+							>
+								详情
+							</button>
+						</td>
 					</tr>
 				</tbody>
 			</table>
@@ -212,6 +275,16 @@ onMounted(() => void refresh());
 				</button>
 			</div>
 		</div>
+
+		<UserEditor
+			v-if="editorOpen"
+			:mode="editorMode"
+			:user="editing"
+			:self-uid="me?.uid"
+			@close="editorOpen = false"
+			@saved="onSaved"
+			@deleted="onDeleted"
+		/>
 	</div>
 </template>
 
@@ -244,7 +317,7 @@ onMounted(() => void refresh());
 	padding: 0.45rem 0.7rem;
 	border-radius: 0.6rem;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 	font-size: 0.8rem;
 }
 
@@ -280,9 +353,14 @@ onMounted(() => void refresh());
 	font-weight: 600;
 	color: var(--fg-50);
 	padding: 0.7rem 0.9rem;
-	background: color-mix(in srgb, var(--primary) 8%, var(--card-bg));
+	background: rgba(0, 0, 0, 0.03);
 	border-bottom: 1px solid var(--line-divider);
 	white-space: nowrap;
+}
+
+/* 深色下换中性白：带色相的底在纯黑卡片上会变成一条发绿的横带 */
+:root.dark .table th {
+	background: rgba(255, 255, 255, 0.05);
 }
 
 .table td {
@@ -317,7 +395,7 @@ onMounted(() => void refresh());
 	padding: 0.05rem 0.35rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
-	color: var(--btn-content);
+	color: var(--fg-90);
 }
 
 .sub {
@@ -347,6 +425,29 @@ onMounted(() => void refresh());
 	padding: 0.25rem 0.45rem;
 	font-size: 0.76rem;
 	border-radius: 0.5rem;
+}
+
+/* 自己那一行：不摆一个点不动的下拉，直接写文字并标出为什么 */
+.ro {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	font-size: 0.78rem;
+	color: var(--fg-75);
+	cursor: help;
+}
+
+.lock {
+	font-size: 0.62rem;
+	padding: 0.02rem 0.3rem;
+	border-radius: 999px;
+	background: var(--btn-regular-bg);
+	color: var(--fg-50);
+}
+
+.tiny {
+	padding: 0.2rem 0.5rem;
+	font-size: 0.74rem;
 }
 
 .pager {

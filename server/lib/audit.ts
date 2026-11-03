@@ -14,8 +14,12 @@ export type AuditAction =
 	| "auth.password_forgot"
 	| "auth.password_reset"
 	| "auth.password_change"
+	| "admin.user.create"
+	| "admin.user.delete"
 	| "admin.user.status"
 	| "admin.user.role"
+	| "admin.user.profile"
+	| "admin.user.password"
 	| "org.create"
 	| "org.update"
 	| "org.member.add"
@@ -42,6 +46,11 @@ const DETAIL_KEYS = new Set([
 	"status",
 	"cleared",
 	"version",
+	// 用户管理的补充字段：改了哪个字段、是不是重置密码、新建出来的 uid
+	"field",
+	"reset",
+	"uid",
+	"role",
 ]);
 
 export interface AuditInput {

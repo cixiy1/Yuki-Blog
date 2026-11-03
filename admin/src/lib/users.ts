@@ -62,11 +62,55 @@ export async function listUsers(query: UserListQuery): Promise<UserListResult> {
 
 export async function patchUser(
 	uid: number,
-	patch: { status?: string; role?: string },
+	patch: UserPatch,
 ): Promise<AdminUser> {
 	const data = await api.patch<{ user: AdminUser }>(
 		`/api/admin/users/${uid}`,
 		patch,
 	);
 	return data.user;
+}
+
+export interface UserPatch {
+	status?: string;
+	role?: string;
+	display_name?: string;
+	email?: string;
+	password?: string;
+}
+
+export interface NewUser {
+	account: string;
+	email: string;
+	display_name?: string;
+	password: string;
+	role?: string;
+	status?: "active" | "pending";
+}
+
+export interface AuditEntry {
+	id: number;
+	actor_uid: number | null;
+	action: string;
+	target: string | null;
+	detail_json: string | null;
+	ip_hash: string | null;
+	created_at: string;
+}
+
+export async function getUser(
+	uid: number,
+): Promise<{ user: AdminUser; audit: AuditEntry[] }> {
+	return await api.get<{ user: AdminUser; audit: AuditEntry[] }>(
+		`/api/admin/users/${uid}`,
+	);
+}
+
+export async function createUser(input: NewUser): Promise<AdminUser> {
+	const data = await api.post<{ user: AdminUser }>("/api/admin/users", input);
+	return data.user;
+}
+
+export async function deleteUser(uid: number): Promise<void> {
+	await api.delete(`/api/admin/users/${uid}`);
 }

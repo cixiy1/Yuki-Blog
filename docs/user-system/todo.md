@@ -82,6 +82,31 @@
       停用后其旧 cookie 401、重新登录 403；恢复并改角色 200；写 deleted 400；
       审计按动作筛选可用且 detail 里没有密码
 
+### P3.6.1 补齐增删改查（2026-11-02）
+
+上一版只有「列表 + 改状态/角色」，而且「管理员一律不可改」——站点通常只有一个
+管理员，于是那一行永远锁着，看起来就是「下拉点不了」。改法是把「一律禁止」换成
+一条可校验的不变式：**任何操作之后至少还有一个 active 管理员**。
+
+- [x] `POST /api/admin/users`：管理员建号（登录名/邮箱/昵称/初始密码/角色/状态），
+      复用注册的账号规则、密码策略与 `encryptPassword`（uid 参与 AAD）
+- [x] `DELETE /api/admin/users/:uid`：软删除。释放账号名与邮箱（`deleted_<uid>` /
+      `deleted+<uid>@deleted.invalid`），清密码与头像，`session_epoch + 1`
+- [x] `PATCH` 扩展：`display_name`、`email`（改后 `email_verified_at` 清空）、
+      `password`（重置并踢下线）
+- [x] 守卫：不再禁改 admin / 禁提 admin；改为 `otherActiveAdmins(uid) === 0` 时拒绝
+- [x] 自己那一行：角色/状态/密码仍禁（`self_forbidden`），前端不再摆一个点不动的
+      下拉，改成文字 + 「锁」标记 + title 说明
+- [x] 前端 `UserEditor.vue`：新建/编辑共用一个右侧抽屉，含资料、权限、重置密码、
+      最近审计（中文标签）、删除（输入登录名二次确认）
+- [x] 已注销行只读，详情按钮禁用；状态筛选补「已删除」
+- [x] 审计新增 `admin.user.create` / `.delete` / `.profile` / `.password`，
+      `detail` 白名单补 `field` / `reset` / `uid` / `role`
+- [x] 验收（本地 wrangler dev + 本地 D1）：改他人昵称 200；把另一个 admin 降级 200；
+      改自己角色 409；新建 201；重复登录名 409；弱密码 400；改邮箱后
+      `email_verified=0`；删除后账号名/邮箱释放、再删 409；删自己 409；
+      浏览器走完「新建 → 列表出现 → 详情 → 删除 → 列表消失」
+
 ## P3.7 站点设置（管理端配置全站，2026-11-02）
 
 已完成，本地验收通过，未部署。设计与落地细节见 `site-config-design.md`。
@@ -100,6 +125,21 @@
 - [x] 验收：六分区覆盖均进构建产物；接口 13 项（六分区保存、未知分区/字段、类型、越界、枚举、列表项、列表上限、立即应用、无令牌 412、公开接口只吐热字段）；浏览器 16 步（含列表增删移动、保存不丢、热色相跨刷新保持、访客自选不被覆盖）
 - [ ] 发布链路需要 fine-grained PAT，未跑通真实写入；无令牌时只能「导出 JSON」手动提交
 - [ ] 导航项/侧栏组件/书签导航/追番类未纳入（结构性配置，JSON 表达不清）
+
+## P3.8 个人中心与交互补完（待做）
+
+- [ ] 个人中心支持改自己的账号资料：昵称、邮箱、头像、密码。
+      现状：`/me/`（`src/components/user/AccountCenter.astro`）只有改密码 + 退出所有设备，
+      自助接口也只有 `POST /api/auth/password`。要新增 `PATCH /api/me`，不能在页面上拼 `PATCH /api/admin/users/:uid`
+      —— 那个接口只认 admin，且带角色/状态字段。
+      - 昵称走现有 `display_name` 规则校验（与 `admin.ts` 的 `readName` 同一套）
+      - 改邮箱：`email_verified_at` 清空 + 发确认信；确认前按未验证处理（登录仍可用账号名）
+      - 头像：先只收 `https` 外链与站内路径；上传要等媒体库（P6）
+      - 改完 `session_epoch` 不动（只改资料不强制重新登录），但要回写 `/api/auth/me` 的缓存
+      - UI 复用 `AuthPanel.astro` 的反馈约定：`.auth-status` 空内容即隐藏，提交中用 `setBusy()` 在按钮内转圈
+- [ ] 管理端右侧抽屉改成居中弹窗：`admin/src/components/UserEditor.vue` 现在是 `position: fixed` 贴右边的面板，
+      改为遮罩 + 居中卡片（宽 `min(32rem, 92vw)`，高 `max-height: 90vh` 内部滚动），Esc 与点遮罩关闭，
+      关闭后焦点回到触发按钮。新建与编辑共用同一个弹窗，别做成两套。
 
 ## P4 审核与发布
 
@@ -126,7 +166,7 @@
 
 ## P6 管理端其余模块
 
-- [ ] 用户管理（列表、角色、封禁）
+- [x] 用户管理（列表、新建、改资料/角色/状态、软删除）
 - [ ] 组织管理
 - [ ] 说说管理
 - [ ] 项目管理
