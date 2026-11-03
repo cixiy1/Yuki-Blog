@@ -77,12 +77,23 @@ export function go(path: string): void {
 	location.hash = next;
 }
 
+/**
+ * 侧栏该高亮哪个列表：仓库文章的编辑页两个列表都能进，
+ * 地址里看不出从哪儿来的，只能记最后一次点选。
+ */
+export const editOrigin = ref<"posts" | "all-posts">("posts");
+
 export function goPostEdit(id: number): void {
+	editOrigin.value = "posts";
 	go(`/posts/${id}`);
 }
 
 /** 仓库文章走 slug，子目录的斜杠要编码，否则会把路由切成多段 */
-export function goRepoEdit(slug: string): void {
+export function goRepoEdit(
+	slug: string,
+	from: "posts" | "all-posts" = "posts",
+): void {
+	editOrigin.value = from;
 	go(`/posts/repo/${encodeURIComponent(slug)}`);
 }
 
