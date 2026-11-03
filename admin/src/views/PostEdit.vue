@@ -29,11 +29,13 @@ import {
 	type FieldValue,
 	formatTime,
 	getPost,
+	getPostNotes,
 	getRepoPost,
 	isEditable,
 	type PostDetail,
 	publishPost,
 	type RepoPostDetail,
+	type ReviewNoteView,
 	savePost,
 	saveRepoPost,
 	submitPost,
@@ -260,6 +262,9 @@ const loading = ref(true);
 const ready = ref(false);
 const saveState = ref<SaveState>("idle");
 const errorText = ref("");
+/** 审核员的划词批注与总评，只在被退回/待审时可能有 */
+const reviewNotes = ref<ReviewNoteView[]>([]);
+const reviewVerdict = ref("");
 const lastSaved = ref<string | null>(null);
 
 /* ---------- 思维导图画布 ---------- */
@@ -842,6 +847,14 @@ onMounted(async () => {
 		} else {
 			local = await getPost(postId.value);
 			if (!local) errorText.value = "文章不存在";
+			else {
+				reviewVerdict.value = local.review_note ?? "";
+				try {
+					reviewNotes.value = await getPostNotes(postId.value);
+				} catch {
+					// 批注取不到不该挡住编辑
+				}
+			}
 		}
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "读取失败";
@@ -937,6 +950,32 @@ watch(isDark, (dark) => {
 		<template v-else>
 			<div class="edit-layout">
 				<div class="col-main">
+					<section
+						v-if="!isRepo && (reviewVerdict || reviewNotes.length)"
+						class="card-base panel review-card"
+					>
+						<div class="review-head">
+							<p class="panel-title">审核意见</p>
+							<span v-if="reviewNotes.length" class="review-count">
+								{{ reviewNotes.length }} 条批注
+							</span>
+						</div>
+						<p v-if="reviewVerdict" class="review-verdict">{{ reviewVerdict }}</p>
+						<ul v-if="reviewNotes.length" class="review-notes">
+							<li v-for="(item, index) in reviewNotes" :key="item.id">
+								<p class="rn-quote">
+									<span class="rn-idx">{{ index + 1 }}</span>
+									{{ item.quote }}
+								</p>
+								<p class="rn-text">{{ item.note }}</p>
+								<p class="rn-by">{{ item.reviewer }}</p>
+							</li>
+						</ul>
+						<p class="rn-hint">
+							按条改完再提交审核；通过后这些批注会被清掉。
+						</p>
+					</section>
+
 					<section class="card-base panel editor-panel">
 						<div class="doc-head">
 							<div class="doc-label">
@@ -1203,6 +1242,107 @@ watch(isDark, (dark) => {
 	font-size: 0.8rem;
 	font-weight: 600;
 	color: var(--fg-75);
+}
+
+/* 审核意见：总评一段，下面按条列批注，作者照着改 */
+.review-card {
+	border-color: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 40%,
+		var(--line-divider)
+	);
+	background: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 5%,
+		var(--card-bg)
+	);
+}
+
+.review-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.review-count {
+	padding: 0 0.4rem;
+	border-radius: 999px;
+	background: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 18%,
+		transparent
+	);
+	color: var(--admonitions-color-caution);
+	font-size: 0.68rem;
+}
+
+.review-verdict {
+	margin: 0.45rem 0 0;
+	font-size: 0.83rem;
+	line-height: 1.7;
+	color: var(--fg-90);
+}
+
+.review-notes {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	margin: 0.55rem 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.review-notes li {
+	padding: 0.5rem 0.6rem;
+	border-radius: 0.55rem;
+	background: var(--card-bg);
+	border: 1px solid var(--line-divider);
+}
+
+.rn-quote {
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.65;
+	color: var(--fg-50);
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.rn-idx {
+	display: inline-block;
+	margin-right: 0.3rem;
+	padding: 0 0.28rem;
+	border-radius: 0.3rem;
+	background: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 22%,
+		transparent
+	);
+	color: var(--admonitions-color-caution);
+	font-size: 0.66rem;
+	font-weight: 600;
+}
+
+.rn-text {
+	margin: 0.3rem 0 0;
+	font-size: 0.8rem;
+	line-height: 1.7;
+	color: var(--fg-90);
+}
+
+.rn-by {
+	margin: 0.25rem 0 0;
+	font-size: 0.66rem;
+	color: var(--fg-50);
+}
+
+.rn-hint {
+	margin: 0.5rem 0 0;
+	font-size: 0.7rem;
+	color: var(--fg-50);
 }
 
 .panel-count {

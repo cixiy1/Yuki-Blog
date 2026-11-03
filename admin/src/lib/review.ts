@@ -18,6 +18,16 @@ export async function listQueue(): Promise<QueueItem[]> {
 	return data.posts ?? [];
 }
 
+/** 一条划词批注：引用原文 + 建议 */
+export interface ReviewNote {
+	id: number;
+	quote: string;
+	note: string;
+	created_at: string;
+	reviewer: string;
+	reviewer_uid: number;
+}
+
 /** 队列里点开某一篇后的全文，字段与「我的文章」详情同形，另带作者信息 */
 export interface ReviewPost {
 	id: number;
@@ -38,11 +48,31 @@ export interface ReviewPost {
 	submitted_at: string | null;
 	updated_at: string;
 	review_note: string | null;
+	notes: ReviewNote[];
 }
 
 export async function getQueuePost(id: number): Promise<ReviewPost> {
 	const data = await api.get<{ post: ReviewPost }>(`/api/admin/review/${id}`);
 	return data.post;
+}
+
+export async function addReviewNote(
+	id: number,
+	quote: string,
+	note: string,
+): Promise<ReviewNote> {
+	const data = await api.post<{ note: ReviewNote }>(
+		`/api/admin/review/${id}/notes`,
+		{ quote, note },
+	);
+	return data.note;
+}
+
+export async function deleteReviewNote(
+	id: number,
+	noteId: number,
+): Promise<void> {
+	await api.delete(`/api/admin/review/${id}/notes/${noteId}`);
 }
 
 export async function approvePost(id: number): Promise<void> {

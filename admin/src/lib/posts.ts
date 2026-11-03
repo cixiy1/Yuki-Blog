@@ -186,6 +186,22 @@ export async function listAllPosts(): Promise<PostSummary[]> {
  */
 const IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)((?:\s+"[^"]*")?)\)/g;
 
+/** 作者视角的审核批注：哪段话 + 审核员怎么说的 */
+export interface ReviewNoteView {
+	id: number;
+	quote: string;
+	note: string;
+	created_at: string;
+	reviewer: string;
+}
+
+export async function getPostNotes(id: number): Promise<ReviewNoteView[]> {
+	const data = await api.get<{ notes: ReviewNoteView[] }>(
+		`/api/me/posts/${id}/notes`,
+	);
+	return data.notes ?? [];
+}
+
 export function bodyToPreview(body: string, rawBase: string): string {
 	if (!rawBase) return body;
 	return body.replace(

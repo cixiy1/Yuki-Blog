@@ -509,6 +509,47 @@ me.get("/posts/:id", requireAuth, async (c) => {
 	return c.json({ post: toDetail(row) });
 });
 
+/**
+ * 作者看自己稿子上的审核批注。
+ * 只有被退回或待审的稿子才可能有批注（通过时会清掉），返回空数组也照常 200，
+ * 前端不用为「没有批注」写分支。
+ */
+me.get("/posts/:id/notes", requireAuth, async (c) => {
+	const id = readId(c);
+	if (id === null) {
+		return c.json({ error: "bad_request", message: "id 非法" }, 400);
+	}
+	const row = await findOwned(c, id);
+	if (!row) return c.json(POST_NOT_FOUND, 404);
+
+	const rows = await c.env.DB.prepare(
+		`SELECT n.id, n.quote, n.note, n.created_at, u.display_name, u.account
+		   FROM post_notes n
+		   LEFT JOIN users u ON u.uid = n.reviewer_uid
+		  WHERE n.post_id = ?1
+		  ORDER BY n.id ASC`,
+	)
+		.bind(id)
+		.all<{
+			id: number;
+			quote: string;
+			note: string;
+			created_at: string;
+			display_name: string | null;
+			account: string | null;
+		}>();
+
+	return c.json({
+		notes: (rows.results ?? []).map((note) => ({
+			id: note.id,
+			quote: note.quote,
+			note: note.note,
+			created_at: note.created_at,
+			reviewer: note.display_name || note.account || "审核员",
+		})),
+	});
+});
+
 me.put(
 	"/posts/:id",
 	requireAuth,

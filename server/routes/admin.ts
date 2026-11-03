@@ -764,13 +764,176 @@ admin.get("/review/:id", requireRole("reviewer"), async (c) => {
 	return c.json({
 		post: {
 			...toDetail(row),
-			author:
-				author?.display_name || author?.account || `uid ${row.uid}`,
+			author: author?.display_name || author?.account || `uid ${row.uid}`,
 			author_account: author?.account ?? "",
 			author_avatar: author?.avatar_url ?? null,
+			notes: await listNotes(c.env.DB, id),
 		},
 	});
 });
+
+/* ---------- 逐条批注：划词写建议，作者在编辑页能看到 ---------- */
+
+interface NoteRow {
+	id: number;
+	quote: string;
+	note: string;
+	created_at: string;
+	reviewer_uid: number;
+	reviewer_name: string | null;
+	reviewer_account: string;
+}
+
+const NOTE_MAX = 300;
+
+async function listNotes(
+	db: D1Database,
+	postId: number,
+): Promise<Record<string, unknown>[]> {
+	const rows = await db
+		.prepare(
+			`SELECT n.id, n.quote, n.note, n.created_at, n.reviewer_uid,
+			        u.display_name AS reviewer_name, u.account AS reviewer_account
+			   FROM post_notes n
+			   LEFT JOIN users u ON u.uid = n.reviewer_uid
+			  WHERE n.post_id = ?1
+			  ORDER BY n.id ASC`,
+		)
+		.bind(postId)
+		.all<NoteRow>();
+
+	return (rows.results ?? []).map((row) => ({
+		id: row.id,
+		quote: row.quote,
+		note: row.note,
+		created_at: row.created_at,
+		reviewer_uid: row.reviewer_uid,
+		reviewer:
+			row.reviewer_name || row.reviewer_account || `uid ${row.reviewer_uid}`,
+	}));
+}
+
+/** 划一段原文 + 写一句建议 */
+admin.post(
+	"/review/:id/notes",
+	requireRole("reviewer"),
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
+
+		const id = Number(c.req.param("id"));
+		if (!Number.isInteger(id) || id <= 0) {
+			return c.json({ error: "bad_request", message: "id 非法" }, 400);
+		}
+
+		const body = await readJson(c);
+		const quote = typeof body?.quote === "string" ? body.quote.trim() : "";
+		const note = typeof body?.note === "string" ? body.note.trim() : "";
+		if (quote.length === 0) {
+			return c.json(
+				{ error: "empty_quote", message: "先选中要点评的那段原文" },
+				400,
+			);
+		}
+		if (note.length === 0) {
+			return c.json(
+				{ error: "empty_note", message: "写一句建议，作者才知道怎么改" },
+				400,
+			);
+		}
+
+		const row = await c.env.DB.prepare(
+			"SELECT id, slug FROM posts WHERE id = ?1",
+		)
+			.bind(id)
+			.first<{ id: number; slug: string }>();
+		if (!row) {
+			return c.json({ error: "not_found", message: "这篇不见了" }, 404);
+		}
+
+		const created = await c.env.DB.prepare(
+			`INSERT INTO post_notes (post_id, reviewer_uid, quote, note)
+			 VALUES (?1, ?2, ?3, ?4)
+			 RETURNING id, quote, note, created_at, reviewer_uid`,
+		)
+			.bind(
+				id,
+				me.uid,
+				quote.slice(0, NOTE_MAX),
+				note.slice(0, NOTE_MAX),
+			)
+			.first<NoteRow>();
+		if (!created) {
+			return c.json({ error: "insert_failed", message: "没写进去" }, 500);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: me.uid,
+			action: "review.note",
+			target: row.slug,
+			detail: { id, quote: quote.slice(0, 60) },
+		});
+
+		return c.json(
+			{
+				note: {
+					id: created.id,
+					quote: created.quote,
+					note: created.note,
+					created_at: created.created_at,
+					reviewer_uid: created.reviewer_uid,
+					reviewer: me.display_name || me.account || `uid ${me.uid}`,
+				},
+			},
+			201,
+		);
+	},
+);
+
+/** 删批注：本人或管理员，删错了不用重开一稿 */
+admin.delete(
+	"/review/:id/notes/:noteId",
+	requireRole("reviewer"),
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
+
+		const id = Number(c.req.param("id"));
+		const noteId = Number(c.req.param("noteId"));
+		if (
+			!Number.isInteger(id) ||
+			id <= 0 ||
+			!Number.isInteger(noteId) ||
+			noteId <= 0
+		) {
+			return c.json({ error: "bad_request", message: "id 非法" }, 400);
+		}
+
+		const exists = await c.env.DB.prepare(
+			"SELECT reviewer_uid FROM post_notes WHERE id = ?1 AND post_id = ?2",
+		)
+			.bind(noteId, id)
+			.first<{ reviewer_uid: number }>();
+		if (!exists) {
+			return c.json({ error: "not_found", message: "这条批注不在了" }, 404);
+		}
+		if (exists.reviewer_uid !== me.uid && me.role !== "admin") {
+			return c.json(
+				{ error: "forbidden", message: "只能删自己写的批注" },
+				403,
+			);
+		}
+
+		await c.env.DB.prepare("DELETE FROM post_notes WHERE id = ?1")
+			.bind(noteId)
+			.run();
+
+		return c.json({ ok: true });
+	},
+);
 
 /**
  * 通过：写仓库 → 状态切 published。
@@ -843,6 +1006,11 @@ admin.post(
 			detail: { id, uid: row.uid },
 		});
 
+		// 稿子已经发出去，留在稿子上的批注没有意义了，作者不该在已发布文章里看到它们
+		await c.env.DB.prepare("DELETE FROM post_notes WHERE post_id = ?1")
+			.bind(id)
+			.run();
+
 		return c.json({
 			post: { id, slug: row.slug, status: "published" },
 			repoPath: written.path,
@@ -868,11 +1036,27 @@ admin.post(
 
 		const body = await readJson(c);
 		const note = typeof body?.note === "string" ? body.note.trim() : "";
+
+		/**
+		 * 退回必须有话说，否则作者不知道改什么。
+		 * 「话说」可以是总评，也可以是若干条划词批注——只写批注不留总评是允许的，
+		 * 但两者都没有就不许退。
+		 */
 		if (note.length === 0) {
-			return c.json(
-				{ error: "empty_note", message: "写一句退回理由，作者才知道改什么" },
-				400,
-			);
+			const count = await c.env.DB.prepare(
+				"SELECT COUNT(*) AS n FROM post_notes WHERE post_id = ?1",
+			)
+				.bind(id)
+				.first<{ n: number }>();
+			if ((count?.n ?? 0) === 0) {
+				return c.json(
+					{
+						error: "empty_note",
+						message: "写一句退回理由，或在正文里划词标几条建议",
+					},
+					400,
+				);
+			}
 		}
 
 		const updated = await c.env.DB.prepare(

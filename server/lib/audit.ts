@@ -38,6 +38,7 @@ export type AuditAction =
 	| "admin.mail.save"
 	| "admin.mail.test"
 	| "review.approve"
+	| "review.note"
 	| "review.reject";
 
 const DETAIL_KEYS = new Set([

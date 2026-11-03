@@ -64,7 +64,7 @@ function cancelReject(): void {
 async function submitReject(item: QueueItem): Promise<void> {
 	const note = rejectNote.value.trim();
 	if (note.length === 0) {
-		errorText.value = "写一句退回理由，作者才知道改什么";
+		errorText.value = "写一句退回理由；想逐条标建议就点开正文划词";
 		return;
 	}
 	busyId.value = item.id;
