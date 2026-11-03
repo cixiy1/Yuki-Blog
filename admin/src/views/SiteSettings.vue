@@ -317,7 +317,21 @@ async function onSave(): Promise<void> {
 		// 以后默认值变了也盖不住
 		await saveDraft(collectPatch());
 		draft0.value = clone(form.value);
-		notice.value = "草稿已保存。带绿点的字段可用「立即应用」，其余需要发布。";
+		// 热字段（主题色相、壁纸模式）保存即生效——站长改完切到前台就能看到，
+		// 不必再点一次「立即应用」。其余字段仍然要发布 + 等构建。
+		if (hotPending.value) {
+			try {
+				await applyHot();
+				await refresh();
+				notice.value =
+					"已保存，热字段（主题色相、壁纸模式）已对访客生效；其余字段需要发布。";
+			} catch {
+				notice.value =
+					"草稿已保存。热字段可以点「立即应用」跳过构建，其余需要发布。";
+			}
+		} else {
+			notice.value = "草稿已保存。带绿点的字段可用「立即应用」，其余需要发布。";
+		}
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "保存失败";
 	} finally {
@@ -833,7 +847,7 @@ onMounted(() => void refresh());
 						<div class="label">
 							<span class="name">
 								{{ field.label }}
-								<span v-if="field.hot" class="dot hot" title="保存后点「立即应用」即可生效" />
+								<span v-if="field.hot" class="dot hot" title="保存即对访客生效，不必等构建" />
 								<span v-else class="dot" title="需要发布并等构建完成" />
 							</span>
 							<span v-if="field.help" class="hint">{{ field.help }}</span>
@@ -1045,7 +1059,7 @@ onMounted(() => void refresh());
 						立即应用热字段
 					</button>
 					<p v-if="hotPending || changedAllHot" class="hint">
-						只有带绿点的字段能跳过构建，目前是主题色相。
+						带绿点的字段能跳过构建：主题色相、壁纸模式。保存时会自动应用。
 					</p>
 
 					<template v-if="pending.length">

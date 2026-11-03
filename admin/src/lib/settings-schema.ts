@@ -366,6 +366,8 @@ export const SETTING_GROUPS: SettingGroup[] = [
 						path: "mode",
 						label: "壁纸模式",
 						type: "select",
+						hot: true,
+						help: "保存后自动对访客生效，不必等构建；发布只是让新访客首屏就用新模式渲染",
 						options: [
 							{ value: "banner", label: "横幅（首页顶部）" },
 							{ value: "fullscreen", label: "全屏壁纸" },

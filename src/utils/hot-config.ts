@@ -1,10 +1,15 @@
-import { getDefaultHue } from "@/utils/setting-utils";
+import { displaySettingsConfig } from "@/config";
+import type { WALLPAPER_MODE } from "@/types/config";
+import {
+	applyWallpaperModeToDocument,
+	getDefaultHue,
+} from "@/utils/setting-utils";
 
 /**
  * 热配置的运行时应用。
  *
- * 只有「改完不必等构建」的字段会走到这里，目前就一个：主题色相 `--hue`。
- * 它不参与 SEO、不决定结构，站点里只有一处消费（根节点的 CSS 变量），
+ * 只有「改完不必等构建」的字段会走到这里：主题色相 `--hue` 与壁纸模式
+ * `data-wallpaper-mode`。两者都是不参与 SEO、不重建 DOM 的纯表现项，
  * 所以运行时盖上不会造成「页面标题和搜索结果不一致」这类问题。
  *
  * 三处细节都是踩出来的，改动前先读：
@@ -56,11 +61,15 @@ async function applyHotConfig(): Promise<void> {
 	// 先把构建值记下来：下面会改 data-hue，改完再读就不是原值了
 	const buildHue = getDefaultHue();
 	const hue = readPath(payload, ["config", "site", "themeColor", "hue"]);
-	if (typeof hue !== "number" || !Number.isFinite(hue)) return;
-	if (hue < 0 || hue > 360) return;
-	// 与构建产物一致就什么都不用做
-	if (hue === buildHue) return;
+	if (typeof hue === "number" && Number.isFinite(hue) && hue >= 0 && hue <= 360) {
+		// 与构建产物一致就什么都不用做
+		if (hue !== buildHue) applyHue(hue);
+	}
 
+	applyBannerMode(readPath(payload, ["config", "banner", "mode"]));
+}
+
+function applyHue(hue: number): void {
 	document.documentElement.style.setProperty("--hue", String(hue));
 
 	const carrier = document.getElementById("config-carrier");
@@ -76,6 +85,80 @@ async function applyHotConfig(): Promise<void> {
 		localStorage.setItem("hueAuto", String(hue));
 	} catch {
 		// 写不进去也不影响本次显示，只是下次可能被当成访客自选
+	}
+}
+
+const WALLPAPER_MODES: readonly string[] = [
+	"banner",
+	"fullscreen",
+	"overlay",
+	"none",
+];
+
+/**
+ * 壁纸模式的热应用。
+ *
+ * 前提：`wallpaperModeSwitchable` 为 true——构建期才会把各模式的资源都渲染出来，
+ * 关掉时页面里只有当前模式那一套，运行时切会切到不存在的结构上。
+ *
+ * 与色相一样，站主改的东西不能盖掉访客自己的选择，判定见
+ * `isWallpaperVisitorChoice()`。
+ */
+function applyBannerMode(value: unknown): void {
+	if (!displaySettingsConfig.wallpaperModeSwitchable) return;
+	if (typeof value !== "string" || !WALLPAPER_MODES.includes(value)) return;
+
+	const mode = value as WALLPAPER_MODE;
+	const current = document.documentElement.getAttribute("data-wallpaper-mode");
+
+	// 已经是对的模式：只补记录，不做重排（避免首屏进来又过渡一次）
+	if (current === mode) {
+		rememberWallpaperMode(mode);
+		return;
+	}
+	if (isWallpaperVisitorChoice()) return;
+
+	// 首屏已经渲染完，这里是「纠正」而不是「切换」，不要过渡动画
+	applyWallpaperModeToDocument(mode, false);
+	rememberWallpaperMode(mode);
+}
+
+/** 写值的同时留一条 auto 记录，下次加载才能把「我们写的」和「访客选的」分开 */
+function rememberWallpaperMode(mode: WALLPAPER_MODE): void {
+	try {
+		localStorage.setItem("wallpaperMode", mode);
+		localStorage.setItem("wallpaperModeAuto", mode);
+	} catch {
+		// 隐私模式下写不进去，只是下次首屏会按构建值渲染再纠正一次
+	}
+}
+
+/** 构建时写进 `#config-carrier` 的默认模式，用来识别「面板落盘的默认值」 */
+function getBuildWallpaperMode(): string {
+	const carrier = document.getElementById("config-carrier");
+	const raw = carrier?.dataset.wallpaperMode;
+	return typeof raw === "string" && raw ? raw : "banner";
+}
+
+/**
+ * 访客是否自己切过壁纸模式。
+ *
+ * - 没存过 → 没有选择
+ * - 存的正好是构建默认值 → 面板初始化写的，不是选择
+ * - 存的值等于 `wallpaperModeAuto` → 上次热配置写的，不是选择
+ * - 没有 `wallpaperModeAuto` 记录 → 这段逻辑上线前的存量数据，分不清；
+ *   按「站主的配置优先」处理一次，之后访客再手动切换就会有记录
+ */
+function isWallpaperVisitorChoice(): boolean {
+	try {
+		const stored = localStorage.getItem("wallpaperMode");
+		if (stored === null) return false;
+		if (stored === getBuildWallpaperMode()) return false;
+		const auto = localStorage.getItem("wallpaperModeAuto");
+		if (auto === null) return false;
+		return stored !== auto;
+	} catch {
+		return false;
 	}
 }
 

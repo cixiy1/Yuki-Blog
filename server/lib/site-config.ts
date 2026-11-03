@@ -26,11 +26,20 @@ export type SecretName = (typeof SECRET_NAMES)[number];
 /**
  * 公开接口只暴露这些字段——整份配置不外泄。
  *
- * 热名单刻意只有主题色相：它不参与 SEO、不决定结构、站点里只有一处消费
- * （根节点的 --hue）。标题/副标题看起来也该热，但它们进 <title>、RSS、
- * 分享卡片，运行时改只会让「页面标题」和「搜索结果」长期不一致。
+ * 热名单只收「运行时改不破坏结构」的项：
+ *  - 主题色相：站点里只有一处消费（根节点的 --hue）。
+ *  - 壁纸模式：`displaySettingsConfig.wallpaperModeSwitchable` 开启时，构建期
+ *    已经把各模式所需的资源都渲染出来了，运行时切只改 `data-wallpaper-mode`
+ *    与导航栏透明模式，不重建 DOM。站长最直观的感受是「改了能看到」，
+ *    不必等一次构建；发布后新访客首屏才直接用新模式渲染。
+ *
+ * 标题/副标题看起来也该热，但它们进 <title>、RSS、分享卡片，运行时改只会让
+ * 「页面标题」和「搜索结果」长期不一致，所以留在发布通道。
  */
-export const HOT_FIELDS = [["site", "themeColor"]] as const;
+export const HOT_FIELDS = [
+	["site", "themeColor"],
+	["banner", "mode"],
+] as const;
 
 type Spec =
 	| { t: "string"; max: number }
