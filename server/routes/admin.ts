@@ -772,6 +772,82 @@ admin.get("/review/:id", requireRole("reviewer"), async (c) => {
 	});
 });
 
+/* ---------- 审核员改的正文：改完给作者参考，不碰仓库 ---------- */
+
+const REVIEW_BODY_MAX = 200_000;
+
+/**
+ * 存一版审核员改过的正文。只落在 D1 的 posts.review_body 上，
+ * 不写仓库也不触发构建——作者觉得改得对，自己点「采用」再走正常发布。
+ * 传回来的就是原文（或者空串）时，说明改动被撤回了，顺手清掉。
+ */
+admin.post(
+	"/review/:id/body",
+	requireRole("reviewer"),
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
+
+		const id = Number(c.req.param("id"));
+		if (!Number.isInteger(id) || id <= 0) {
+			return c.json({ error: "bad_request", message: "id 非法" }, 400);
+		}
+
+		const payload = await readJson(c);
+		const body = typeof payload?.body === "string" ? payload.body : "";
+		if (body.length > REVIEW_BODY_MAX) {
+			return c.json({ error: "too_long", message: "正文太长了" }, 413);
+		}
+
+		const row = await c.env.DB.prepare(
+			"SELECT id, slug, body FROM posts WHERE id = ?1",
+		)
+			.bind(id)
+			.first<{ id: number; slug: string; body: string | null }>();
+		if (!row) {
+			return c.json({ error: "not_found", message: "这篇不见了" }, 404);
+		}
+
+		const original = row.body ?? "";
+		const unchanged = body.trim().length === 0 || body === original;
+
+		if (unchanged) {
+			await c.env.DB.prepare(
+				`UPDATE posts SET review_body = NULL, review_body_at = NULL,
+				        review_body_by = NULL, updated_at = datetime('now')
+				  WHERE id = ?1`,
+			)
+				.bind(id)
+				.run();
+			return c.json({ ok: true, cleared: true, changed: false });
+		}
+
+		const saved = await c.env.DB.prepare(
+			`UPDATE posts SET review_body = ?1, review_body_at = datetime('now'),
+			        review_body_by = ?2, updated_at = datetime('now')
+			  WHERE id = ?3
+			 RETURNING review_body_at`,
+		)
+			.bind(body, me.uid, id)
+			.first<{ review_body_at: string }>();
+
+		await writeAudit(c.env.DB, {
+			actorUid: me.uid,
+			action: "review.body",
+			target: row.slug,
+			detail: { id, from: original.length, to: body.length },
+		});
+
+		return c.json({
+			ok: true,
+			changed: true,
+			saved_at: saved?.review_body_at ?? null,
+		});
+	},
+);
+
 /* ---------- 逐条批注：划词写建议，作者在编辑页能看到 ---------- */
 
 interface NoteRow {
@@ -858,12 +934,7 @@ admin.post(
 			 VALUES (?1, ?2, ?3, ?4)
 			 RETURNING id, quote, note, created_at, reviewer_uid`,
 		)
-			.bind(
-				id,
-				me.uid,
-				quote.slice(0, NOTE_MAX),
-				note.slice(0, NOTE_MAX),
-			)
+			.bind(id, me.uid, quote.slice(0, NOTE_MAX), note.slice(0, NOTE_MAX))
 			.first<NoteRow>();
 		if (!created) {
 			return c.json({ error: "insert_failed", message: "没写进去" }, 500);
@@ -921,10 +992,7 @@ admin.delete(
 			return c.json({ error: "not_found", message: "这条批注不在了" }, 404);
 		}
 		if (exists.reviewer_uid !== me.uid && me.role !== "admin") {
-			return c.json(
-				{ error: "forbidden", message: "只能删自己写的批注" },
-				403,
-			);
+			return c.json({ error: "forbidden", message: "只能删自己写的批注" }, 403);
 		}
 
 		await c.env.DB.prepare("DELETE FROM post_notes WHERE id = ?1")
@@ -986,7 +1054,8 @@ admin.post(
 			`UPDATE posts
 			    SET status = 'published', repo_path = ?1,
 			        published_at = datetime('now'), reviewed_at = datetime('now'),
-			        review_note = NULL, updated_at = datetime('now')
+			        review_note = NULL, review_body = NULL, review_body_at = NULL,
+			        review_body_by = NULL, updated_at = datetime('now')
 			  WHERE id = ?2 AND status = 'pending'
 			 RETURNING *`,
 		)

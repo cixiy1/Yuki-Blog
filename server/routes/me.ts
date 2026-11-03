@@ -190,6 +190,10 @@ export interface PostRow {
 	published_at: string | null;
 	reviewed_at: string | null;
 	review_note: string | null;
+	/** 审核员改过的正文，只给作者参考，不参与发布 */
+	review_body?: string | null;
+	review_body_at?: string | null;
+	review_body_by?: number | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -294,6 +298,8 @@ export function toDetail(row: PostRow): Record<string, unknown> {
 		...toSummary(row),
 		body: row.body ?? "",
 		meta: parseMeta(row.meta_json),
+		review_body: row.review_body ?? null,
+		review_body_at: row.review_body_at ?? null,
 	};
 }
 

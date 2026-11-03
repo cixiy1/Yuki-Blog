@@ -29,6 +29,7 @@ import {
 	type ReviewNote,
 	type ReviewPost,
 	rejectPost,
+	saveReviewBody,
 } from "../lib/review";
 import { isDark } from "../lib/theme";
 import { preloadVditorCore } from "../lib/vditor-preload";
@@ -49,6 +50,33 @@ const bodyEl = ref<HTMLDivElement | null>(null);
 /** Vditor 会把宿主元素本身变成 .vditor，所以再套一层子节点给它 */
 const editorEl = ref<HTMLDivElement | null>(null);
 let vditor: Vditor | null = null;
+
+/** 编辑区里当前的内容，与库里的原文比对得出「改没改」 */
+const editedBody = ref("");
+/** 已经存到 D1 的那一版，空串表示没存过 */
+const savedBody = ref("");
+const savingBody = ref(false);
+
+/** 审核改稿只改措辞和结构，写作页那一排上传/全屏/双栏在这里没有意义 */
+const REVIEW_TOOLBAR: string[] = [
+	"headings",
+	"bold",
+	"italic",
+	"strike",
+	"|",
+	"list",
+	"ordered-list",
+	"check",
+	"quote",
+	"|",
+	"code",
+	"inline-code",
+	"link",
+	"table",
+	"|",
+	"undo",
+	"redo",
+];
 
 /** 划词后浮在选区上方的小按钮 */
 const picker = ref({ show: false, top: 0, left: 0, quote: "" });
@@ -106,6 +134,14 @@ const category = computed(() => {
 
 const wordCount = computed(() => post.value?.body.length ?? 0);
 const isPending = computed(() => post.value?.status === "pending");
+/** 正文与作者原文不同：说明审核员动过 */
+const bodyChanged = computed(
+	() => editedBody.value !== (post.value?.body ?? ""),
+);
+/** 改了但还没存（或者存了之后又改） */
+const bodyPending = computed(() => editedBody.value !== savedBody.value);
+/** 库里已经有一版改稿 */
+const bodySaved = computed(() => (post.value?.review_body ?? "").length > 0);
 
 /**
  * 通过后真正会写进仓库的位置。
@@ -127,9 +163,9 @@ function destroyEditor(): void {
 }
 
 /**
- * 正文用写作页同款编辑器（Vditor 即时渲染）打开再禁用编辑：
- * 作者写的时候看到什么排版，审核读到的就是什么，划词拿到的文字与作者端一致。
- * 只读页不走 sv 模式——那是给 MDX 源码用的，行号栏没有阅读价值。
+ * 正文用写作页同款编辑器（Vditor 即时渲染）打开，并且**可编辑**：
+ * 审核不只挑毛病，遇到措辞、结构、错字可以直接改一版，存下来给作者参考。
+ * 改动只进 D1，不写仓库——作者点「采用」才由他自己决定要不要用。
  */
 function renderBody(): Promise<void> {
 	const target = editorEl.value;
@@ -141,6 +177,9 @@ function renderBody(): Promise<void> {
 	destroyEditor();
 	target.innerHTML = "";
 	rendering.value = true;
+	editedBody.value = body;
+	// 没存过改稿时以原文为基准，否则一进页面就成了「有改动没保存」
+	savedBody.value = post.value?.review_body ?? body;
 
 	return new Promise((resolve) => {
 		let settled = false;
@@ -152,10 +191,7 @@ function renderBody(): Promise<void> {
 			resolve();
 		};
 		// 渲染器没加载出来时不能一直挂在「正在渲染」
-		const fallback = window.setTimeout(() => {
-			vditor?.disabled();
-			done();
-		}, 8000);
+		const fallback = window.setTimeout(done, 8000);
 		vditor = new Vditor(target, {
 			cdn: "/admin/vditor",
 			value: body,
@@ -163,7 +199,7 @@ function renderBody(): Promise<void> {
 			lang: "zh_CN",
 			theme: isDark.value ? "dark" : "classic",
 			cache: { enable: false },
-			toolbar: [],
+			toolbar: REVIEW_TOOLBAR,
 			resize: { enable: false },
 			counter: { enable: false },
 			preview: {
@@ -172,13 +208,15 @@ function renderBody(): Promise<void> {
 				math: { engine: "KaTeX" },
 			},
 			after: () => {
-				// after 可能在构造函数返回前就触发，那时外层的 vditor 还是 null，
-				// 推到微任务里，赋值已经完成，才禁得掉编辑
-				queueMicrotask(() => {
-					window.clearTimeout(fallback);
-					vditor?.disabled();
+				window.clearTimeout(fallback);
+				// 等 ir 把正文写进 DOM，再挂输入监听
+				window.setTimeout(() => {
+					const root = noteRoot();
+					root?.addEventListener("input", () => {
+						editedBody.value = vditor?.getValue() ?? "";
+					});
 					done();
-				});
+				}, 0);
 			},
 		});
 	});
@@ -194,6 +232,19 @@ function noteRoot(): HTMLElement | null {
 	);
 }
 
+/** 把正文里的批注高亮拆掉，只留文字（存改稿前必须先做，否则 mark 会被当成正文） */
+function clearMarks(): void {
+	const root = noteRoot();
+	if (!root) return;
+	for (const mark of Array.from(root.querySelectorAll("mark.yb-note"))) {
+		const parent = mark.parentNode;
+		if (!parent) continue;
+		while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+		parent.removeChild(mark);
+	}
+	root.normalize();
+}
+
 /**
  * 把已存在的批注标回正文。
  * 只按「第一处出现在单个文本节点里的完整匹配」处理：划词拿到的就是渲染后的可见文字，
@@ -204,13 +255,7 @@ function markNotes(): void {
 	const root = noteRoot();
 	if (!root) return;
 
-	for (const mark of Array.from(root.querySelectorAll("mark.yb-note"))) {
-		const parent = mark.parentNode;
-		if (!parent) continue;
-		while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-		parent.removeChild(mark);
-	}
-	root.normalize();
+	clearMarks();
 
 	notes.value.forEach((note, index) => {
 		const needle = note.quote.trim();
@@ -357,8 +402,39 @@ async function load(): Promise<void> {
 	}
 }
 
+async function saveBody(): Promise<void> {
+	if (!post.value || savingBody.value) return;
+	savingBody.value = true;
+	errorText.value = "";
+	// 批注高亮是 DOM 上的装饰，先拆掉再取 Markdown，不然 mark 会被当成正文写进去
+	clearMarks();
+	const draft = vditor?.getValue() ?? editedBody.value;
+	markNotes();
+	try {
+		const result = await saveReviewBody(post.value.id, draft);
+		savedBody.value = result.cleared
+			? (post.value.body ?? "")
+			: editedBody.value;
+		post.value.review_body = result.cleared ? null : editedBody.value;
+		notice.value = result.cleared
+			? "已经改回原文，作者那边看不到改稿"
+			: "改稿已保存，作者在编辑页能看到并采用";
+	} catch (error) {
+		errorText.value = error instanceof Error ? error.message : "保存失败";
+	} finally {
+		savingBody.value = false;
+	}
+}
+
 async function onApprove(): Promise<void> {
 	if (!post.value) return;
+	// 通过发的是作者原文，编辑器里没保存的改动不会跟着走，先说清楚
+	if (
+		bodyPending.value &&
+		!window.confirm("正文还有没保存的改动，通过会按作者原文发布。继续？")
+	) {
+		return;
+	}
 	if (notes.value.length > 0 && !approveAnyway.value) {
 		approveAnyway.value = true;
 		errorText.value = `还有 ${notes.value.length} 条批注没处理，确实要通过的话再点一次`;
@@ -470,7 +546,7 @@ onBeforeUnmount(() => {
 					</p>
 
 					<p v-if="post.status === 'pending'" class="doc-hint">
-						选中正文里的一段话，可以就那段写一条建议。
+						正文可以直接改；也可以选中一段话，单独写一条批注。
 					</p>
 					<p v-else class="doc-hint warn">
 						这篇当前状态是「{{ post.status }}」，批注仍可查看，但已不在待审队列里。
@@ -507,9 +583,32 @@ onBeforeUnmount(() => {
 			</button>
 
 			<aside class="side card-base">
-				<p class="side-title">审核操作</p>
-
 				<template v-if="!rejecting">
+					<p class="side-title">修改稿</p>
+					<button
+						type="button"
+						class="btn-regular full"
+						:disabled="!bodyPending || savingBody"
+						@click="saveBody"
+					>
+						{{ bodyPending ? "保存修改版" : bodySaved ? "已保存" : "没有改动" }}
+					</button>
+					<p class="hint">
+						<template v-if="bodyPending && bodyChanged">
+							有改动还没保存，作者现在看不到这一版。
+						</template>
+						<template v-else-if="bodyPending">
+							已经改回原文，点保存可以撤掉之前那版。
+						</template>
+						<template v-else-if="bodySaved">
+							已存一版，作者在编辑页能看到并采用，不会自动发布。
+						</template>
+						<template v-else>
+							直接在正文里改措辞和结构，改完保存，作者能看到你改的版本。
+						</template>
+					</p>
+
+					<p class="side-title side-split">审核结论</p>
 					<button
 						type="button"
 						class="btn-regular full"
@@ -795,9 +894,16 @@ onBeforeUnmount(() => {
 	background: transparent;
 }
 
-.review-editor :deep(.vditor-toolbar),
 .review-editor :deep(.vditor-resize) {
 	display: none;
+}
+
+/* 工具栏跟写作页一样铺在正文上方，但底色要跟卡片一致，别切出一条灰带 */
+.review-editor :deep(.vditor-toolbar) {
+	background: transparent;
+	border-bottom: 1px solid var(--line-divider);
+	padding-left: 0;
+	margin-bottom: 0.6rem;
 }
 
 /* 只读页跟整页一起滚，编辑器内部不再另出一根滚动条 */
@@ -925,6 +1031,13 @@ onBeforeUnmount(() => {
 	font-size: 0.78rem;
 	font-weight: 600;
 	color: var(--fg-90);
+}
+
+/* 「修改稿」与「审核结论」是两件事，中间拉一条线分开，别看着像一串按钮 */
+.side-split {
+	margin-top: 0.2rem;
+	padding-top: 0.95rem;
+	border-top: 1px solid var(--line-divider);
 }
 
 .side-title .count {

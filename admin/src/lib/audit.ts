@@ -43,6 +43,8 @@ export const AUDIT_ACTIONS: string[] = [
 	"admin.mail.save",
 	"admin.mail.test",
 	"review.approve",
+	"review.note",
+	"review.body",
 	"review.reject",
 ];
 
@@ -71,6 +73,8 @@ export const ACTION_LABEL: Record<string, string> = {
 	"admin.mail.save": "保存发信配置",
 	"admin.mail.test": "发送测试邮件",
 	"review.approve": "审核通过",
+	"review.note": "审核批注",
+	"review.body": "审核改稿",
 	"review.reject": "审核退回",
 };
 

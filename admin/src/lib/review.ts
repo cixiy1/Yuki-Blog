@@ -48,6 +48,9 @@ export interface ReviewPost {
 	submitted_at: string | null;
 	updated_at: string;
 	review_note: string | null;
+	/** 审核员存下的改稿，作者点「采用」才会用 */
+	review_body: string | null;
+	review_body_at: string | null;
 	notes: ReviewNote[];
 }
 
@@ -81,4 +84,18 @@ export async function approvePost(id: number): Promise<void> {
 
 export async function rejectPost(id: number, note: string): Promise<void> {
 	await api.post(`/api/admin/review/${id}/reject`, { note });
+}
+
+/** 审核员改好的正文，只存 D1 给作者参考 */
+export interface SaveBodyResult {
+	changed: boolean;
+	cleared: boolean;
+	saved_at: string | null;
+}
+
+export async function saveReviewBody(
+	id: number,
+	body: string,
+): Promise<SaveBodyResult> {
+	return api.post<SaveBodyResult>(`/api/admin/review/${id}/body`, { body });
 }

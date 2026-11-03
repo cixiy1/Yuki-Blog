@@ -32,6 +32,8 @@ export interface PostSummary {
 export interface PostDetail extends PostSummary {
 	body: string;
 	meta: Record<string, unknown>;
+	/** 审核员改过的一版正文，作者点「采用」才覆盖自己的稿子 */
+	review_body?: string | null;
 }
 
 export const STATUS_LABEL: Record<string, string> = {

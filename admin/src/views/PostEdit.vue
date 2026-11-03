@@ -278,6 +278,10 @@ const errorText = ref("");
 /** 审核员的划词批注与总评，只在被退回/待审时可能有 */
 const reviewNotes = ref<ReviewNoteView[]>([]);
 const reviewVerdict = ref("");
+/** 审核员改过的那一版正文（存在 D1，不碰仓库） */
+const reviewBody = ref<string | null>(null);
+const reviewBodyOpen = ref(false);
+const reviewBodyEl = ref<HTMLElement | null>(null);
 const lastSaved = ref<string | null>(null);
 
 /* ---------- 思维导图画布 ---------- */
@@ -805,6 +809,41 @@ function onFieldInput(): void {
 	scheduleSave();
 }
 
+/** 审核员改的那一版渲染出来给作者看，只读，不动自己的稿子 */
+async function openReviewBody(): Promise<void> {
+	reviewBodyOpen.value = true;
+	await nextTick();
+	const target = reviewBodyEl.value;
+	if (!target || !reviewBody.value) return;
+	await Vditor.preview(target, reviewBody.value, {
+		cdn: "/admin/vditor",
+		lang: "zh_CN",
+		mode: isDark.value ? "dark" : "light",
+		theme: { current: isDark.value ? "dark" : "light" },
+		hljs: { style: isDark.value ? "monokai" : "github", lineNumber: true },
+		math: { engine: "KaTeX" },
+		anchor: 0,
+	});
+}
+
+/**
+ * 采用审核改稿：覆盖编辑器里的正文。
+ * 作者自己再确认一遍保存，别让「看一眼」变成「悄悄替换」。
+ */
+function applyReviewBody(): void {
+	const next = reviewBody.value;
+	if (!next) return;
+	const ok = window.confirm(
+		"用审核员改的这一版替换当前正文？当前正文会被覆盖，替换后还要保存才生效。",
+	);
+	if (!ok) return;
+	form.body = next;
+	vditor?.setValue(next);
+	reviewBody.value = null;
+	reviewBodyOpen.value = false;
+	scheduleSave();
+}
+
 /** 管理员：保存后直接写成仓库文件，不经过审核队列 */
 async function onPublish(): Promise<void> {
 	const saved = await save();
@@ -969,6 +1008,7 @@ onMounted(async () => {
 			if (!local) errorText.value = "文章不存在";
 			else {
 				reviewVerdict.value = local.review_note ?? "";
+				reviewBody.value = local.review_body ?? null;
 				try {
 					reviewNotes.value = await getPostNotes(postId.value);
 				} catch {
@@ -1073,7 +1113,7 @@ watch(isDark, (dark) => {
 			<div class="edit-layout">
 				<div class="col-main">
 					<section
-						v-if="!isRepo && (reviewVerdict || reviewNotes.length)"
+						v-if="!isRepo && (reviewVerdict || reviewNotes.length || reviewBody)"
 						class="card-base panel review-card"
 					>
 						<div class="review-head">
@@ -1093,6 +1133,17 @@ watch(isDark, (dark) => {
 								<p class="rn-by">{{ item.reviewer }}</p>
 							</li>
 						</ul>
+						<div v-if="reviewBody" class="rb-tip">
+							<p class="rb-title">审核员直接改了一版正文，可以用作参考</p>
+							<div class="rb-actions">
+								<button type="button" class="btn-regular" @click="openReviewBody">
+									看看改了什么
+								</button>
+								<button type="button" class="btn-primary" @click="applyReviewBody">
+									用这版覆盖
+								</button>
+							</div>
+						</div>
 						<p class="rn-hint">
 							按条改完再提交审核；通过后这些批注会被清掉。
 						</p>
@@ -1390,6 +1441,43 @@ watch(isDark, (dark) => {
 			@close="mmOpen = false"
 			@submit="applyMindMap"
 		/>
+
+		<div
+			v-if="reviewBodyOpen"
+			class="rb-modal"
+			@click.self="reviewBodyOpen = false"
+		>
+			<div class="rb-box card-base">
+				<header class="rb-head">
+					<p class="panel-title">审核员改过的版本</p>
+					<button
+						type="button"
+						class="btn-ghost"
+						@click="reviewBodyOpen = false"
+					>
+						关闭
+					</button>
+				</header>
+				<div ref="reviewBodyEl" class="rb-content"></div>
+				<footer class="rb-foot">
+					<p class="rb-note">
+						覆盖只会替换编辑器里的正文，保存之后才算数。
+					</p>
+					<div class="rb-actions">
+						<button
+							type="button"
+							class="btn-regular"
+							@click="reviewBodyOpen = false"
+						>
+							先只看看
+						</button>
+						<button type="button" class="btn-primary" @click="applyReviewBody">
+							用这版覆盖正文
+						</button>
+					</div>
+				</footer>
+			</div>
+		</div>
 	</div>
 </template>
 
@@ -1421,6 +1509,78 @@ watch(isDark, (dark) => {
 		var(--admonitions-color-caution) 5%,
 		var(--card-bg)
 	);
+}
+
+/* 审核员改的那一版：跟批注分开，别让作者以为批注已经自动改进了正文 */
+.rb-tip {
+	margin-top: 0.75rem;
+	padding: 0.7rem 0.8rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.7rem;
+	background: var(--card-bg);
+}
+
+.rb-title {
+	margin: 0 0 0.55rem;
+	font-size: 0.78rem;
+	color: var(--fg-90);
+}
+
+.rb-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.rb-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 2rem 1rem;
+	background: rgba(0, 0, 0, 0.45);
+}
+
+.rb-box {
+	display: flex;
+	flex-direction: column;
+	width: min(46rem, 100%);
+	max-height: 82vh;
+	padding: 1rem 1.1rem;
+	border-radius: 0.9rem;
+}
+
+.rb-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding-bottom: 0.6rem;
+	border-bottom: 1px solid var(--line-divider);
+}
+
+/* Vditor.preview 把 .vditor-reset 加在容器本身上，所以字号字体要写在容器上 */
+.rb-content {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 0.85rem 0.1rem;
+	font-family: inherit;
+	font-size: 0.9rem;
+	line-height: 1.75;
+}
+
+.rb-foot {
+	padding-top: 0.7rem;
+	border-top: 1px solid var(--line-divider);
+}
+
+.rb-note {
+	margin: 0 0 0.55rem;
+	font-size: 0.73rem;
+	color: var(--fg-50);
 }
 
 .review-head {
