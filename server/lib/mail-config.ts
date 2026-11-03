@@ -113,6 +113,40 @@ export async function writeMailSettings(
 	return next;
 }
 
+export interface MailSettingsView {
+	config: MailConfigStored;
+	/** db = 管理端配过；env = 只有环境变量，界面上要提示一句 */
+	source: "db" | "env";
+}
+
+/**
+ * 管理端看的视图：没在管理端配过时，把环境变量里那套「折算」成表单值返回。
+ * 否则界面显示「关闭」，实际却按 env 里的 Resend 在发信，对不上。
+ */
+export async function mailSettingsView(env: Env): Promise<MailSettingsView> {
+	const stored = await readSetting<Partial<MailConfigStored>>(
+		env.DB,
+		MAIL_CONFIG_KEY,
+	);
+	if (stored) {
+		return { config: await readMailSettings(env.DB), source: "db" };
+	}
+	const runtime = await resolveMailConfig(env);
+	return {
+		config: {
+			mode: runtime.mode,
+			from: runtime.from,
+			smtp: {
+				host: runtime.smtp.host,
+				port: runtime.smtp.port,
+				security: runtime.smtp.security,
+				user: runtime.smtp.user,
+			},
+		},
+		source: runtime.source,
+	};
+}
+
 /**
  * 运行时解析：settings 里存过就用存的，否则按 env 推断。
  * 返回的 smtp.pass / resendKey 已解密，调用方用完即弃，不要塞进日志。
