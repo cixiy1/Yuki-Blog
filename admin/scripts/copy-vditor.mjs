@@ -5,8 +5,9 @@
  * ⚠️ 目录结构必须保留一层 dist/：Vditor 内部拼的是 `${cdn}/dist/js/...` 与
  * `${cdn}/dist/css/content-theme`，所以 cdn 传 /admin/vditor，文件放在 vditor/dist/ 下。
  *
- * 只拷用得到的部分：diagram 类渲染器（mermaid、echarts、mathjax 等）合计 20MB 以上，
- * 博客正文用不到，全部不拷。lute、icons、i18n、highlight.js、katex、css 必须留。
+ * 只拷用得到的部分：diagram 类渲染器（mermaid、echarts、mathjax 等）合计 20MB 以上。
+ * 这里只留 mermaid —— 站内文章的图表全是 ```mermaid，编辑器不渲染就得等构建才知道画成什么样。
+ * 其余（echarts、graphviz、plantuml、mathjax…）不拷。lute、icons、i18n、highlight.js、katex、css 必须留。
  */
 import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -25,6 +26,7 @@ const DIRS = [
 	"js/icons",
 	"js/highlight.js",
 	"js/katex",
+	"js/mermaid",
 ];
 const SINGLE_JS = ["js/i18n/zh_CN.js"];
 

@@ -798,11 +798,22 @@ onBeforeUnmount(() => {
 });
 
 watch(isDark, (dark) => {
-	vditor?.setTheme(
+	if (!vditor) return;
+	vditor.setTheme(
 		dark ? "dark" : "classic",
 		dark ? "dark" : "light",
 		dark ? "monokai" : "github",
 	);
+	/*
+	 * mermaid 的图是渲染好的静态 SVG，setTheme 不会重画，深色下会留一张白底图。
+	 * 正文里没有 ```mermaid 就不折腾，有的话按新主题重建一次编辑器——
+	 * 内容在 form.body 里，重建不丢东西，光标会回到开头（切主题本来也不该是编辑中的动作）。
+	 */
+	if (!form.body.includes("```mermaid")) return;
+	vditor.destroy();
+	vditor = null;
+	if (editorEl.value) editorEl.value.innerHTML = "";
+	createEditor();
 });
 </script>
 
