@@ -808,7 +808,9 @@ onBeforeUnmount(() => {
 }
 
 .review-editor :deep(.vditor-ir .vditor-reset) {
-	padding: 0;
+	/* Vditor 会给这个 pre 写内联 padding: 10px 35px，普通规则盖不住，
+	   留着就是正文整体右缩 35px、左边空一块 */
+	padding: 0 !important;
 	background: transparent;
 }
 
@@ -830,12 +832,12 @@ onBeforeUnmount(() => {
 	content: none !important;
 }
 
-/* 编辑器自己不设宽度，跟着容器走；字号按正文字号收一档 */
+/* 字号、行距与写作页的 .editor 保持一致，同一篇文章在两边读起来是同一个样子 */
 .review-editor :deep(.vditor-reset) {
-	font-size: 0.95rem;
-	line-height: 1.85;
+	font-size: 0.9rem;
+	line-height: 1.7;
 	color: var(--fg-90);
-	padding: 0;
+	padding: 0 !important;
 }
 
 .review-editor :deep(.vditor-reset img) {
