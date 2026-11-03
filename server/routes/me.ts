@@ -289,7 +289,8 @@ function toSummary(row: PostRow): Record<string, unknown> {
 	};
 }
 
-function toDetail(row: PostRow): Record<string, unknown> {
+/** 审核台要看正文，所以详情形状对外导出，admin 路由复用同一份字段 */
+export function toDetail(row: PostRow): Record<string, unknown> {
 	return {
 		...toSummary(row),
 		body: row.body ?? "",

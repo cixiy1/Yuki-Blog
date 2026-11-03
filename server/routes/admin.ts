@@ -11,7 +11,7 @@ import {
 import { requireRole } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
-import { type PostRow, publishRowToRepo } from "./me";
+import { type PostRow, publishRowToRepo, toDetail } from "./me";
 
 /**
  * 管理端接口：用户管理 + 审计日志。
@@ -730,6 +730,45 @@ admin.get("/review/queue", requireRole("reviewer"), async (c) => {
 			...row,
 			author: row.display_name || row.account || `uid ${row.uid}`,
 		})),
+	});
+});
+
+/**
+ * 单篇待审稿的全文。审核不能只看标题和摘要——队列里那点字判断不了
+ * 有没有抄袭、有没有写错、有没有夹带私货，所以这里把正文与元数据一起给前端。
+ * 范围放宽到 reviewer 可读任何一条投稿（含已处理的），方便回看。
+ */
+admin.get("/review/:id", requireRole("reviewer"), async (c) => {
+	const id = Number(c.req.param("id"));
+	if (!Number.isInteger(id) || id <= 0) {
+		return c.json({ error: "bad_request", message: "id 非法" }, 400);
+	}
+
+	const row = await c.env.DB.prepare("SELECT * FROM posts WHERE id = ?1")
+		.bind(id)
+		.first<PostRow>();
+	if (!row) {
+		return c.json({ error: "not_found", message: "这篇不见了" }, 404);
+	}
+
+	const author = await c.env.DB.prepare(
+		"SELECT display_name, account, avatar_url FROM users WHERE uid = ?1",
+	)
+		.bind(row.uid)
+		.first<{
+			display_name: string | null;
+			account: string;
+			avatar_url: string | null;
+		}>();
+
+	return c.json({
+		post: {
+			...toDetail(row),
+			author:
+				author?.display_name || author?.account || `uid ${row.uid}`,
+			author_account: author?.account ?? "",
+			author_avatar: author?.avatar_url ?? null,
+		},
 	});
 });
 

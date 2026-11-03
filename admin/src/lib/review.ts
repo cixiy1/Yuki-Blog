@@ -18,6 +18,33 @@ export async function listQueue(): Promise<QueueItem[]> {
 	return data.posts ?? [];
 }
 
+/** 队列里点开某一篇后的全文，字段与「我的文章」详情同形，另带作者信息 */
+export interface ReviewPost {
+	id: number;
+	uid: number;
+	slug: string;
+	title: string;
+	summary: string;
+	cover: string;
+	tags: string[];
+	body: string;
+	meta: Record<string, unknown>;
+	status: string;
+	source_link: string;
+	author: string;
+	author_account: string;
+	author_avatar: string | null;
+	repo_path: string;
+	submitted_at: string | null;
+	updated_at: string;
+	review_note: string | null;
+}
+
+export async function getQueuePost(id: number): Promise<ReviewPost> {
+	const data = await api.get<{ post: ReviewPost }>(`/api/admin/review/${id}`);
+	return data.post;
+}
+
 export async function approvePost(id: number): Promise<void> {
 	await api.post(`/api/admin/review/${id}/approve`, {});
 }

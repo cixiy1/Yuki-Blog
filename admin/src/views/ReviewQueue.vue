@@ -10,6 +10,7 @@ import {
 	type QueueItem,
 	rejectPost,
 } from "../lib/review";
+import { goReview } from "../router";
 
 const items = ref<QueueItem[]>([]);
 const loading = ref(true);
@@ -90,7 +91,7 @@ onMounted(() => {
 	<div>
 		<PageHeader
 			title="审核队列"
-			desc="待审投稿，通过即写入仓库并触发构建；退回要写理由。"
+			desc="点标题或「看正文」先读全文，再决定通过或退回；通过即写入仓库并触发构建。"
 		>
 			<template #actions>
 				<button
@@ -117,7 +118,10 @@ onMounted(() => {
 		<ul v-else class="list">
 			<li v-for="item in items" :key="item.id" class="row card-base">
 				<div class="row-main">
-					<p class="row-title">{{ item.title }}</p>
+					<button type="button" class="row-title" @click="goReview(item.id)">
+						{{ item.title }}
+						<AppIcon name="eye" :size="14" />
+					</button>
 					<p class="row-meta">
 						<span>{{ item.author }}</span>
 						<span>·</span>
@@ -154,6 +158,14 @@ onMounted(() => {
 				</div>
 
 				<div v-if="rejectingId !== item.id" class="row-actions">
+					<button
+						type="button"
+						class="btn-regular"
+						@click="goReview(item.id)"
+					>
+						<AppIcon name="eye" :size="15" />
+						看正文
+					</button>
 					<button
 						type="button"
 						class="btn-primary"
@@ -225,10 +237,22 @@ onMounted(() => {
 }
 
 .row-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
 	margin: 0;
+	padding: 0;
+	border: none;
+	background: none;
 	font-size: 0.9rem;
 	font-weight: 600;
 	color: var(--fg-90);
+	text-align: left;
+	cursor: pointer;
+}
+
+.row-title:hover {
+	color: var(--primary);
 }
 
 .row-meta {

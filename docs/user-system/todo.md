@@ -146,7 +146,8 @@
 - [ ] `inbox/` 目录约定与写入逻辑
 - [ ] 用户级组件管理（`src/components/user/<uid>/`，import 白名单：只允许 `./`、`../` 与自己的目录）
 - [ ] 页面型文章的实时预览 iframe（HTML + JS + 数据拼装，注入主题 CSS）
-- [ ] 审核队列 UI
+- [x] 审核队列 UI：列表只给标题/摘要/字数，点标题或「看正文」进 `#/review/<id>` 读全文
+      （`GET /api/admin/review/:id` 返回正文与 meta，正文用 Vditor 静态预览渲染，深浅主题跟着切）
 - [ ] 通过：读 `inbox/` → 写 `src/content/posts/u/<uid>/<slug>/` → 删 `inbox/` 原件 → 一次 commit
 - [ ] 退回：写理由、作者可见
 - [ ] GitHub API 封装（token 从 secret 取，Contents API + 批量 tree 提交）

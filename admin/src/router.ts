@@ -17,7 +17,7 @@ export type RouteName =
 
 export interface Route {
 	name: RouteName;
-	/** post-edit 用：D1 文章 id */
+	/** post-edit 用：D1 文章 id；review 用：待审稿 id */
 	id?: number;
 	/** post-edit 用：仓库文章的 slug（子目录用 %2F 编码，切分时不会被拆开） */
 	repoSlug?: string;
@@ -56,6 +56,11 @@ function parse(hash: string): Route {
 		if (Number.isInteger(id) && id > 0) return { name: "post-edit", id };
 		return { name: "posts" };
 	}
+	if (name === "review" && parts.length > 1) {
+		const id = Number(parts[1]);
+		if (Number.isInteger(id) && id > 0) return { name: "review", id };
+		return { name: "review" };
+	}
 	if (name === "post-edit") {
 		const id = Number(parts[1]);
 		return Number.isInteger(id) && id > 0 ? { name, id } : { name: "posts" };
@@ -86,6 +91,11 @@ export const editOrigin = ref<"posts" | "all-posts">("posts");
 export function goPostEdit(id: number): void {
 	editOrigin.value = "posts";
 	go(`/posts/${id}`);
+}
+
+/** 审核队列点开某篇：/review/<id>，与队列共用 review 这一段前缀 */
+export function goReview(id: number): void {
+	go(`/review/${id}`);
 }
 
 /** 仓库文章走 slug，子目录的斜杠要编码，否则会把路由切成多段 */

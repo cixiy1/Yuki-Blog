@@ -15,6 +15,7 @@ import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
 import Overview from "../views/OverviewPage.vue";
 import PostEdit from "../views/PostEdit.vue";
+import ReviewDetail from "../views/ReviewDetail.vue";
 import ReviewQueue from "../views/ReviewQueue.vue";
 import SiteSettings from "../views/SiteSettings.vue";
 import UsersAdmin from "../views/UsersAdmin.vue";
@@ -32,7 +33,12 @@ const VIEWS: Record<RouteName, unknown> = {
 	settings: SiteSettings,
 };
 
-const current = computed(() => VIEWS[route.value.name] ?? Overview);
+const current = computed(() => {
+	const now = route.value;
+	// /review/<id> 复用 review 这一段前缀，侧栏高亮才不会掉
+	if (now.name === "review" && now.id) return ReviewDetail;
+	return VIEWS[now.name] ?? Overview;
+});
 
 interface NavItem {
 	key: RouteName | string;
