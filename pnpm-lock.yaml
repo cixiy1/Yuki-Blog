@@ -212,6 +212,9 @@ importers:
       unist-util-visit:
         specifier: ^5.1.0
         version: 5.1.0
+      worker-mailer:
+        specifier: 1.3.0
+        version: 1.3.0
       wrangler:
         specifier: ^4.127.1
         version: 4.127.1
@@ -6298,6 +6301,9 @@ packages:
 
   woff2sfnt-sfnt2woff@1.0.0:
     resolution: {integrity: sha512-edK4COc1c1EpRfMqCZO1xJOvdUtM5dbVb9iz97rScvnTevqEB3GllnLWCmMVp1MfQBdF1DFg/11I0rSyAdS4qQ==}
+
+  worker-mailer@1.3.0:
+    resolution: {integrity: sha512-VGbZC7mqOFq91cJOqphqVYX1Hk/Lf61sqLyByAwlG5QDtheiTaAJsfWQzxJewTmgxrrAecd1F9uStuIXBiLg8w==}
 
   workerd@1.20260828.1:
     resolution: {integrity: sha512-pB9yvt0kkwZDAGZHmpY59r0o3hM0DzdW6BJERqwZOhunZ3ssOyDSgQxOQer2cSZW4YCFeOTIQYN1qwhK5wv/Cw==}
@@ -13343,6 +13349,8 @@ snapshots:
   woff2sfnt-sfnt2woff@1.0.0:
     dependencies:
       pako: 1.0.11
+
+  worker-mailer@1.3.0: {}
 
   workerd@1.20260828.1:
     optionalDependencies:

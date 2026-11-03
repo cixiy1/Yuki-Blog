@@ -1,5 +1,11 @@
+import {
+	DEFAULT_FROM,
+	type MailConfig,
+	type MailMode,
+	resolveMailConfig,
+} from "./mail-config";
+
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
-const DEFAULT_FROM = "Yuki Blog <mail@yiyu14.top>";
 
 /**
  * 本地调试开关，三重闸门缺一不可：
@@ -25,34 +31,61 @@ export interface MailResult {
 	ok: boolean;
 	/** false 表示没有配置发信通道，调用方要决定降级策略 */
 	sent: boolean;
+	/** 实际走的通道：resend / smtp / off */
+	mode?: MailMode;
 	providerStatus?: number;
 	providerMessage?: string;
+	/** 面向人的失败原因，管理端「发送测试邮件」直接展示这句 */
+	hint?: string;
 }
 
 const STYLE =
 	"font-family:system-ui,-apple-system,'PingFang SC',sans-serif;line-height:1.7;color:#1f2328";
 
-async function sendMail(
-	env: Env,
+/** `Yuki Blog <mail@yiyu14.top>` → { name, email } */
+function parseFrom(raw: string): { name?: string; email: string } {
+	const text = (raw || DEFAULT_FROM).trim();
+	const match = /^(.*?)<([^>]+)>$/.exec(text);
+	if (match) {
+		const name = match[1].trim().replace(/^"|"$/g, "");
+		return name ? { name, email: match[2].trim() } : { email: match[2].trim() };
+	}
+	return { email: text };
+}
+
+/** SMTP 侧的报错通常带命令与响应码，翻成一句能据以排查的话 */
+function describeSmtpFailure(error: unknown): string {
+	const err = error as {
+		code?: string;
+		responseCode?: number;
+		message?: string;
+	};
+	const code = err?.code ?? (err?.responseCode ? String(err.responseCode) : "");
+	const text = (err?.message ?? String(error)).slice(0, 300);
+	if (/AUTH|535|534|5\.7\.8/i.test(`${code} ${text}`))
+		return `服务器拒绝登录，检查用户名与授权码（很多邮箱要用「授权码」而不是登录密码）：${text}`;
+	if (/ETIMEDOUT|timeout|timed out/i.test(text))
+		return `连接超时，检查主机与端口，以及该主机是否放通出站 465/587：${text}`;
+	if (/ENOTFOUND|DNS|getaddrinfo/i.test(text))
+		return `解析不到这个 SMTP 主机名：${text}`;
+	if (/SSL|TLS|certificate/i.test(text))
+		return `TLS 握手失败，多半是加密方式选错（465 选 SSL、587 选 STARTTLS）：${text}`;
+	return code ? `${code}: ${text}` : text;
+}
+
+async function sendViaResend(
+	config: MailConfig,
 	payload: { to: string; subject: string; text: string; html: string },
 ): Promise<MailResult> {
-	if (!env.RESEND_API_KEY) {
-		console.log(
-			`[auth] RESEND_API_KEY 未配置，邮件只打印到 console: ${payload.to} | ${payload.subject}`,
-		);
-		return { ok: true, sent: false };
-	}
-
-	const from = env.MAIL_FROM || DEFAULT_FROM;
 	try {
 		const response = await fetch(RESEND_ENDPOINT, {
 			method: "POST",
 			headers: {
-				authorization: `Bearer ${env.RESEND_API_KEY}`,
+				authorization: `Bearer ${config.resendKey}`,
 				"content-type": "application/json",
 			},
 			body: JSON.stringify({
-				from,
+				from: config.from,
 				to: [payload.to],
 				subject: payload.subject,
 				text: payload.text,
@@ -64,20 +97,149 @@ async function sendMail(
 		if (!response.ok) {
 			const detail = await response.text().catch(() => "");
 			console.error(
-				`[auth] Resend 返回 ${response.status}: ${detail.slice(0, 300)}`,
+				`[mail] Resend 返回 ${response.status}: ${detail.slice(0, 300)}`,
 			);
+			const hint =
+				response.status === 401 || response.status === 403
+					? "API Key 不对或没有发信权限，去 Resend 重新生成一个。"
+					: /domain/i.test(detail)
+						? "发件域名还没在 Resend 通过验证：域名页加 DNS 记录，验证完再发。"
+						: /only send testing emails/i.test(detail)
+							? "Resend 在域名验证前只能发给账号自己的邮箱，先把域名验证掉。"
+							: null;
 			return {
 				ok: false,
 				sent: true,
+				mode: "resend",
 				providerStatus: response.status,
 				providerMessage: detail.slice(0, 300),
+				hint: hint ?? undefined,
 			};
 		}
-		return { ok: true, sent: true };
+		return { ok: true, sent: true, mode: "resend" };
 	} catch (error) {
-		console.error("[auth] Resend 请求异常", error);
-		return { ok: false, sent: true };
+		const message = error instanceof Error ? error.message : String(error);
+		console.error("[mail] Resend 请求异常", message);
+		return {
+			ok: false,
+			sent: true,
+			mode: "resend",
+			providerMessage: message.slice(0, 300),
+			hint: "请求没能发出去，检查网络或 Key 是否失效。",
+		};
 	}
+}
+
+async function sendViaSmtp(
+	config: MailConfig,
+	payload: { to: string; subject: string; text: string; html: string },
+): Promise<MailResult> {
+	const { host, port, security, user, pass } = config.smtp;
+	const { WorkerMailer } = await import("worker-mailer");
+
+	let mailer: Awaited<ReturnType<typeof WorkerMailer.connect>> | null = null;
+	try {
+		mailer = await WorkerMailer.connect({
+			host,
+			port,
+			// 465 一上来就是 TLS；587 走 STARTTLS；none 只给内网中继和本地调试
+			secure: security === "ssl",
+			startTls: security === "starttls",
+			credentials:
+				user && pass ? { username: user, password: pass } : undefined,
+			authType: ["login", "plain"],
+			socketTimeoutMs: 10_000,
+			responseTimeoutMs: 10_000,
+			name: "yiyu14.top",
+		});
+		await mailer.send({
+			from: parseFrom(config.from),
+			to: payload.to,
+			subject: payload.subject,
+			text: payload.text,
+			html: payload.html,
+		});
+		return { ok: true, sent: true, mode: "smtp" };
+	} catch (error) {
+		const hint = describeSmtpFailure(error);
+		console.error("[mail] SMTP 发送失败:", hint);
+		return {
+			ok: false,
+			sent: true,
+			mode: "smtp",
+			providerMessage: hint.slice(0, 300),
+			hint,
+		};
+	} finally {
+		await mailer?.close().catch(() => {});
+	}
+}
+
+/**
+ * 统一入口：按配置选通道。
+ * 没配任何通道时只打日志（本地开发），返回值 ok=true 但 sent=false，
+ * 调用方据此决定要不要把链接回显到接口里。
+ */
+async function sendMail(
+	env: Env,
+	payload: { to: string; subject: string; text: string; html: string },
+): Promise<MailResult> {
+	const config = await resolveMailConfig(env);
+
+	if (config.mode === "off" || (config.mode === "smtp" && !config.smtp.host)) {
+		console.log(
+			`[mail] 未配置发信通道，邮件只打印到 console: ${payload.to} | ${payload.subject}`,
+		);
+		return { ok: true, sent: false, mode: "off" };
+	}
+
+	if (config.mode === "resend") {
+		if (!config.resendKey) {
+			return {
+				ok: false,
+				sent: false,
+				mode: "resend",
+				hint: "选了 Resend 但没填 API Key。",
+			};
+		}
+		return await sendViaResend(config, payload);
+	}
+
+	return await sendViaSmtp(config, payload);
+}
+
+/** 管理端「发送测试邮件」：内容写清当前走哪条通道，方便一眼看出配置生效没 */
+export async function sendTestMail(
+	env: Env,
+	to: string,
+	origin: string,
+): Promise<MailResult & { configMode: MailMode; from: string }> {
+	const config = await resolveMailConfig(env);
+	const text = [
+		"这封是 Yuki Blog 管理端发出的测试邮件。",
+		"",
+		`发信通道：${config.mode === "smtp" ? `SMTP（${config.smtp.host}:${config.smtp.port}）` : config.mode}`,
+		`发件人：${config.from}`,
+		`站点：${origin}`,
+		"",
+		"收到它说明验证码、找回密码这类邮件也能正常发出去。",
+	].join("\n");
+
+	const html = `<div style="${STYLE}">
+  <p>这封是 <strong>Yuki Blog 管理端</strong> 发出的测试邮件。</p>
+  <p>发信通道：<code>${config.mode === "smtp" ? `SMTP ${config.smtp.host}:${config.smtp.port}` : config.mode}</code><br>
+     发件人：<code>${config.from}</code><br>
+     站点：<code>${origin}</code></p>
+  <p style="color:#59636e;font-size:13px">收到它说明验证码、找回密码这类邮件也能正常发出去。</p>
+</div>`;
+
+	const result = await sendMail(env, {
+		to,
+		subject: "发信配置测试 · Yuki Blog",
+		text,
+		html,
+	});
+	return { ...result, configMode: config.mode, from: config.from };
 }
 
 function buttonHtml(link: string, label: string): string {

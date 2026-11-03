@@ -34,6 +34,8 @@ export type AuditAction =
 	| "admin.settings.publish_failed"
 	| "admin.settings.rollback"
 	| "admin.secrets.write"
+	| "admin.mail.save"
+	| "admin.mail.test"
 	| "review.approve"
 	| "review.reject";
 
@@ -55,6 +57,11 @@ const DETAIL_KEYS = new Set([
 	"role",
 	"note",
 	"slug",
+	// 发信配置：改的是哪条通道、哪个主机、测试发给了谁
+	"host",
+	"security",
+	"mode",
+	"ok",
 ]);
 
 export interface AuditInput {

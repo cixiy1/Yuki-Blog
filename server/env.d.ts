@@ -53,10 +53,17 @@ interface Env {
 	PASSWORD_ENC_KEY_PREV?: string;
 	/** 邮件里链接的站点根地址；缺省时用请求自身 origin */
 	SITE_ORIGIN?: string;
-	/** Resend API key，缺失时只打 console 不发信 */
+	/** Resend API key；管理端「集成」里填过就以那边为准，这里只是兜底 */
 	RESEND_API_KEY?: string;
 	/** 发件人，形如 `Yuki Blog <mail@yiyu14.top>` */
 	MAIL_FROM?: string;
+	/** 以下 SMTP_* 只在管理端没配过 SMTP 时兜底 */
+	SMTP_HOST?: string;
+	SMTP_PORT?: string;
+	/** ssl / starttls / none */
+	SMTP_SECURE?: string;
+	SMTP_USER?: string;
+	SMTP_PASS?: string;
 	GITHUB_CLIENT_ID?: string;
 	GITHUB_CLIENT_SECRET?: string;
 	/** 仅本地 .dev.vars 设 "1"，生产不配这个键 */

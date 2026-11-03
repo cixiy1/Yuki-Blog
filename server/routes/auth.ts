@@ -34,6 +34,7 @@ import {
 	SESSION_TTL_SECONDS,
 	setSessionCookie,
 } from "../lib/session";
+import { readSecret } from "../lib/site-config";
 import {
 	consumeEmailToken,
 	consumeResetToken,
@@ -748,13 +749,36 @@ auth.post("/reset-password", sameOriginGuard, requireJsonBody, async (c) => {
 
 /* ---------------------------- GitHub OAuth ---------------------------- */
 
+/**
+ * OAuth 的 Client ID / Secret：管理端「集成」里填过就用数据库里的，
+ * 没填才回落到环境变量。Client ID 不是秘密，但和 Secret 放一起少一处配置地方。
+ */
+async function githubOAuthConfig(
+	c: Context<AppEnv>,
+): Promise<{ clientId: string; clientSecret: string }> {
+	const rootKey = c.env.PASSWORD_ENC_KEY ?? "";
+	let clientId = "";
+	let clientSecret = "";
+	if (rootKey) {
+		clientId = (await readSecret(c.env.DB, rootKey, "github_client_id")) ?? "";
+		clientSecret =
+			(await readSecret(c.env.DB, rootKey, "github_client_secret")) ?? "";
+	}
+	return {
+		clientId: clientId || c.env.GITHUB_CLIENT_ID || "",
+		clientSecret: clientSecret || c.env.GITHUB_CLIENT_SECRET || "",
+	};
+}
+
 auth.get("/github/start", async (c) => {
-	const clientId = c.env.GITHUB_CLIENT_ID;
+	const { clientId } = await githubOAuthConfig(c);
 	const pepper = c.env.AUTH_PEPPER;
 	if (!clientId || !pepper) {
-		return c.json(
-			{ error: "github_not_configured", message: "GitHub 登录尚未配置" },
-			503,
+		// 这个地址是从登录页的按钮点进来的，回一个裸 JSON 会把人挂在半页；
+		// 带上 error 参数跳回登录页，那边会把「尚未配置」显示成正常提示
+		return c.redirect(
+			`${siteOrigin(c)}/login/?error=${encodeURIComponent("github_not_configured")}`,
+			302,
 		);
 	}
 
@@ -792,8 +816,7 @@ auth.get("/github/callback", async (c) => {
 
 	if (!secrets) return fail("server_misconfigured");
 
-	const clientId = c.env.GITHUB_CLIENT_ID;
-	const clientSecret = c.env.GITHUB_CLIENT_SECRET;
+	const { clientId, clientSecret } = await githubOAuthConfig(c);
 	if (!clientId || !clientSecret) return fail("github_not_configured");
 
 	const denied = c.req.query("error");

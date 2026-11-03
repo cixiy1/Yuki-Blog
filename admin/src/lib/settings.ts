@@ -66,3 +66,45 @@ export const saveSecret = async (
 	);
 	return data.secrets ?? [];
 };
+
+/* ---------------- 发信配置（非密字段走 settings，密钥走密钥库） ---------------- */
+
+export type MailMode = "off" | "resend" | "smtp";
+export type SmtpSecurity = "ssl" | "starttls" | "none";
+
+export interface MailConfig {
+	mode: MailMode;
+	from: string;
+	smtp: {
+		host: string;
+		port: number;
+		security: SmtpSecurity;
+		user: string;
+	};
+}
+
+export interface MailTestResult {
+	ok: boolean;
+	sent: boolean;
+	mode: MailMode;
+	to: string;
+	from: string;
+	message: string | null;
+}
+
+export const loadMailConfig = async (): Promise<MailConfig> => {
+	const data = await api.get<{ config: MailConfig }>("/api/admin/mail-config");
+	return data.config;
+};
+
+export const saveMailConfig = async (
+	config: MailConfig,
+): Promise<MailConfig> => {
+	const data = await api.put<{ config: MailConfig }>("/api/admin/mail-config", {
+		config,
+	});
+	return data.config;
+};
+
+export const testMail = (to?: string): Promise<MailTestResult> =>
+	api.post<MailTestResult>("/api/admin/mail-test", to ? { to } : {});

@@ -40,6 +40,8 @@ export const AUDIT_ACTIONS: string[] = [
 	"admin.settings.publish_failed",
 	"admin.settings.rollback",
 	"admin.secrets.write",
+	"admin.mail.save",
+	"admin.mail.test",
 	"review.approve",
 	"review.reject",
 ];
@@ -66,6 +68,8 @@ export const ACTION_LABEL: Record<string, string> = {
 	"admin.settings.publish_failed": "发布设置失败",
 	"admin.settings.rollback": "回滚设置",
 	"admin.secrets.write": "写入密钥",
+	"admin.mail.save": "保存发信配置",
+	"admin.mail.test": "发送测试邮件",
 	"review.approve": "审核通过",
 	"review.reject": "审核退回",
 };
