@@ -61,6 +61,14 @@ async function request<T>(
 	}
 
 	if (!response.ok) {
+		// 会话过期别让人对着「请先登录」发呆：直接回登录页，登完跳回来。
+		// /api/auth/* 自己处理登录态，排除掉避免来回弹
+		if (response.status === 401 && !path.startsWith("/api/auth/")) {
+			const back = `${location.pathname}${location.hash}`;
+			if (!location.pathname.startsWith("/login")) {
+				location.replace(`/login/?next=${encodeURIComponent(back)}`);
+			}
+		}
 		const body = (payload ?? {}) as { error?: unknown; message?: unknown };
 		const code = typeof body.error === "string" ? body.error : "http_error";
 		const message =

@@ -119,10 +119,11 @@ onMounted(async () => {
 		</section>
 
 		<section class="note card-base">
-			<p class="note-title">当前阶段</p>
+			<p class="note-title">这里的规则</p>
 			<ul>
-				<li>草稿正文存在 D1，自动保存不会产生 git 提交。</li>
-				<li>提交审核后（下一阶段）才写入仓库 inbox/，通过后移到文章目录并触发构建。</li>
+				<li>草稿存在站内，自动保存不产生 git 提交，也不会上线。</li>
+				<li>管理员点「发布」直接写进仓库并触发构建；其他人提交后由审核员处理。</li>
+				<li>已发布的文章再编辑，改的是仓库里的文件，保存就提交一次。</li>
 				<li>管理端不参与主站搜索索引，也不进 sitemap 与统计。</li>
 			</ul>
 		</section>

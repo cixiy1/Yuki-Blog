@@ -8,7 +8,6 @@ import {
 	setField,
 	splitMarkdown,
 } from "../lib/frontmatter";
-import { putRepoFile } from "../lib/github-contents";
 import { type RepoPost, readRepoPosts } from "../lib/post-index";
 import {
 	deleteRepoFile,
@@ -37,7 +36,7 @@ const MAX_COVER = 300;
 /** 只有这两个状态能改能删；pending 要先撤回，published 一律锁定 */
 const EDITABLE = new Set(["draft", "rejected"]);
 
-interface PostRow {
+export interface PostRow {
 	id: number;
 	uid: number;
 	slug: string;
@@ -85,7 +84,12 @@ function parseMeta(raw: string | null): Record<string, unknown> {
 function toMillis(value: unknown): number {
 	if (!value) return 0;
 	const raw = String(value);
-	const iso = raw.includes("T") ? raw : `${raw.replace(" ", "T")}Z`;
+	// frontmatter 只有日期（2026-11-01）时补零点；直接拼 Z 会解析失败
+	const iso = raw.includes("T")
+		? raw
+		: /\d:\d/.test(raw)
+			? `${raw.replace(" ", "T")}Z`
+			: `${raw}T00:00:00Z`;
 	const at = Date.parse(iso);
 	return Number.isNaN(at) ? 0 : at;
 }
@@ -93,12 +97,15 @@ function toMillis(value: unknown): number {
 /**
  * 仓库里的文章映射成和 D1 行同一个形状。
  * id 固定 0：它们没有 D1 记录，前端靠 origin 区分，不能拿去调 /posts/:id。
+ * 日期取 UTC 日（快照里是毫秒时间戳），补成 ISO 再让前端换算本地时区会显示 08:00:00。
  */
 function repoToSummary(post: RepoPost): Record<string, unknown> {
-	const published = new Date(post.published).toISOString();
-	const updated = post.updated
-		? new Date(post.updated).toISOString()
-		: published;
+	const day = (ms: number | null | undefined): string =>
+		typeof ms === "number" && Number.isFinite(ms)
+			? new Date(ms).toISOString().slice(0, 10)
+			: "";
+	const published = day(post.published);
+	const updated = day(post.updated) || published;
 	return {
 		id: 0,
 		origin: "repo",
@@ -863,7 +870,10 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 export function buildPostFrontmatter(row: PostRow): string {
 	let fm = "";
 	fm = setField(fm, "title", row.title.trim());
-	fm = setField(fm, "published", new Date().toISOString().slice(0, 10));
+	// Worker 跑在 UTC：凌晨 0–8 点（东八区）发布用 toISOString 会写成前一天。
+	// 站点按北京时间走，固定加 8 小时再取日期
+	const now = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+	fm = setField(fm, "published", now);
 	if (row.summary) fm = setField(fm, "description", row.summary);
 	const tags = parseTags(row.tags);
 	if (tags.length > 0) fm = setField(fm, "tags", tags);
@@ -880,6 +890,64 @@ export function buildPostFrontmatter(row: PostRow): string {
 		}
 	}
 	return fm;
+}
+
+/**
+ * 把一篇 D1 稿子写进仓库。管理员直接发布和审核通过走同一条路。
+ * 失败时返回要回给前端的 status + body，调用方原样吐出去。
+ */
+export async function publishRowToRepo(
+	c: Context<AppEnv>,
+	row: PostRow,
+	action: string,
+): Promise<
+	| { ok: true; path: string }
+	| { ok: false; status: number; body: Record<string, unknown> }
+> {
+	const token = await repoToken(c);
+	if (!token) return { ok: false, status: 412, body: TOKEN_MISSING };
+
+	const path = `src/content/posts/${row.slug}.md`;
+	const existing = await readRepoFile(path, token);
+	if (existing.ok) {
+		return {
+			ok: false,
+			status: 409,
+			body: {
+				error: "slug_taken",
+				message: `仓库里已经有 ${path}，换个地址再发`,
+			},
+		};
+	}
+	if (existing.status !== 404) {
+		return {
+			ok: false,
+			status: 502,
+			body: {
+				error: "repo_read_failed",
+				message: existing.message ?? "读取失败",
+			},
+		};
+	}
+
+	const content = joinMarkdown(buildPostFrontmatter(row), row.body ?? "");
+	const written = await writeRepoFile(
+		path,
+		content,
+		token,
+		`${action}《${row.title.trim()}》`,
+	);
+	if (!written.ok) {
+		return {
+			ok: false,
+			status: 502,
+			body: {
+				error: "repo_write_failed",
+				message: written.message ?? "写入失败",
+			},
+		};
+	}
+	return { ok: true, path };
 }
 
 /**
@@ -921,40 +989,11 @@ me.post("/posts/:id/publish", requireAuth, sameOriginGuard, async (c) => {
 		);
 	}
 
-	const token = await repoToken(c);
-	if (!token) return c.json(TOKEN_MISSING, 412);
-
-	const path = `src/content/posts/${row.slug}.md`;
-	const existing = await readRepoFile(path, token);
-	if (existing.ok) {
-		return c.json(
-			{
-				error: "slug_taken",
-				message: `仓库里已经有 ${path}，换个地址再发`,
-			},
-			409,
-		);
-	}
-	if (existing.status !== 404) {
-		return c.json(
-			{ error: "repo_read_failed", message: existing.message ?? "读取失败" },
-			502,
-		);
-	}
-
-	const content = joinMarkdown(buildPostFrontmatter(row), row.body ?? "");
-	const written = await writeRepoFile(
-		path,
-		content,
-		token,
-		`feat(post): 发布《${row.title.trim()}》`,
-	);
+	const written = await publishRowToRepo(c, row, "feat(post): 发布");
 	if (!written.ok) {
-		return c.json(
-			{ error: "repo_write_failed", message: written.message ?? "写入失败" },
-			502,
-		);
+		return c.json(written.body, written.status as 400);
 	}
+	const path = written.path;
 
 	const updated = await c.env.DB.prepare(
 		`UPDATE posts

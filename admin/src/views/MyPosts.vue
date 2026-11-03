@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { ApiError } from "../lib/api";
-import { isAdmin } from "../lib/auth";
+import { canReview, isAdmin } from "../lib/auth";
 import {
 	createPost,
 	deletePost,
@@ -142,7 +142,7 @@ onMounted(refresh);
 	<div>
 		<PageHeader
 			title="我的文章"
-			desc="署名为你的全部文章：草稿在 D1，已发布的在仓库；「全站文章」是站点的全部。"
+			desc="署名为你的全部文章。草稿存在站内，随时可以继续改。"
 		>
 			<template #actions>
 				<button
@@ -176,7 +176,7 @@ onMounted(refresh);
 
 		<div v-if="loading" class="state">读取中…</div>
 		<div v-else-if="visible.length === 0" class="state">
-			这里还没有文章。点右上角「新建文章」开始。
+			这里还没有文章。点上面的「新建文章」开始写。
 		</div>
 
 		<ul v-else class="list">
@@ -187,7 +187,7 @@ onMounted(refresh);
 			>
 				<div class="row-main">
 					<p class="row-title">
-						{{ post.title }}
+						<span class="row-name">{{ post.title }}</span>
 						<span class="badge" :data-status="post.status">
 							{{ STATUS_LABEL[post.status] ?? post.status }}
 						</span>
@@ -274,9 +274,14 @@ onMounted(refresh);
 		</ul>
 
 		<p class="footnote">
-			带「仓库」标签的是 <code>src/content/posts/</code> 里的已发布文章，编辑即改文件，
-			保存会提交一次 git 并触发构建；不带标签的是你在管理端建的稿子，存在 D1，
-			自动保存不产生提交。管理员点「发布」直接上线，其他人的稿子才走「提交审核」。
+			<template v-if="canReview">
+				带「仓库」标签的是 <code>src/content/posts/</code> 里的已发布文章，编辑即改文件，
+				保存会提交一次 git 并触发构建；不带标签的是站内草稿，自动保存不产生提交。
+				管理员点「发布」直接上线，其他人的稿子走「提交审核」。
+			</template>
+			<template v-else>
+				草稿存在站内，自动保存不会上线。写完点「提交审核」，通过后自动发布。
+			</template>
 		</p>
 	</div>
 </template>
@@ -368,13 +373,22 @@ onMounted(refresh);
 	margin: 0;
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
 	gap: 0.45rem;
 	font-size: 0.9rem;
 	font-weight: 600;
 	color: var(--fg-90);
 }
 
+/* 标题是唯一允许压缩的项；徽章一缩就变成竖排的「已发布」 */
+.row-name {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
 .badge {
+	flex: none;
+	white-space: nowrap;
 	font-size: 0.68rem;
 	font-weight: 600;
 	padding: 0.06rem 0.42rem;

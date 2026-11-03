@@ -188,6 +188,26 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 						<div class="rounded-xl border border-(--line-divider) p-4">
 							<div class="flex items-center gap-2 text-sm font-semibold text-90">
 								<Icon
+									name="material-symbols:edit-note-outline"
+									class="text-base text-(--primary)"
+								/>
+								写文章
+							</div>
+							<p class="mt-1.5 text-xs text-50">
+								草稿存在站内，可随时继续写；写完提交，审核通过后自动发布。
+							</p>
+							<button
+								data-role="write-open"
+								type="button"
+								class="btn-regular mt-3 h-9 w-full rounded-lg text-xs font-medium"
+							>
+								进入创作台
+							</button>
+						</div>
+
+						<div class="rounded-xl border border-(--line-divider) p-4">
+							<div class="flex items-center gap-2 text-sm font-semibold text-90">
+								<Icon
 									name="material-symbols:lock-outline"
 									class="text-base text-(--primary)"
 								/>
@@ -416,6 +436,9 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			this.#q("admin-open")?.addEventListener("click", () => {
 				location.assign("/admin/");
 			});
+			this.#q("write-open")?.addEventListener("click", () => {
+				location.assign("/admin/#/posts");
+			});
 		}
 
 		/** 登录成功后的落点。只认站内绝对路径，且不能又跳回登录页自己 */
@@ -506,9 +529,10 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				}
 			}
 
-			// 管理中心只对管理员显示；/admin/ 本身有服务端鉴权，这里只控制入口
+			// 管理中心对管理员和审核员都显示：审核员要审稿，没入口等于进不去。
+			// /admin/ 本身有服务端鉴权，这里只控制入口
 			const adminBlock = this.#q("admin-block");
-			if (adminBlock) adminBlock.hidden = user.role !== "admin";
+			if (adminBlock) adminBlock.hidden = user.role === "user";
 		}
 
 		async #refresh(): Promise<void> {
@@ -551,12 +575,10 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				if (this.#failed(r, "msg")) return;
 
 				if (r.ok) {
+					// 整页跳过去：以前没有 next 时只在本页刷新状态，
+					// 地址栏还停在 /login/，用户以为没登进去
 					const next = this.#nextTarget();
-					if (next) {
-						location.assign(next);
-						return;
-					}
-					await this.#refresh();
+					location.assign(next ?? "/me/");
 					return;
 				}
 

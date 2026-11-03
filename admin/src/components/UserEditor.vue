@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import AppIcon from "./AppIcon.vue";
 import { ApiError } from "../lib/api";
 import { ACTION_LABEL } from "../lib/audit";
 import {
@@ -14,6 +13,7 @@ import {
 	ROLE_LABEL,
 	STATUS_LABEL,
 } from "../lib/users";
+import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{
 	mode: "create" | "edit";
@@ -43,8 +43,8 @@ const deleteConfirmText = ref("");
 const isEdit = computed(() => props.mode === "edit");
 const target = computed(() => props.user ?? null);
 /** 自己那一行：角色、状态、密码都不在这里改，后端也会拒 */
-const isSelf = computed(
-	() => Boolean(target.value && props.selfUid && target.value.uid === props.selfUid),
+const isSelf = computed(() =>
+	Boolean(target.value && props.selfUid && target.value.uid === props.selfUid),
 );
 
 function reset(): void {
@@ -54,7 +54,8 @@ function reset(): void {
 	displayName.value = user?.display_name ?? "";
 	password.value = "";
 	role.value = user?.role ?? "user";
-	status.value = user?.status === "deleted" ? "active" : (user?.status ?? "active");
+	status.value =
+		user?.status === "deleted" ? "active" : (user?.status ?? "active");
 	busy.value = "";
 	errorText.value = "";
 	notice.value = "";
@@ -86,7 +87,11 @@ async function loadAudit(uid: number): Promise<void> {
 
 function fail(error: unknown, fallback: string): void {
 	errorText.value =
-		error instanceof ApiError ? error.message : error instanceof Error ? error.message : fallback;
+		error instanceof ApiError
+			? error.message
+			: error instanceof Error
+				? error.message
+				: fallback;
 }
 
 async function submit(): Promise<void> {
@@ -118,14 +123,18 @@ async function submit(): Promise<void> {
 	const user = target.value;
 	if (!user) return;
 	const patch: Record<string, string> = {};
-	if (displayName.value.trim() && displayName.value.trim() !== user.display_name) {
+	if (
+		displayName.value.trim() &&
+		displayName.value.trim() !== user.display_name
+	) {
 		patch.display_name = displayName.value.trim();
 	}
 	if (email.value.trim() && email.value.trim() !== user.email) {
 		patch.email = email.value.trim();
 	}
 	if (!isSelf.value && role.value !== user.role) patch.role = role.value;
-	if (!isSelf.value && status.value !== user.status) patch.status = status.value;
+	if (!isSelf.value && status.value !== user.status)
+		patch.status = status.value;
 
 	if (Object.keys(patch).length === 0) {
 		notice.value = "没有改动。";

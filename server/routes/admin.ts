@@ -4,12 +4,14 @@ import { encryptPassword } from "../lib/password";
 import { findByAccount, findByEmail, randomUid } from "../lib/users";
 import {
 	checkPasswordPolicy,
+	isValidSlug,
 	normalizeAccount,
 	normalizeEmail,
 } from "../lib/validate";
 import { requireRole } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
+import { type PostRow, publishRowToRepo } from "./me";
 
 /**
  * 管理端接口：用户管理 + 审计日志。
@@ -34,7 +36,10 @@ const NAME_MAX = 32;
  * 一个管理员，于是那一行永远是锁的。现在按结果判断：只要还剩一个 active
  * admin 就放行，剩下最后一个时拒绝。
  */
-async function otherActiveAdmins(db: D1Database, excludeUid: number): Promise<number> {
+async function otherActiveAdmins(
+	db: D1Database,
+	excludeUid: number,
+): Promise<number> {
 	const row = await db
 		.prepare(
 			"SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND status = 'active' AND uid <> ?1",
@@ -233,7 +238,8 @@ admin.post(
 			return c.json(
 				{
 					error: "invalid_account",
-					message: "登录名 3–20 位，只能用小写字母、数字、下划线，且不能是保留字",
+					message:
+						"登录名 3–20 位，只能用小写字母、数字、下划线，且不能是保留字",
 					field: "account",
 				},
 				400,
@@ -271,7 +277,11 @@ admin.post(
 
 		if (await findByAccount(c.env.DB, account)) {
 			return c.json(
-				{ error: "account_taken", message: "这个登录名已被占用", field: "account" },
+				{
+					error: "account_taken",
+					message: "这个登录名已被占用",
+					field: "account",
+				},
 				409,
 			);
 		}
@@ -338,47 +348,54 @@ admin.post(
 	},
 );
 
-admin.delete("/users/:uid", requireRole("admin"), sameOriginGuard, async (c) => {
-	const me = c.get("user");
-	if (!me) return c.json({ error: "unauthorized" }, 401);
+admin.delete(
+	"/users/:uid",
+	requireRole("admin"),
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
 
-	const uid = Number(c.req.param("uid"));
-	if (!Number.isInteger(uid) || uid <= 0) {
-		return c.json({ error: "bad_request", message: "uid 非法" }, 400);
-	}
-	if (uid === me.uid) {
-		return c.json(
-			{ error: "self_forbidden", message: "不能删除自己的账号" },
-			409,
-		);
-	}
+		const uid = Number(c.req.param("uid"));
+		if (!Number.isInteger(uid) || uid <= 0) {
+			return c.json({ error: "bad_request", message: "uid 非法" }, 400);
+		}
+		if (uid === me.uid) {
+			return c.json(
+				{ error: "self_forbidden", message: "不能删除自己的账号" },
+				409,
+			);
+		}
 
-	const row = await c.env.DB.prepare(
-		`SELECT ${LIST_COLUMNS} FROM users u WHERE u.uid = ?1`,
-	)
-		.bind(uid)
-		.first<AdminUserRow>();
-	if (!row) {
-		return c.json({ error: "user_not_found", message: "用户不存在" }, 404);
-	}
-	if (row.status === "deleted") {
-		return c.json({ error: "already_deleted", message: "这个账号已经删过" }, 409);
-	}
-	if (
-		row.role === "admin" &&
-		row.status === "active" &&
-		(await otherActiveAdmins(c.env.DB, uid)) === 0
-	) {
-		return c.json(
-			{ error: "last_admin", message: "这是最后一个可用管理员，不能删除" },
-			409,
-		);
-	}
+		const row = await c.env.DB.prepare(
+			`SELECT ${LIST_COLUMNS} FROM users u WHERE u.uid = ?1`,
+		)
+			.bind(uid)
+			.first<AdminUserRow>();
+		if (!row) {
+			return c.json({ error: "user_not_found", message: "用户不存在" }, 404);
+		}
+		if (row.status === "deleted") {
+			return c.json(
+				{ error: "already_deleted", message: "这个账号已经删过" },
+				409,
+			);
+		}
+		if (
+			row.role === "admin" &&
+			row.status === "active" &&
+			(await otherActiveAdmins(c.env.DB, uid)) === 0
+		) {
+			return c.json(
+				{ error: "last_admin", message: "这是最后一个可用管理员，不能删除" },
+				409,
+			);
+		}
 
-	// 软删除：账号名与邮箱要释放出来，不然本人想重新注册会被占用。
-	// 审计按 uid 留档，历史记录不受影响。
-	const deleted = await c.env.DB.prepare(
-		`UPDATE users
+		// 软删除：账号名与邮箱要释放出来，不然本人想重新注册会被占用。
+		// 审计按 uid 留档，历史记录不受影响。
+		const deleted = await c.env.DB.prepare(
+			`UPDATE users
 		    SET status = 'deleted',
 		        account = ?1,
 		        email = ?2,
@@ -390,26 +407,27 @@ admin.delete("/users/:uid", requireRole("admin"), sameOriginGuard, async (c) => 
 		        updated_at = datetime('now')
 		  WHERE uid = ?3 AND status <> 'deleted'
 		 RETURNING ${LIST_COLUMNS.replaceAll("u.", "")}`,
-	)
-		.bind(`deleted_${uid}`, `deleted+${uid}@deleted.invalid`, uid)
-		.first<AdminUserRow>();
+		)
+			.bind(`deleted_${uid}`, `deleted+${uid}@deleted.invalid`, uid)
+			.first<AdminUserRow>();
 
-	if (!deleted) {
-		return c.json(
-			{ error: "conflict", message: "这个用户刚被别人改过，刷新再试" },
-			409,
-		);
-	}
+		if (!deleted) {
+			return c.json(
+				{ error: "conflict", message: "这个用户刚被别人改过，刷新再试" },
+				409,
+			);
+		}
 
-	await writeAudit(c.env.DB, {
-		actorUid: me.uid,
-		action: "admin.user.delete",
-		target: row.account,
-		detail: { uid, role: row.role, status: row.status },
-	});
+		await writeAudit(c.env.DB, {
+			actorUid: me.uid,
+			action: "admin.user.delete",
+			target: row.account,
+			detail: { uid, role: row.role, status: row.status },
+		});
 
-	return c.json({ ok: true, user: toPublic(deleted) });
-});
+		return c.json({ ok: true, user: toPublic(deleted) });
+	},
+);
 
 admin.patch(
 	"/users/:uid",
@@ -518,7 +536,10 @@ admin.patch(
 			const key = c.env.PASSWORD_ENC_KEY;
 			const policy = checkPasswordPolicy(body?.password);
 			if (!key) {
-				return c.json({ error: "misconfigured", message: "服务端没配 PASSWORD_ENC_KEY" }, 500);
+				return c.json(
+					{ error: "misconfigured", message: "服务端没配 PASSWORD_ENC_KEY" },
+					500,
+				);
 			}
 			if (!policy.ok || !policy.value) {
 				return c.json(
@@ -532,7 +553,10 @@ admin.patch(
 			}
 			enc = await encryptPassword(key, uid, policy.value);
 			if (!enc) {
-				return c.json({ error: "encrypt_failed", message: "密码加密失败" }, 500);
+				return c.json(
+					{ error: "encrypt_failed", message: "密码加密失败" },
+					500,
+				);
 			}
 		}
 
@@ -670,3 +694,171 @@ admin.get("/audit", requireRole("admin"), async (c) => {
 		limit,
 	});
 });
+
+/* ---------- 审核队列：reviewer 及以上 ---------- */
+
+interface QueueRow {
+	id: number;
+	uid: number;
+	slug: string;
+	title: string;
+	summary: string | null;
+	submitted_at: string | null;
+	updated_at: string;
+	body_len: number;
+	display_name: string | null;
+	account: string;
+}
+
+const QUEUE_MAX_NOTE = 200;
+
+/** 待审稿件。作者名取不到时退回登录名，别让队列里出现空白的「作者」 */
+admin.get("/review/queue", requireRole("reviewer"), async (c) => {
+	const rows = await c.env.DB.prepare(
+		`SELECT p.id, p.uid, p.slug, p.title, p.summary, p.submitted_at, p.updated_at,
+		        length(coalesce(p.body, '')) AS body_len,
+		        u.display_name, u.account
+		   FROM posts p
+		   LEFT JOIN users u ON u.uid = p.uid
+		  WHERE p.status = 'pending'
+		  ORDER BY p.submitted_at ASC, p.id ASC
+		  LIMIT 100`,
+	).all<QueueRow>();
+
+	return c.json({
+		posts: (rows.results ?? []).map((row) => ({
+			...row,
+			author: row.display_name || row.account || `uid ${row.uid}`,
+		})),
+	});
+});
+
+/**
+ * 通过：写仓库 → 状态切 published。
+ * 写仓库复用发布那条路，审核通过和管理员自己发没有区别。
+ */
+admin.post(
+	"/review/:id/approve",
+	requireRole("reviewer"),
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
+
+		const id = Number(c.req.param("id"));
+		if (!Number.isInteger(id) || id <= 0) {
+			return c.json({ error: "bad_request", message: "id 非法" }, 400);
+		}
+
+		const row = await c.env.DB.prepare("SELECT * FROM posts WHERE id = ?1")
+			.bind(id)
+			.first<PostRow>();
+		if (!row) {
+			return c.json({ error: "not_found", message: "这篇不见了" }, 404);
+		}
+		if (row.status !== "pending") {
+			return c.json(
+				{ error: "not_pending", message: "这篇已经不在待审里了，刷新看看" },
+				409,
+			);
+		}
+		if (row.title.trim().length === 0) {
+			return c.json({ error: "invalid_title", message: "标题是空的" }, 400);
+		}
+		if ((row.body ?? "").trim().length === 0) {
+			return c.json({ error: "empty_body", message: "正文是空的" }, 400);
+		}
+		if (!isValidSlug(row.slug)) {
+			return c.json(
+				{ error: "invalid_slug", message: "文章地址不合法，先让作者改" },
+				400,
+			);
+		}
+
+		const written = await publishRowToRepo(c, row, "feat(post): 发布");
+		if (!written.ok) {
+			return c.json(written.body, written.status as 400);
+		}
+
+		const updated = await c.env.DB.prepare(
+			`UPDATE posts
+			    SET status = 'published', repo_path = ?1,
+			        published_at = datetime('now'), reviewed_at = datetime('now'),
+			        review_note = NULL, updated_at = datetime('now')
+			  WHERE id = ?2 AND status = 'pending'
+			 RETURNING *`,
+		)
+			.bind(written.path, id)
+			.first<PostRow>();
+		if (!updated) {
+			return c.json(
+				{ error: "conflict", message: "状态刚被改过，刷新再看" },
+				409,
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: me.uid,
+			action: "review.approve",
+			target: row.slug,
+			detail: { id, uid: row.uid },
+		});
+
+		return c.json({
+			post: { id, slug: row.slug, status: "published" },
+			repoPath: written.path,
+			building: true,
+		});
+	},
+);
+
+/** 退回：必须写理由，作者在「我的文章」里能看到 */
+admin.post(
+	"/review/:id/reject",
+	requireRole("reviewer"),
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const me = c.get("user");
+		if (!me) return c.json({ error: "unauthorized" }, 401);
+
+		const id = Number(c.req.param("id"));
+		if (!Number.isInteger(id) || id <= 0) {
+			return c.json({ error: "bad_request", message: "id 非法" }, 400);
+		}
+
+		const body = await readJson(c);
+		const note = typeof body?.note === "string" ? body.note.trim() : "";
+		if (note.length === 0) {
+			return c.json(
+				{ error: "empty_note", message: "写一句退回理由，作者才知道改什么" },
+				400,
+			);
+		}
+
+		const updated = await c.env.DB.prepare(
+			`UPDATE posts
+			    SET status = 'rejected', review_note = ?1,
+			        reviewed_at = datetime('now'), updated_at = datetime('now')
+			  WHERE id = ?2 AND status = 'pending'
+			 RETURNING *`,
+		)
+			.bind(note.slice(0, QUEUE_MAX_NOTE), id)
+			.first<PostRow>();
+		if (!updated) {
+			return c.json(
+				{ error: "not_pending", message: "这篇已经不在待审里了，刷新看看" },
+				409,
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: me.uid,
+			action: "review.reject",
+			target: updated.slug,
+			detail: { id, uid: updated.uid, note: note.slice(0, QUEUE_MAX_NOTE) },
+		});
+
+		return c.json({ post: { id, slug: updated.slug, status: "rejected" } });
+	},
+);

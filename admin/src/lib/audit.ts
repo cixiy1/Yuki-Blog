@@ -34,6 +34,14 @@ export const AUDIT_ACTIONS: string[] = [
 	"admin.user.role",
 	"admin.user.profile",
 	"admin.user.password",
+	"admin.settings.save",
+	"admin.settings.apply",
+	"admin.settings.publish",
+	"admin.settings.publish_failed",
+	"admin.settings.rollback",
+	"admin.secrets.write",
+	"review.approve",
+	"review.reject",
 ];
 
 export const ACTION_LABEL: Record<string, string> = {
@@ -52,6 +60,14 @@ export const ACTION_LABEL: Record<string, string> = {
 	"admin.user.role": "改用户角色",
 	"admin.user.profile": "改用户资料",
 	"admin.user.password": "重置用户密码",
+	"admin.settings.save": "保存设置草稿",
+	"admin.settings.apply": "应用设置草稿",
+	"admin.settings.publish": "发布设置",
+	"admin.settings.publish_failed": "发布设置失败",
+	"admin.settings.rollback": "回滚设置",
+	"admin.secrets.write": "写入密钥",
+	"review.approve": "审核通过",
+	"review.reject": "审核退回",
 };
 
 export async function listAudit(
