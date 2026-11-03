@@ -1,6 +1,12 @@
 {
 	"_comment": "管理端「站点设置」发布时整体覆盖本文件。各分区留空即使用 src/config 里的默认值。分区：site / profile / music / friends / banner / announcement",
 	"banner": {
-		"mode": "overlay"
+		"mode": "banner",
+		"common": {
+			"dimOpacity": 0.1,
+			"homeText": {
+				"title": "天涯何处无芳草"
+			}
+		}
 	}
 }
