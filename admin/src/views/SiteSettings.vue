@@ -58,25 +58,9 @@ const MAIL_SECRETS = ["resend_api_key", "smtp_pass"];
 const PUBLISH_SECRETS = ["github_token"];
 
 const tabs = [
-	...SETTING_GROUPS.map((g) => ({
-		key: g.key,
-		label: g.label,
-		desc: g.desc,
-		icon: g.icon ?? "info",
-		tone: g.tone ?? "var(--primary)",
-	})),
-	{
-		key: "integrations",
-		label: "集成",
-		desc: "GitHub 登录、发信通道与发布令牌。密钥只进密钥库，任何接口都不回显。",
-		icon: "plug",
-		tone: "oklch(0.6 0.03 260)",
-	},
+	...SETTING_GROUPS.map((g) => ({ key: g.key, label: g.label })),
+	{ key: "integrations", label: "集成" },
 ];
-
-const activeTab = computed(
-	() => tabs.find((item) => item.key === tab.value) ?? tabs[0],
-);
 
 const tab = ref("basic");
 const loading = ref(true);
@@ -616,73 +600,19 @@ onMounted(() => void refresh());
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 		<p v-else-if="notice" class="notice">{{ notice }}</p>
 
-		<div class="settings-body">
-			<nav class="side-nav">
-				<button
-					v-for="item in tabs"
-					:key="item.key"
-					type="button"
-					:class="['nav-item', { on: tab === item.key }]"
-					@click="tab = item.key"
-				>
-					<span class="nav-icon" :style="{ '--tone': item.tone }">
-						<AppIcon :name="item.icon" :size="15" />
-					</span>
-					<span class="nav-label">{{ item.label }}</span>
-				</button>
-			</nav>
+		<nav class="tabs">
+			<button
+				v-for="item in tabs"
+				:key="item.key"
+				type="button"
+				:class="['tab', { on: tab === item.key }]"
+				@click="tab = item.key"
+			>
+				{{ item.label }}
+			</button>
+		</nav>
 
-			<div class="content">
-				<header class="group-head">
-					<span class="head-icon" :style="{ '--tone': activeTab.tone }">
-						<AppIcon :name="activeTab.icon" :size="24" />
-					</span>
-					<div class="head-text">
-						<h2>{{ activeTab.label }}</h2>
-						<p>{{ activeTab.desc }}</p>
-					</div>
-					<div class="head-side">
-						<dl class="facts">
-							<div>
-								<dt>未保存</dt>
-								<dd :class="{ on: unsaved }">
-									{{ unsaved ? `${changedFields.length} 处` : "无" }}
-								</dd>
-							</div>
-							<div>
-								<dt>待发布</dt>
-								<dd :class="{ on: pending.length > 0 }">{{ pending.length }} 处</dd>
-							</div>
-						</dl>
-						<button
-							v-if="hotPending || changedAllHot"
-							type="button"
-							class="btn-regular"
-							:disabled="busy"
-							@click="onApplyHot"
-						>
-							立即应用热字段
-						</button>
-					</div>
-				</header>
-
-				<p v-if="hotPending || changedAllHot" class="hint hot-hint">
-					带绿点的字段能跳过构建：主题色相、壁纸模式。保存时会自动应用。
-				</p>
-
-				<details v-if="pending.length" class="card-base fold">
-					<summary>待发布 {{ pending.length }} 项</summary>
-					<ul class="diff">
-						<li v-for="item in pending" :key="item.path">
-							<span class="diff-label">{{ item.label }}</span>
-							<span class="diff-value">
-								{{ showDiff(item.before) }} → {{ showDiff(item.after) }}
-							</span>
-						</li>
-					</ul>
-				</details>
-
-				<div v-if="loading" class="state">读取中…</div>
+		<div v-if="loading" class="state">读取中…</div>
 
 		<div v-else-if="tab === 'integrations'" class="layout">
 			<section class="main">
@@ -925,6 +855,8 @@ onMounted(() => void refresh());
 		</div>
 
 		<div v-else class="layout">
+			<p v-if="group?.desc" class="group-desc">{{ group.desc }}</p>
+
 			<section class="main">
 				<div
 					v-for="section in group?.sections ?? []"
@@ -1136,238 +1068,135 @@ onMounted(() => void refresh());
 					</div>
 				</div>
 			</section>
-		</div>
 
-		<details class="card-base fold versions-fold">
-			<summary>版本历史</summary>
-			<p v-if="!versions.length" class="hint">还没有发布过。</p>
-			<ul v-else class="versions">
-				<li v-for="version in versions" :key="version.id">
-					<div class="version-time">{{ version.published_at }}</div>
-					<div class="version-note">
-						{{ version.note ?? "（无说明）" }}
-						<span v-if="!version.commit_sha" class="tag off">未落盘</span>
-					</div>
-					<button type="button" class="btn-ghost tiny" @click="onRollback(version)">
-						回滚到此版本
+			<aside class="side">
+				<div class="card-base panel">
+					<h3>状态</h3>
+					<dl class="facts">
+						<div>
+							<dt>未保存</dt>
+							<dd :class="{ on: unsaved }">{{ unsaved ? `${changedFields.length} 处` : "无" }}</dd>
+						</div>
+						<div>
+							<dt>待发布</dt>
+							<dd :class="{ on: pending.length > 0 }">{{ pending.length }} 处</dd>
+						</div>
+					</dl>
+
+					<button
+						v-if="hotPending || changedAllHot"
+						type="button"
+						class="btn-regular full"
+						:disabled="busy"
+						@click="onApplyHot"
+					>
+						立即应用热字段
 					</button>
-				</li>
-			</ul>
-		</details>
-			</div>
+					<p v-if="hotPending || changedAllHot" class="hint">
+						带绿点的字段能跳过构建：主题色相、壁纸模式。保存时会自动应用。
+					</p>
+
+					<template v-if="pending.length">
+						<h4>待发布变更</h4>
+						<ul class="diff">
+							<li v-for="item in pending" :key="item.path">
+								<span class="diff-label">{{ item.label }}</span>
+								<span class="diff-value">
+									{{ showDiff(item.before) }} → {{ showDiff(item.after) }}
+								</span>
+							</li>
+						</ul>
+					</template>
+				</div>
+
+				<div class="card-base panel">
+					<h3>版本历史</h3>
+					<p v-if="!versions.length" class="hint">还没有发布过。</p>
+					<ul v-else class="versions">
+						<li v-for="version in versions" :key="version.id">
+							<div class="version-time">{{ version.published_at }}</div>
+							<div class="version-note">
+								{{ version.note ?? "（无说明）" }}
+								<span v-if="!version.commit_sha" class="tag off">未落盘</span>
+							</div>
+							<button type="button" class="btn-ghost tiny" @click="onRollback(version)">
+								回滚到此版本
+							</button>
+						</li>
+					</ul>
+				</div>
+			</aside>
 		</div>
 	</div>
 </template>
 
 <style scoped>
-/* 左侧分类：一列分组列表，图标方块 + 名称，选中整条高亮 */
-.settings-body {
-	display: grid;
-	grid-template-columns: 12.5rem minmax(0, 1fr);
-	gap: 1.25rem;
-	align-items: start;
-}
-
-.side-nav {
-	position: sticky;
-	top: var(--shell-gap);
+.tabs {
 	display: flex;
-	flex-direction: column;
-	gap: 0.15rem;
+	gap: 0.2rem;
+	overflow-x: auto;
+	margin-bottom: 1.1rem;
+	padding-bottom: 0.1rem;
+	scrollbar-width: none;
 }
 
-.nav-item {
+.tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.tab {
+	flex: 0 0 auto;
+	border: none;
+	background: transparent;
+	padding: 0.42rem 0.75rem;
+	border-radius: 999px;
+	font-size: 0.82rem;
+	color: var(--fg-50);
+	cursor: pointer;
+	white-space: nowrap;
 	display: flex;
 	align-items: center;
-	gap: 0.6rem;
-	width: 100%;
-	padding: 0.32rem 0.5rem;
-	border: none;
-	border-radius: 0.55rem;
-	background: none;
-	color: var(--fg-75);
-	font-size: 0.84rem;
-	text-align: left;
-	cursor: pointer;
+	gap: 0.3rem;
 	transition:
 		background-color 0.15s ease,
 		color 0.15s ease;
 }
 
-.nav-item:hover {
+.tab:hover {
 	background: var(--btn-plain-bg-hover);
 	color: var(--fg-90);
 }
 
-.nav-item.on {
+.tab.on {
 	background: var(--tab-on-bg);
 	color: var(--accent-text);
 	font-weight: 600;
 }
 
-.nav-icon,
-.head-icon {
-	display: grid;
-	place-items: center;
-	color: #fff;
-	background: linear-gradient(
-		160deg,
-		color-mix(in srgb, var(--tone) 74%, white),
-		var(--tone)
-	);
-	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
-}
-
-.nav-icon {
-	flex: 0 0 auto;
-	width: 1.6rem;
-	height: 1.6rem;
-	border-radius: 0.45rem;
-}
-
-.nav-label {
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
-.content {
-	display: flex;
-	flex-direction: column;
-	gap: 0.85rem;
-	min-width: 0;
-}
-
-/* 头部卡：大图标 + 标题 + 说明，右侧挂状态与热应用 */
-.group-head {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	gap: 0.95rem;
-	align-items: center;
-	padding: 1rem 1.15rem;
-	border: 1px solid var(--line-divider);
-	border-radius: var(--radius-large);
-	background: color-mix(in srgb, var(--primary) 5%, var(--card-bg));
-}
-
-.head-icon {
-	width: 3rem;
-	height: 3rem;
-	border-radius: 0.85rem;
-}
-
-.head-text h2 {
-	margin: 0;
-	font-size: 1.05rem;
-	font-weight: 600;
-	color: var(--fg-90);
-}
-
-.head-text p {
-	margin: 0.22rem 0 0;
+.group-desc {
+	grid-column: 1 / -1;
+	margin: 0 0 0.2rem;
 	font-size: 0.78rem;
+	color: var(--fg-50);
 	line-height: 1.6;
-	color: var(--fg-50);
-}
-
-.head-side {
-	display: flex;
-	align-items: center;
-	gap: 0.85rem;
-}
-
-.head-side .facts {
-	display: flex;
-	gap: 1.1rem;
-	margin: 0;
-}
-
-.head-side .facts dt {
-	font-size: 0.68rem;
-}
-
-.head-side .facts dd {
-	font-size: 0.86rem;
-}
-
-.hot-hint {
-	margin: -0.35rem 0 0 0.15rem;
-}
-
-/* 折叠块：待发布明细与版本历史，默认收起，避免常驻占位 */
-.fold {
-	padding: 0.72rem 1.05rem;
-}
-
-.fold summary {
-	display: flex;
-	align-items: center;
-	gap: 0.4rem;
-	font-size: 0.79rem;
-	color: var(--fg-75);
-	cursor: pointer;
-	list-style: none;
-}
-
-.fold summary::-webkit-details-marker {
-	display: none;
-}
-
-.fold summary::before {
-	content: "▸";
-	font-size: 0.68rem;
-	color: var(--fg-50);
-	transition: transform 0.15s ease;
-}
-
-.fold[open] summary::before {
-	transform: rotate(90deg);
-}
-
-.fold[open] summary {
-	margin-bottom: 0.6rem;
 }
 
 .layout {
-	display: block;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 17rem;
+	gap: 0.9rem 1.25rem;
+	align-items: start;
 }
 
-@media (max-width: 1080px) {
-	.settings-body {
-		grid-template-columns: minmax(0, 1fr);
-		gap: 0.85rem;
-	}
-
-	.side-nav {
-		position: static;
-		flex-direction: row;
-		gap: 0.3rem;
-		overflow-x: auto;
-		padding-bottom: 0.15rem;
-		scrollbar-width: none;
-	}
-
-	.side-nav::-webkit-scrollbar {
-		display: none;
-	}
-
-	.nav-item {
-		width: auto;
-		padding: 0.3rem 0.55rem;
-		white-space: nowrap;
-	}
-
-	.group-head {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-
-	.head-side {
-		grid-column: 1 / -1;
-		justify-content: space-between;
-	}
+.layout > .side {
+	position: sticky;
+	top: var(--shell-gap);
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
 }
 
-.panel {
+.layout > .side .panel {
 	margin-bottom: 0;
 }
 
