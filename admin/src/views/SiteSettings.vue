@@ -88,6 +88,10 @@ const busy = ref(false);
 const form = ref<Plain>({});
 const draft0 = ref<Plain>({});
 const published = ref<Plain>({});
+/** 构建期默认值，用来决定「该把哪些字段写进草稿」 */
+const defaults = ref<Plain>({});
+/** 最近一次真正写进仓库的快照，用来判断「还有没有没落盘的改动」 */
+const repoSnapshot = ref<Plain>({});
 const versions = ref<ConfigVersion[]>([]);
 const secrets = ref<SecretStatus[]>([]);
 const secretInput = ref<Record<string, string>>({});
@@ -113,7 +117,17 @@ const unsaved = computed(
 		JSON.stringify(sortKeys(form.value)) !==
 		JSON.stringify(sortKeys(draft0.value)),
 );
-const pending = computed(() => flattenDiff(form.value, published.value));
+
+/**
+ * 「待发布」= 表单与**仓库快照**的差异，不能拿 `published` 当基准。
+ *
+ * `published` 会被「立即应用」提前改成最新值，比它的话热字段应用完就显示
+ * 「待发布 0 处」，发布按钮直接变灰——仓库里其实还没有这份配置。
+ */
+const pending = computed(() => flattenDiff(form.value, repoSnapshot.value));
+
+/** 表单 vs 已发布：只用来判断「热字段保存了但还没应用」 */
+const savedPending = computed(() => flattenDiff(form.value, published.value));
 
 const changedFields = computed(() =>
 	ALL_FIELDS.filter(
@@ -137,7 +151,7 @@ const hotPaths = new Set(
  * 按钮会立刻消失，用户再也点不到。
  */
 const hotPending = computed(() =>
-	pending.value.some((item) => hotPaths.has(item.path)),
+	savedPending.value.some((item) => hotPaths.has(item.path)),
 );
 
 /** 浅递归合并：用于「默认值 ← 已发布 ← 草稿」三层叠加 */
@@ -298,7 +312,7 @@ async function refresh(): Promise<void> {
 	loading.value = true;
 	errorText.value = "";
 	try {
-		const [data, defaults] = await Promise.all([
+		const [data, defaultsDoc] = await Promise.all([
 			loadSettings(),
 			fetch("/site-defaults.json")
 				.then((res) => (res.ok ? res.json() : {}))
@@ -308,10 +322,15 @@ async function refresh(): Promise<void> {
 		//
 		// 两层都要 clone：merge 只做浅拷贝，padding 为空的子对象会和 base 共享引用，
 		// 于是「改表单」等于「改已发布值」，差异恒为 0，发布按钮永远灰着。
-		const effective = merge<Plain>(defaults, data.published);
+		const effective = merge<Plain>(defaultsDoc, data.published);
 		published.value = clone(effective);
 		form.value = clone(merge<Plain>(effective, data.draft));
 		draft0.value = clone(form.value);
+		defaults.value = clone(defaultsDoc);
+		// 从没发布过就没有快照，拿默认值当基准：首次发布按钮要能点
+		repoSnapshot.value = clone(
+			data.repo ? merge<Plain>(defaultsDoc, data.repo) : defaultsDoc,
+		);
 		versions.value = data.versions;
 		secrets.value = await loadSecrets();
 		const mail = await loadMailConfig();
@@ -341,7 +360,7 @@ async function onSave(): Promise<void> {
 				await applyHot();
 				await refresh();
 				notice.value =
-					"已保存，热字段（主题色相、壁纸模式）已对访客生效；其余字段需要发布。";
+					"已保存。热字段已对访客生效，其余改动要点「发布」才写进仓库。";
 			} catch {
 				notice.value =
 					"草稿已保存。热字段可以点「立即应用」跳过构建，其余需要发布。";
@@ -356,10 +375,17 @@ async function onSave(): Promise<void> {
 	}
 }
 
-/** 与已发布值不同的字段，按命名空间拼回一份补丁文档 */
+/**
+ * 与**构建默认值**比较，提交所有被显式设置过的字段。
+ *
+ * 不能只提交「与已发布值不同」的项：草稿整份覆盖旧草稿，这次没改的字段就会
+ * 从草稿里消失，发布时那份 `config/site.json` 也跟着少字段，线上配置被悄悄
+ * 抹回默认值（先改 A 发布、再改 B 发布，A 就没了）。
+ * 与默认值相同即不提交，保住「以后改代码默认值还能盖住历史配置」这条。
+ */
 function collectPatch(): Plain {
 	const patch: Plain = {};
-	for (const item of pending.value) {
+	for (const item of flattenDiff(form.value, defaults.value)) {
 		const [ns, ...rest] = item.path.split(".");
 		const section = (patch[ns] as Plain | undefined) ?? {};
 		writePath(section, rest.join("."), item.after);

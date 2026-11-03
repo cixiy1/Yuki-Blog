@@ -12,6 +12,8 @@ export interface ConfigVersion {
 export interface SettingsPayload {
 	draft: Record<string, unknown>;
 	published: Record<string, unknown>;
+	/** 最近一次真正写进仓库的快照；从没发布过时为 null */
+	repo: Record<string, unknown> | null;
 	dirty: boolean;
 	versions: ConfigVersion[];
 	hasGithubToken: boolean;

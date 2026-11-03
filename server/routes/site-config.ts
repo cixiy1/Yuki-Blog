@@ -77,9 +77,32 @@ admin.get("/site-config", async (c) => {
 		readSetting<ConfigMap>(c.env.DB, KEY_PUBLISHED),
 	]);
 	const draftValue = draft ?? published ?? {};
+
+	/**
+	 * 最近一次「真的写进了仓库」的快照。
+	 *
+	 * 「立即应用」会把热字段盖进 `published`，但仓库里的 `config/site.json`
+	 * 还是旧的。管理端要判断「还能不能发布」只能比这个快照——拿 `published`
+	 * 当基准的话，应用完热字段就显示「待发布 0 处」，发布按钮直接变灰。
+	 */
+	const repoRow = await c.env.DB.prepare(
+		`SELECT snapshot FROM site_config_versions
+		  WHERE commit_sha IS NOT NULL
+		  ORDER BY id DESC LIMIT 1`,
+	).first<{ snapshot: string }>();
+	let repo: ConfigMap | null = null;
+	if (repoRow?.snapshot) {
+		try {
+			repo = JSON.parse(repoRow.snapshot) as ConfigMap;
+		} catch {
+			repo = null;
+		}
+	}
+
 	return c.json({
 		draft: draftValue,
 		published: published ?? {},
+		repo,
 		dirty: JSON.stringify(draftValue) !== JSON.stringify(published ?? {}),
 		versions: versionRows.results ?? [],
 		hasGithubToken: Boolean(
