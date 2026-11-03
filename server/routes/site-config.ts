@@ -127,6 +127,15 @@ admin.put("/site-config", sameOriginGuard, requireJsonBody, async (c) => {
 			400,
 		);
 	}
+	// 空草稿会整份覆盖 draft。前端一旦把「没有改动」也提交上来（旧版本
+	// 只提交与已发布值不同的字段，热字段应用后差异恰好为零），这里就会
+	// 把整份配置抹掉，下一次发布再把它写进仓库。宁可拒掉。
+	if (Object.keys(checked.value).length === 0) {
+		return c.json(
+			{ error: "nothing_to_save", message: "没有要保存的改动" },
+			400,
+		);
+	}
 	await writeSetting(
 		c.env.DB,
 		KEY_DRAFT,
@@ -201,9 +210,14 @@ admin.post("/site-config/apply", sameOriginGuard, async (c) => {
 admin.post("/site-config/publish", sameOriginGuard, async (c) => {
 	const actorUid = c.get("user")?.uid ?? null;
 	const draft = await readSetting<ConfigMap>(c.env.DB, KEY_DRAFT);
-	if (!draft) {
+	// `{}` 也是 truthy：以前只判 `!draft`，空草稿能一路写进仓库，
+	// `config/site.json` 被清成只剩 `_comment`，站点所有配置回默认值。
+	if (!draft || Object.keys(draft).length === 0) {
 		return c.json(
-			{ error: "nothing_to_publish", message: "还没有保存过草稿" },
+			{
+				error: "empty_draft",
+				message: "草稿是空的，先把要发布的配置保存一次再发布",
+			},
 			400,
 		);
 	}
