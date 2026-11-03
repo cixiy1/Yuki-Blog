@@ -90,7 +90,7 @@ onMounted(refresh);
 					<button
 						type="button"
 						class="btn-regular"
-						@click="goRepoEdit(post.slug)"
+						@click="goRepoEdit(post.slug, 'all-posts')"
 					>
 						编辑
 					</button>

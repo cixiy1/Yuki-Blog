@@ -8,7 +8,7 @@
 import { computed } from "vue";
 import { canReview, isAdmin, logout, user } from "../lib/auth";
 import { isDark, toggleTheme } from "../lib/theme";
-import { go, type RouteName, route } from "../router";
+import { editOrigin, go, type RouteName, route } from "../router";
 import AllPosts from "../views/AllPosts.vue";
 import AuditLog from "../views/AuditLog.vue";
 import MyComponents from "../views/MyComponents.vue";
@@ -95,8 +95,9 @@ const navGroups = computed<NavGroup[]>(() => {
 
 const activeKey = computed(() => {
 	if (route.value.name === "post-edit") {
-		// 仓库文章的编辑页归到「全站文章」名下，D1 草稿归「我的文章」
-		return route.value.repoSlug ? "all-posts" : "posts";
+		// D1 草稿只可能从「我的文章」进；仓库文章两个列表都能进，看最后一次点选。
+		// 以前一律归到「全站文章」，从「我的文章」点编辑时高亮会跳走。
+		return route.value.repoSlug ? editOrigin.value : "posts";
 	}
 	return route.value.name;
 });
