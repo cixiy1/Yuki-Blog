@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { writeAudit } from "../lib/audit";
 import { putRepoFile } from "../lib/github-contents";
 import { sendTestMail } from "../lib/mail";
-import { readMailSettings, writeMailSettings } from "../lib/mail-config";
+import { mailSettingsView, writeMailSettings } from "../lib/mail-config";
 import {
 	checkConfig,
 	clearSecret,
@@ -341,7 +341,7 @@ admin.put("/secrets", sameOriginGuard, requireJsonBody, async (c) => {
 
 /** 管理端读：只有非密字段，密钥状态走 /secrets */
 admin.get("/mail-config", async (c) => {
-	return c.json({ config: await readMailSettings(c.env.DB) });
+	return c.json(await mailSettingsView(c.env));
 });
 
 admin.put("/mail-config", sameOriginGuard, requireJsonBody, async (c) => {

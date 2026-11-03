@@ -82,6 +82,7 @@ const mailConfig = ref<MailConfig>({
 	from: "Yuki Blog <mail@yiyu14.top>",
 	smtp: { host: "", port: 465, security: "ssl", user: "" },
 });
+const mailSource = ref<"db" | "env">("db");
 const mailBusy = ref(false);
 const mailTesting = ref(false);
 const mailResult = ref<(MailTestResult & { failed?: boolean }) | null>(null);
@@ -296,7 +297,9 @@ async function refresh(): Promise<void> {
 		draft0.value = clone(form.value);
 		versions.value = data.versions;
 		secrets.value = await loadSecrets();
-		mailConfig.value = await loadMailConfig();
+		const mail = await loadMailConfig();
+		mailConfig.value = mail.config;
+		mailSource.value = mail.source;
 		callbackUrl.value = `${location.origin}/api/auth/github/callback`;
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "读取失败";
@@ -623,6 +626,10 @@ onMounted(() => void refresh());
 						注册验证与找回密码靠这条通道。一条都没配时不会真发信，只写日志。
 						填完先点「发送测试邮件」，收得到再上生产。
 					</p>
+					<p v-if="mailSource === 'env' && mailConfig.mode !== 'off'" class="hint env-note">
+						当前读的是 Worker 环境变量里的配置（RESEND_API_KEY / SMTP_*）。
+						下面保存一次就改为以数据库为准。
+					</p>
 
 					<div class="row">
 						<div class="label">
@@ -708,7 +715,11 @@ onMounted(() => void refresh());
 					</p>
 
 					<div
-						v-for="name in MAIL_SECRETS.filter((item) => (mailConfig.mode === 'smtp' ? item === 'smtp_pass' : item === 'resend_api_key'))"
+						v-for="name in MAIL_SECRETS.filter(
+							(item) =>
+								(mailConfig.mode === 'smtp' && item === 'smtp_pass') ||
+								(mailConfig.mode === 'resend' && item === 'resend_api_key'),
+						)"
 						:key="name"
 						class="secret"
 					>
@@ -1602,6 +1613,10 @@ onMounted(() => void refresh());
 	margin: 0.6rem 0 0;
 	font-size: 0.78rem;
 	line-height: 1.6;
+}
+
+.env-note {
+	color: var(--admonitions-color-warning);
 }
 
 .mail-result.ok {

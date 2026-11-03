@@ -92,10 +92,14 @@ export interface MailTestResult {
 	message: string | null;
 }
 
-export const loadMailConfig = async (): Promise<MailConfig> => {
-	const data = await api.get<{ config: MailConfig }>("/api/admin/mail-config");
-	return data.config;
-};
+export interface MailConfigView {
+	config: MailConfig;
+	/** db = 管理端配过；env = 认的是 Worker 环境变量 */
+	source: "db" | "env";
+}
+
+export const loadMailConfig = (): Promise<MailConfigView> =>
+	api.get<MailConfigView>("/api/admin/mail-config");
 
 export const saveMailConfig = async (
 	config: MailConfig,
