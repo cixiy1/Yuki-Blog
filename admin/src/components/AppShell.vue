@@ -5,7 +5,7 @@
  * 不是后台模板里那种贴边到底的深色侧栏。
  * 底色不跟主题色相走，否则整页铺开就是一片绿。
  */
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { canReview, isAdmin, logout, user } from "../lib/auth";
 import { isDark, toggleTheme } from "../lib/theme";
 import { editOrigin, go, type RouteName, route } from "../router";
@@ -86,7 +86,12 @@ const navGroups = computed<NavGroup[]>(() => {
 			items: [
 				{ key: "users", label: "用户管理", icon: "users", path: "/users" },
 				{ key: "audit", label: "审计日志", icon: "audit", path: "/audit" },
-				{ key: "settings", label: "站点设置", icon: "admin", path: "/settings" },
+				{
+					key: "settings",
+					label: "站点设置",
+					icon: "admin",
+					path: "/settings",
+				},
 			],
 		});
 	}
@@ -100,6 +105,27 @@ const activeKey = computed(() => {
 		return route.value.repoSlug ? editOrigin.value : "posts";
 	}
 	return route.value.name;
+});
+
+/** 窄屏把导航收进菜单，默认关上；切页后自动收起 */
+const menuOpen = ref(false);
+watch(
+	() => route.value,
+	() => {
+		menuOpen.value = false;
+	},
+);
+
+function navigate(path: string): void {
+	go(path);
+	menuOpen.value = false;
+}
+
+const brandTag = computed(() => {
+	const role = user.value?.role;
+	if (role === "admin") return "管理端";
+	if (role === "reviewer") return "审核台";
+	return "创作台";
 });
 
 const displayName = computed(
@@ -117,12 +143,16 @@ const roleLabel = computed(() => {
 <template>
 	<div class="app">
 		<aside class="sidebar">
-			<a class="brand" href="#/overview" @click.prevent="go('/overview')">
+			<a class="brand" href="#/overview" @click.prevent="navigate('/overview')">
 				<span class="brand-name">Yuki Blog</span>
-				<span class="brand-tag">管理端</span>
+				<span class="brand-tag">{{ brandTag }}</span>
 			</a>
 
-			<nav class="nav" aria-label="管理端导航">
+			<nav
+				class="nav"
+				:class="{ open: menuOpen }"
+				aria-label="管理端导航"
+			>
 				<div v-for="group in navGroups" :key="group.label" class="group">
 					<p class="group-label">{{ group.label }}</p>
 					<a
@@ -131,7 +161,7 @@ const roleLabel = computed(() => {
 						class="nav-item"
 						:class="{ on: activeKey === item.key }"
 						:href="`#${item.path}`"
-						@click.prevent="go(item.path)"
+						@click.prevent="navigate(item.path)"
 					>
 						<AppIcon :name="item.icon" :size="17" />
 						<span>{{ item.label }}</span>
@@ -163,6 +193,15 @@ const roleLabel = computed(() => {
 				</a>
 
 				<div class="foot-actions">
+					<button
+						type="button"
+						class="icon menu-btn"
+						:aria-expanded="menuOpen"
+						aria-label="导航菜单"
+						@click="menuOpen = !menuOpen"
+					>
+						<AppIcon :name="menuOpen ? 'close' : 'menu'" :size="18" />
+					</button>
 					<button
 						type="button"
 						class="icon"
@@ -360,6 +399,8 @@ const roleLabel = computed(() => {
 	gap: 0.15rem;
 }
 
+
+
 .icon {
 	display: grid;
 	place-items: center;
@@ -379,6 +420,11 @@ const roleLabel = computed(() => {
 	color: var(--fg-90);
 }
 
+/* 菜单按钮只在窄屏出现。要压过上面 .icon 的 display:grid，选择器得够具体 */
+.foot-actions .menu-btn {
+	display: none;
+}
+
 .page {
 	min-width: 0;
 	/* 短页面也撑到与侧栏底边齐平，右侧不会剩一块「到此为止」的空白 */
@@ -387,7 +433,9 @@ const roleLabel = computed(() => {
 	padding: 1.25rem 0 2.5rem;
 }
 
-/* 窄屏：侧栏横过来当顶部条，导航项横向滚动 */
+/* 窄屏：侧栏收成顶部一条，导航折进菜单。
+   以前是把导航横向摊开再让它自动换行，结果三个分组各成一竖列并排，
+   看着像两列错位的网格；现在点菜单按钮展开成单列。 */
 @media (max-width: 900px) {
 	.app {
 		grid-template-columns: minmax(0, 1fr);
@@ -403,15 +451,16 @@ const roleLabel = computed(() => {
 		flex-direction: row;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.4rem 0.6rem;
-		padding: 0.55rem 0.7rem;
-		border-left: 1px solid var(--line-divider);
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		border-left: none;
 		border-top: none;
 		border-radius: 0 0 var(--radius-large) var(--radius-large);
 	}
 
 	.brand {
 		order: 1;
+		padding: 0;
 	}
 
 	.foot {
@@ -419,49 +468,60 @@ const roleLabel = computed(() => {
 		margin-left: auto;
 		flex-direction: row;
 		align-items: center;
+		gap: 0.15rem;
 		padding-top: 0;
 		border-top: none;
 		border-left: none;
 		padding-left: 0;
 	}
 
+	.me {
+		padding: 0;
+	}
+
+	.foot-actions .menu-btn {
+		display: grid;
+	}
+
+	/* 收起时不占位置，展开后在标题栏下方铺成单列 */
 	.nav {
 		order: 3;
 		flex: 1 0 100%;
 		min-width: 0;
-		flex-direction: row;
-		gap: 0.15rem;
-		overflow-x: auto;
-		scrollbar-width: none;
+		display: none;
+		flex-direction: column;
+		gap: 0.6rem;
+		overflow: visible;
+		padding-bottom: 0.2rem;
 	}
 
-	.nav::-webkit-scrollbar {
-		display: none;
+	.nav.open {
+		display: flex;
 	}
 
 	.group {
-		display: flex;
-		align-items: center;
-		gap: 0.15rem;
-		flex: none;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.25rem;
 	}
 
 	.group-label {
-		display: none;
+		display: block;
 	}
 
 	.nav-item {
 		white-space: nowrap;
-		padding: 0.35rem 0.55rem;
-		font-size: 0.82rem;
+		padding: 0.5rem 0.6rem;
+		font-size: 0.86rem;
 	}
 
 	.me-text {
 		display: none;
 	}
 
+	/* 桌面为贴边把左右 padding 归零，窄屏必须补回来，否则标题和卡片直接压在屏幕边上 */
 	.page {
-		padding-bottom: 2rem;
+		padding: 0.9rem 0.75rem 2rem;
 	}
 }
 </style>

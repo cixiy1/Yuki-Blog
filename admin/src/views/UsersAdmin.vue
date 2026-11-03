@@ -340,12 +340,25 @@ onMounted(() => void refresh());
 .table-wrap {
 	overflow-x: auto;
 	padding: 0;
+	/* 表格自己的圆角不能把滚动条切掉 */
+	-webkit-overflow-scrolling: touch;
 }
 
 .table {
 	width: 100%;
+	/* 窄屏别硬挤：列一压缩，「管理员」会竖排、「245」会被裁成「24」。
+	   给个下限，装不下就横向滚 */
+	min-width: 46rem;
 	border-collapse: collapse;
 	font-size: 0.82rem;
+}
+
+.table td {
+	padding: 0.7rem 0.9rem;
+	border-bottom: 1px solid var(--line-divider);
+	vertical-align: middle;
+	color: var(--fg-90);
+	white-space: nowrap;
 }
 
 .table th {
@@ -361,13 +374,6 @@ onMounted(() => void refresh());
 /* 深色下换中性白：带色相的底在纯黑卡片上会变成一条发绿的横带 */
 :root.dark .table th {
 	background: rgba(255, 255, 255, 0.05);
-}
-
-.table td {
-	padding: 0.7rem 0.9rem;
-	border-bottom: 1px solid var(--line-divider);
-	vertical-align: middle;
-	color: var(--fg-90);
 }
 
 .table tbody tr {

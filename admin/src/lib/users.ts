@@ -43,6 +43,8 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export function formatTime(iso: string | null): string {
 	if (!iso) return "—";
+	// 纯日期（frontmatter 的 published）原样显示，别补时区变成 08:00:00
+	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
 	const normalized = iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`;
 	const date = new Date(normalized);
 	return Number.isNaN(date.getTime())

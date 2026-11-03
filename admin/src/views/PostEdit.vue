@@ -101,15 +101,30 @@ const GROUPS: Group[] = [
 				kind: "tags",
 				placeholder: "用逗号分隔，最多 10 个",
 			},
-			{ key: "category", label: "分类", kind: "text", placeholder: "如：编码经验" },
-			{ key: "series", label: "系列", kind: "text", placeholder: "留空表示不属于系列" },
+			{
+				key: "category",
+				label: "分类",
+				kind: "text",
+				placeholder: "如：编码经验",
+			},
+			{
+				key: "series",
+				label: "系列",
+				kind: "text",
+				placeholder: "留空表示不属于系列",
+			},
 			{
 				key: "seriesOrder",
 				label: "系列序号",
 				kind: "number",
 				placeholder: "同系列内排序",
 			},
-			{ key: "image", label: "封面图", kind: "image", placeholder: "站内路径或图片地址" },
+			{
+				key: "image",
+				label: "封面图",
+				kind: "image",
+				placeholder: "站内路径或图片地址",
+			},
 		],
 	},
 	{
@@ -120,9 +135,24 @@ const GROUPS: Group[] = [
 	{
 		title: "发布",
 		defs: [
-			{ key: "published", label: "发布日期", kind: "date", placeholder: "2026-11-01" },
-			{ key: "updated", label: "更新日期", kind: "date", placeholder: "留空表示没更新过" },
-			{ key: "draft", label: "存为草稿", kind: "bool", hint: "draft: true，站点上看不到" },
+			{
+				key: "published",
+				label: "发布日期",
+				kind: "date",
+				placeholder: "2026-11-01",
+			},
+			{
+				key: "updated",
+				label: "更新日期",
+				kind: "date",
+				placeholder: "留空表示没更新过",
+			},
+			{
+				key: "draft",
+				label: "存为草稿",
+				kind: "bool",
+				hint: "draft: true，站点上看不到",
+			},
 			{ key: "pinned", label: "置顶", kind: "bool" },
 			{ key: "comment", label: "允许评论", kind: "bool" },
 		],
@@ -130,8 +160,18 @@ const GROUPS: Group[] = [
 	{
 		title: "署名与出处",
 		defs: [
-			{ key: "author", label: "作者", kind: "text", placeholder: "留空表示站主" },
-			{ key: "sourceLink", label: "转载来源", kind: "url", placeholder: "留空表示原创" },
+			{
+				key: "author",
+				label: "作者",
+				kind: "text",
+				placeholder: "留空表示站主",
+			},
+			{
+				key: "sourceLink",
+				label: "转载来源",
+				kind: "url",
+				placeholder: "留空表示原创",
+			},
 			{ key: "lang", label: "语言", kind: "text", placeholder: "zh-CN" },
 			{
 				key: "licenseName",
@@ -139,7 +179,12 @@ const GROUPS: Group[] = [
 				kind: "text",
 				placeholder: "如：CC BY-NC-SA 4.0",
 			},
-			{ key: "licenseUrl", label: "协议链接", kind: "url", placeholder: "https://…" },
+			{
+				key: "licenseUrl",
+				label: "协议链接",
+				kind: "url",
+				placeholder: "https://…",
+			},
 		],
 	},
 	{
@@ -147,7 +192,12 @@ const GROUPS: Group[] = [
 		note: "设了密码，站点上的正文要输密码才能看",
 		defs: [
 			{ key: "password", label: "访问密码", kind: "password" },
-			{ key: "passwordHint", label: "密码提示", kind: "text", placeholder: "给读者的提示" },
+			{
+				key: "passwordHint",
+				label: "密码提示",
+				kind: "text",
+				placeholder: "给读者的提示",
+			},
 		],
 	},
 ];
@@ -206,7 +256,9 @@ const errorText = ref("");
 const lastSaved = ref<string | null>(null);
 
 /** 仓库文章没有 D1 状态，能改就是能改；D1 文章要 draft/rejected 才能改 */
-const editable = computed(() => (isRepo.value ? true : isEditable(status.value)));
+const editable = computed(() =>
+	isRepo.value ? true : isEditable(status.value),
+);
 
 const statusLabel = computed(() => {
 	if (status.value === "pending") return "待审";
@@ -227,7 +279,8 @@ const saveHint = computed(() => {
 		if (saveState.value === "saving") return "正在提交到仓库…";
 		if (saveState.value === "saved")
 			return `已提交 ${lastSaved.value ?? ""}，等构建完成即生效`;
-		if (saveState.value === "dirty") return "有改动未保存，点「保存」提交到仓库";
+		if (saveState.value === "dirty")
+			return "有改动未保存，点「保存」提交到仓库";
 		if (saveState.value === "error") return errorText.value || "保存失败";
 		return "改的是仓库里的文件，保存即提交并触发构建";
 	}
@@ -351,7 +404,13 @@ function loadFields(fields: Record<string, FieldValue>): void {
 				const text = Object.entries(value)
 					.map(([childKey, childValue]) => `${childKey}: ${childValue}`)
 					.join(" · ");
-				return { orig: key, key, value: text, initial: text, type: "object" as const };
+				return {
+					orig: key,
+					key,
+					value: text,
+					initial: text,
+					type: "object" as const,
+				};
 			}
 			const text = value === undefined || value === null ? "" : String(value);
 			const type = /^(?:true|false)$/i.test(text)
@@ -428,7 +487,11 @@ function buildFields(): Record<string, FieldValue | null> {
 		const text = textOf(def.key).trim();
 		if (def.kind === "number") {
 			const num = Number(text);
-			put(def.key, text.length > 0 && Number.isFinite(num) ? num : null, text.length === 0);
+			put(
+				def.key,
+				text.length > 0 && Number.isFinite(num) ? num : null,
+				text.length === 0,
+			);
 			continue;
 		}
 		put(def.key, text, text.length === 0);
@@ -437,7 +500,8 @@ function buildFields(): Record<string, FieldValue | null> {
 	for (const row of custom.value) {
 		const key = row.key.trim();
 		// 改了键名要把老键删掉，否则 frontmatter 里会留下两条
-		if (row.orig && row.orig !== key && loadedKeys.has(row.orig)) out[row.orig] = null;
+		if (row.orig && row.orig !== key && loadedKeys.has(row.orig))
+			out[row.orig] = null;
 		if (!KEY_RE.test(key) || KNOWN.has(key)) continue;
 		if (row.type === "object") continue;
 
@@ -488,7 +552,8 @@ async function saveRepo(): Promise<boolean> {
 		removedKeys.value = [];
 		return true;
 	} catch (error) {
-		errorText.value = error instanceof Error ? error.message : "提交失败，请重试";
+		errorText.value =
+			error instanceof Error ? error.message : "提交失败，请重试";
 		saveState.value = "error";
 		return false;
 	}
@@ -522,7 +587,8 @@ async function save(): Promise<boolean> {
 		removedKeys.value = [];
 		return true;
 	} catch (error) {
-		errorText.value = error instanceof Error ? error.message : "保存失败，请重试";
+		errorText.value =
+			error instanceof Error ? error.message : "保存失败，请重试";
 		saveState.value = "error";
 		return false;
 	}
@@ -548,7 +614,9 @@ function onFieldInput(): void {
 async function onPublish(): Promise<void> {
 	const saved = await save();
 	if (!saved) return;
-	if (!window.confirm("发布后直接写入仓库并触发构建，约一分钟后站点上线。确定？")) {
+	if (
+		!window.confirm("发布后直接写入仓库并触发构建，约一分钟后站点上线。确定？")
+	) {
 		return;
 	}
 	try {

@@ -51,6 +51,8 @@ export function isEditable(status: string): boolean {
 
 export function formatTime(iso: string | null): string {
 	if (!iso) return "—";
+	// frontmatter 的纯日期原样显示：补成 ISO 再换算本地时区会变成 08:00:00
+	if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
 	// D1 的 datetime('now') 是 UTC 且不带时区标记，补上 Z 再按本地时间显示
 	const normalized = iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`;
 	const date = new Date(normalized);
@@ -149,7 +151,9 @@ export interface RepoPostPatch {
 	body: string;
 }
 
-export async function getRepoPost(slug: string): Promise<RepoPostDetail | null> {
+export async function getRepoPost(
+	slug: string,
+): Promise<RepoPostDetail | null> {
 	const data = await api.get<{ post: RepoPostDetail }>(
 		`/api/me/repo-posts?slug=${encodeURIComponent(slug)}`,
 	);
@@ -164,7 +168,9 @@ export async function saveRepoPost(
 }
 
 export async function deleteRepoPost(slug: string): Promise<void> {
-	await api.delete<unknown>(`/api/me/repo-posts?slug=${encodeURIComponent(slug)}`);
+	await api.delete<unknown>(
+		`/api/me/repo-posts?slug=${encodeURIComponent(slug)}`,
+	);
 }
 
 /** 全站文章：仓库里的已发布内容，编辑走仓库文件 */
