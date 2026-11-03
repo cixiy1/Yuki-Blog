@@ -33,7 +33,9 @@ export type AuditAction =
 	| "admin.settings.publish"
 	| "admin.settings.publish_failed"
 	| "admin.settings.rollback"
-	| "admin.secrets.write";
+	| "admin.secrets.write"
+	| "review.approve"
+	| "review.reject";
 
 const DETAIL_KEYS = new Set([
 	"from",
@@ -51,6 +53,8 @@ const DETAIL_KEYS = new Set([
 	"reset",
 	"uid",
 	"role",
+	"note",
+	"slug",
 ]);
 
 export interface AuditInput {
