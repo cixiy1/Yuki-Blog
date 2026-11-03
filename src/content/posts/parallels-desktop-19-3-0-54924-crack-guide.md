@@ -12,6 +12,14 @@ tags:
 category: 软件教程
 ---
 
+> 事先说明：
+>
+> PD19 的兼容情况：
+>
+> * macOS **Sonoma (14) 及以下** → 完全支持
+> * macOS **Sequoia (15)** → 官方标了「部分兼容」，可能有问题
+> * macOS **Tahoe (26)** → 跟 M5 一样行不通
+
 # 1、在pd官网下载安装包并且安装，安装完成后退出pd，也可以直接点击下方地址下载。（按需下载所需版本，目前推荐下载19.1.0）
 
 * `19.0.0` [https://download.parallels.com/desktop/v19/19.0.0-54570/ParallelsDesktop-19.0.0-54570.dmg](https://download.parallels.com/desktop/v19/19.0.0-54570/ParallelsDesktop-19.0.0-54570.dmg)
@@ -58,7 +66,6 @@ category: 软件教程
 
 ![1243063949](/api/media/1)
 ![1243063949](/api/media/1)
-
 
 # 4、运行激活工具后，点击弹出窗口的安装补丁按钮，输入密码即可
 
