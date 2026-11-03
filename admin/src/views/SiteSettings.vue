@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
+import WallpaperModePicker from "../components/WallpaperModePicker.vue";
 import {
 	applyHot,
 	type ConfigVersion,
@@ -854,8 +855,15 @@ onMounted(() => void refresh());
 						</div>
 
 						<div class="control">
+							<WallpaperModePicker
+								v-if="field.type === 'select' && field.preview === 'wallpaper'"
+								:value="asText(field, section.namespace)"
+								:options="field.options ?? []"
+								@select="set(field, section.namespace, $event)"
+							/>
+
 							<select
-								v-if="field.type === 'select'"
+								v-else-if="field.type === 'select'"
 								class="field"
 								:value="asText(field, section.namespace)"
 								@change="setText(field, section.namespace, $event)"

@@ -42,10 +42,15 @@ export interface SettingField {
 	hot?: boolean;
 	/** 改错会影响全站，保存前二次确认 */
 	danger?: boolean;
+	/**
+	 * 可视化选择器，替代原生下拉。
+	 * `wallpaper` = 四宫格壁纸模式预览（图像比文字直观，选中即改值）
+	 */
+	preview?: "wallpaper";
 	min?: number;
 	max?: number;
 	step?: number;
-	options?: Array<{ value: string; label: string }>;
+	options?: Array<{ value: string; label: string; short?: string }>;
 	placeholder?: string;
 	/** type = list 时的行内字段 */
 	itemFields?: ListItemField[];
@@ -367,12 +372,13 @@ export const SETTING_GROUPS: SettingGroup[] = [
 						label: "壁纸模式",
 						type: "select",
 						hot: true,
-						help: "保存后自动对访客生效，不必等构建；发布只是让新访客首屏就用新模式渲染",
+						preview: "wallpaper",
+						help: "点缩略图直接切换。保存后自动对访客生效，不必等构建；发布只是让新访客首屏就用新模式渲染",
 						options: [
-							{ value: "banner", label: "横幅（首页顶部）" },
-							{ value: "fullscreen", label: "全屏壁纸" },
-							{ value: "overlay", label: "覆盖透明" },
-							{ value: "none", label: "纯色背景" },
+							{ value: "banner", label: "横幅（首页顶部）", short: "顶部横幅" },
+							{ value: "fullscreen", label: "全屏壁纸", short: "全屏壁纸" },
+							{ value: "overlay", label: "覆盖透明", short: "覆盖透明" },
+							{ value: "none", label: "纯色背景", short: "纯色背景" },
 						],
 					},
 					{
