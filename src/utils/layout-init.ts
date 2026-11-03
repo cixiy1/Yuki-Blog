@@ -15,6 +15,7 @@ import {
 	updateMainGridCols,
 	updateSidebarComponentsVisibility,
 } from "@/utils/grid-layout-utils";
+import { initHotConfig } from "@/utils/hot-config";
 import { initIconLoader } from "@/utils/icon-loader";
 import { initImageLoadFadeIn } from "@/utils/lqip-utils";
 import { initScroll } from "@/utils/scroll-utils";
@@ -86,6 +87,9 @@ export function initLayout(): void {
 		initIconLoader();
 		syncFullscreenStateAfterInit();
 	}
+
+	// 热配置（目前只有主题色相）：接口拿到与构建值不同的值就改 CSS 变量
+	initHotConfig();
 
 	initImageLoadFadeIn();
 	// 切页换入后延到下一帧再重扫 LQIP fade-in，避免 astro:page-load 在同帧叠加

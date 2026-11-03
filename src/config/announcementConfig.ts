@@ -1,6 +1,8 @@
 import type { AnnouncementConfig } from "../types/announcementConfig";
+import { applyNamespace } from "./site-overrides";
 
-export const announcementConfig: AnnouncementConfig = {
+/** 默认值；管理端发布后由 site.json 的 `announcement` 分区覆盖 */
+const announcementConfigBase: AnnouncementConfig = {
 	// 公告标题，留空则走i18n默认标题
 	title: "",
 
@@ -21,3 +23,8 @@ export const announcementConfig: AnnouncementConfig = {
 		external: false,
 	},
 };
+
+export const announcementConfig: AnnouncementConfig = applyNamespace(
+	"announcement",
+	announcementConfigBase,
+);

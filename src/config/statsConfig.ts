@@ -48,7 +48,15 @@ export const statsConfig: StatsConfig = {
 	// 排行榜 1 小时内复用浏览器缓存
 	leaderboardCacheTtlMs: 60 * 60 * 1000,
 
-	excludePaths: [],
+	// 前缀匹配（site-stats.js 里是 indexOf === 0），登录页与个人中心不计入访问统计
+	excludePaths: [
+		"/login",
+		"/me",
+		"/register",
+		"/forgot-password",
+		"/reset-password",
+		"/verify",
+	],
 
 	debug: false,
 

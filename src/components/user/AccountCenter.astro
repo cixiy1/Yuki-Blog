@@ -1,0 +1,650 @@
+---
+/**
+ * 账号中心：登录表单 + 已登录信息，`/login/` 与 `/me/` 共用。
+ *
+ * mode="login"  —— 只有表单；登录后显示账号摘要与「进入个人中心」
+ * mode="center" —— 表单；登录后显示账号信息 + 账号安全 + 管理中心（admin）+ 我的组织
+ *
+ * 登录态只能在客户端拿到（静态构建），所以两块都 SSR 出来，由 <account-center>
+ * 的脚本按 /api/auth/me 的结果切换。不用 visibility:hidden 藏整卡——无 JS 时会永久空白。
+ */
+import { Icon } from "astro-icon/components";
+import { url } from "@/utils/url-utils";
+
+interface Props {
+	mode?: "login" | "center";
+}
+
+const { mode = "login" } = Astro.props;
+const isCenter = mode === "center";
+
+const inputClass =
+	"w-full px-4 py-2.5 rounded-xl border border-(--line-divider) bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-(--primary) focus:ring-1 focus:ring-(--primary) outline-none transition-all duration-200 text-sm";
+const primaryBtnClass =
+	"w-full h-10 rounded-xl bg-(--primary) text-sm font-semibold text-white dark:text-black/70 hover:opacity-90 active:opacity-80 transition-opacity duration-150 disabled:opacity-60 disabled:pointer-events-none";
+const regularBtnClass =
+	"btn-regular w-full h-10 rounded-xl text-sm font-medium disabled:opacity-60 disabled:pointer-events-none";
+// 不能用 max-w-md / max-w-2xl：主题在 variables.styl 把 --container-md 改成了 100%，
+// Tailwind v4 的 max-w-* 走这组变量，会变成不限制宽度。这里写死 rem。
+const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
+---
+
+<account-center data-mode={mode} class="block w-full">
+	<div class="flex w-full flex-col items-center rounded-(--radius-large)" data-pagefind-ignore>
+		{/* 未登录 */}
+		<section
+			data-role="guest"
+			class:list={["card-base w-full px-6 py-8 md:px-8", cardWidth]}
+		>
+			<div class="mb-6">
+				<h2 class="text-2xl font-bold text-90">
+					{isCenter ? "登录后进入个人中心" : "登录 Yuki Blog"}
+				</h2>
+				<p class="mt-1.5 text-sm text-50">用账号或邮箱加密码登录。</p>
+			</div>
+
+			<form data-role="form" novalidate class="space-y-3">
+				<label class="block">
+					<span class="mb-1.5 block text-xs text-50">账号或邮箱</span>
+					<input
+						data-role="identifier"
+						name="identifier"
+						type="text"
+						autocomplete="username"
+						autocapitalize="off"
+						placeholder="account 或 you@example.com"
+						required
+						class={inputClass}
+					/>
+				</label>
+
+				<label class="block">
+					<span class="mb-1.5 block text-xs text-50">密码</span>
+					<input
+						data-role="password"
+						name="password"
+						type="password"
+						autocomplete="current-password"
+						placeholder="至少 8 位，含字母和数字"
+						required
+						class={inputClass}
+					/>
+				</label>
+
+				<div class="flex items-center justify-between gap-3 text-xs">
+					<label class="flex cursor-pointer items-center gap-2 text-50">
+						<input
+							data-role="remember"
+							type="checkbox"
+							class="h-3.5 w-3.5 accent-(--primary)"
+						/>
+						记住我（30 天）
+					</label>
+					<a data-role="forgot" href={url("/forgot-password/")} class="text-(--btn-content) hover:underline">
+						忘记密码
+					</a>
+				</div>
+
+				<button data-role="submit" type="submit" class={primaryBtnClass}>
+					登录
+				</button>
+			</form>
+
+			<div
+				data-role="msg"
+				class="auth-status"
+				role="status"
+				aria-live="polite"
+				hidden
+			>
+			</div>
+
+			<button
+				data-role="resend-verify"
+				type="button"
+				hidden
+				class="btn-regular mt-2 h-9 w-full rounded-lg text-xs font-medium"
+			>
+				重新发送验证邮件
+			</button>
+
+			<p class="mt-3 text-xs text-50">
+				还没有账号？
+				<a data-role="register" href={url("/register/")} class="text-(--btn-content) hover:underline">
+					注册一个
+				</a>
+			</p>
+
+			<div class="my-5 flex items-center gap-3 text-xs text-50">
+				<span class="h-px flex-1 bg-(--line-divider)"></span>
+				<span>或</span>
+				<span class="h-px flex-1 bg-(--line-divider)"></span>
+			</div>
+
+			<a
+				data-role="github"
+				href="/api/auth/github/start"
+				class="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-(--line-divider) text-sm font-medium text-(--btn-content) transition-colors duration-150 hover:bg-(--btn-regular-bg)"
+			>
+				<Icon name="fa7-brands:github" class="text-base" />
+				用 GitHub 登录
+			</a>
+		</section>
+
+		{/* 已登录 */}
+		<section
+			data-role="logged"
+			hidden
+			class:list={["card-base w-full px-6 py-7 md:px-8", cardWidth]}
+		>
+			<div class="flex items-center gap-4">
+				<div
+					class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--btn-regular-bg) text-xl font-semibold text-(--btn-content)"
+				>
+					<img data-role="avatar" alt="" class="h-full w-full object-cover" hidden />
+					<span data-role="avatar-fallback"></span>
+				</div>
+				<div class="min-w-0">
+					<h2 data-role="name" class="truncate text-xl font-bold text-90">
+					</h2>
+					<p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-50">
+						<span
+							data-role="role"
+							class="rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-(--btn-content)"
+						></span>
+						<span>uid <span data-role="uid" class="tabular-nums"></span></span>
+					</p>
+				</div>
+			</div>
+
+			<dl class="mt-5 divide-y divide-(--line-divider) text-sm">
+				<div class="flex items-center justify-between gap-3 py-2.5">
+					<dt class="shrink-0 text-50">登录名</dt>
+					<dd data-role="account" class="truncate text-90"></dd>
+				</div>
+				<div class="flex items-center justify-between gap-3 py-2.5">
+					<dt class="shrink-0 text-50">邮箱</dt>
+					<dd class="flex min-w-0 items-center gap-2 text-90">
+						<span data-role="email" class="truncate"></span>
+						<span
+							data-role="verified"
+							hidden
+							class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--btn-content)"
+							>已验证</span
+						>
+						<span
+							data-role="unverified"
+							hidden
+							class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--admonitions-color-caution)"
+							>未验证</span
+						>
+					</dd>
+				</div>
+			</dl>
+
+			{
+				isCenter && (
+					<div class="mt-6 space-y-3">
+						<div class="rounded-xl border border-(--line-divider) p-4">
+							<div class="flex items-center gap-2 text-sm font-semibold text-90">
+								<Icon
+									name="material-symbols:lock-outline"
+									class="text-base text-(--primary)"
+								/>
+								修改密码
+							</div>
+							<form data-role="pw-form" novalidate class="mt-3 space-y-2.5">
+								<input
+									data-role="pw-current"
+									type="password"
+									autocomplete="current-password"
+									placeholder="当前密码（第一次设密码可留空）"
+									class={inputClass}
+								/>
+								<input
+									data-role="pw-new"
+									type="password"
+									autocomplete="new-password"
+									placeholder="新密码：至少 8 位，含字母和数字"
+									class={inputClass}
+								/>
+								<button type="submit" class={regularBtnClass}>
+									保存新密码
+								</button>
+								<div
+									data-role="pw-msg"
+									class="auth-status"
+									role="status"
+									aria-live="polite"
+									hidden
+								>
+								</div>
+								<p class="text-[11px] text-30">
+									改完会强制所有设备重新登录，当前浏览器自动续上。
+								</p>
+							</form>
+						</div>
+
+						<div
+							data-role="admin-block"
+							hidden
+							class="rounded-xl border border-(--line-divider) p-4"
+						>
+							<div class="flex items-center gap-2 text-sm font-semibold text-90">
+								<Icon
+									name="material-symbols:shield-person-outline"
+									class="text-base text-(--primary)"
+								/>
+								管理中心
+							</div>
+							<p class="mt-1.5 text-xs text-50">审核投稿、管理用户与站点设置。</p>
+							<button
+								data-role="admin-open"
+								type="button"
+								class="btn-regular mt-3 h-9 w-full rounded-lg text-xs font-medium"
+							>
+								进入管理中心
+							</button>
+						</div>
+
+						<div class="rounded-xl border border-(--line-divider) p-4">
+							<div class="flex items-center gap-2 text-sm font-semibold text-90">
+								<Icon
+									name="material-symbols:groups-outline"
+									class="text-base text-(--primary)"
+								/>
+								我的组织
+							</div>
+							<p class="mt-1.5 text-xs text-50">还没有加入组织，组织功能即将上线。</p>
+						</div>
+					</div>
+				)
+			}
+
+			<div class="mt-6 flex flex-col gap-2 sm:flex-row">
+				{
+					!isCenter && (
+						<a
+							href={url("/me/")}
+							class="flex h-10 w-full items-center justify-center rounded-xl bg-(--primary) text-sm font-semibold text-white transition-opacity duration-150 hover:opacity-90 dark:text-black/70"
+						>
+							进入个人中心
+						</a>
+					)
+				}
+				<button data-role="logout-all" type="button" class={regularBtnClass}>
+					退出所有设备
+				</button>
+				<button data-role="logout" type="button" class={regularBtnClass}>
+					退出登录
+				</button>
+			</div>
+			<div
+				data-role="me-msg"
+				class="auth-status"
+				role="status"
+				aria-live="polite"
+				hidden
+			>
+			</div>
+		</section>
+	</div>
+</account-center>
+
+<style>
+	/* 作者类里的 display 会压过 UA 的 [hidden]，这里强制回来 */
+	[hidden] {
+		display: none !important;
+	}
+</style>
+
+<script>
+	import {
+		type ApiResult,
+		failureText,
+		postJson,
+		request,
+		say,
+		setBusy,
+	} from "./auth-client";
+
+	type Role = "user" | "reviewer" | "admin";
+
+	interface MeUser {
+		uid: number;
+		account: string;
+		email: string;
+		role: Role;
+		status: string;
+		display_name: string;
+		avatar_url: string | null;
+		email_verified: number;
+	}
+
+	interface MeResponse {
+		authenticated: boolean;
+		user?: MeUser;
+		error?: string;
+		message?: string;
+	}
+
+	interface BasicResponse {
+		ok?: boolean;
+		error?: string;
+		message?: string;
+		retry_after?: number;
+	}
+
+	const ROLE_LABEL: Record<string, string> = {
+		admin: "管理员",
+		reviewer: "审核员",
+		user: "用户",
+	};
+
+	// GitHub 回调失败时带 ?error=xxx 跳回 /login，这里翻译成人话
+	const OAUTH_ERROR: Record<string, string> = {
+		github_not_configured: "GitHub 登录尚未配置",
+		github_denied: "已取消 GitHub 授权",
+		github_state_invalid: "登录状态校验失败，请重新发起",
+		github_exchange_failed: "与 GitHub 换取凭证失败，请重试",
+		github_email_unverified: "GitHub 账号没有已验证的邮箱",
+		state_invalid: "登录状态校验失败，请重新发起",
+		account_disabled: "账号已被停用",
+		login_failed: "登录失败，请重试",
+	};
+
+	const QUERY_NOTE: Record<string, string> = {
+		verified: "邮箱已验证，欢迎回来",
+		reset: "密码已重置，用新密码登录即可",
+		registered: "验证邮件已发出，去邮箱点链接即可激活",
+	};
+
+	class AccountCenter extends HTMLElement {
+		connectedCallback(): void {
+			if (this.dataset.ready === "1") return;
+			this.dataset.ready = "1";
+			this.#bind();
+			this.#fixGithubHref();
+			this.#showOauthError();
+			void this.#refresh();
+		}
+
+		/** 切页时新旧 DOM 可能短暂共存，一律在元素内查 */
+		#q<T extends HTMLElement>(role: string): T | null {
+			return this.querySelector<T>(`[data-role="${role}"]`);
+		}
+
+		#say(
+			role: "msg" | "me-msg" | "pw-msg",
+			text: string,
+			state: "" | "ok" | "error",
+		): void {
+			say(this.#q(role), text, state);
+		}
+
+		#call<T>(path: string, init: RequestInit = {}) {
+			return request<T>(path, init);
+		}
+
+		#post<T>(path: string, body: unknown) {
+			return postJson<T>(path, body);
+		}
+
+		/** 请求没到服务端时提前收口，别让它伪装成「账号或密码不正确」 */
+		#failed(
+			r: Pick<ApiResult<unknown>, "status" | "unreachable" | "malformed">,
+			slot: "msg" | "me-msg" | "pw-msg",
+		): boolean {
+			if (!r.unreachable && !r.malformed) return false;
+			this.#say(slot, failureText(r), "error");
+			return true;
+		}
+
+		#bind(): void {
+			this.#q("form")?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.#login();
+			});
+			this.#q("logout")?.addEventListener("click", () => void this.#logout(false));
+			this.#q("logout-all")?.addEventListener("click", () => void this.#logout(true));
+			this.#q("resend-verify")?.addEventListener("click", () => void this.#resend());
+			this.#q("pw-form")?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.#changePassword();
+			});
+			// 用整页跳转而不是 <a href>：/admin/ 是独立 SPA，不能被 Swup 接管替换容器
+			this.#q("admin-open")?.addEventListener("click", () => {
+				location.assign("/admin/");
+			});
+		}
+
+		/** 登录成功后的落点。只认站内绝对路径，且不能又跳回登录页自己 */
+		#nextTarget(): string | null {
+			const next = new URLSearchParams(location.search).get("next");
+			if (!next || !/^\/(?!\/)/.test(next)) return null;
+			if (next.startsWith("/login")) return null;
+			return next;
+		}
+
+		/** GitHub 的 next 参数运行时补：静态页 SSR 时读不到 query */
+		#fixGithubHref(): void {
+			const link = this.#q<HTMLAnchorElement>("github");
+			if (!link) return;
+			const next = this.#nextTarget();
+			// 不要整体 encodeURIComponent，%2F 会被服务端判非法
+			if (next) link.href = `/api/auth/github/start?next=${next}`;
+		}
+
+		#showOauthError(): void {
+			const params = new URLSearchParams(location.search);
+			const error = params.get("error");
+			if (error) {
+				this.#say("msg", OAUTH_ERROR[error] ?? "登录失败，请重试", "error");
+				history.replaceState(null, "", location.pathname);
+				return;
+			}
+			for (const [key, text] of Object.entries(QUERY_NOTE)) {
+				if (params.get(key) === "1") {
+					this.#say("msg", text, "ok");
+					history.replaceState(null, "", location.pathname);
+					return;
+				}
+			}
+		}
+
+		#showGuest(msg = "", allowResend = false): void {
+			const guest = this.#q("guest");
+			const logged = this.#q("logged");
+			if (guest) guest.hidden = false;
+			if (logged) logged.hidden = true;
+			const resend = this.#q("resend-verify");
+			if (resend) resend.hidden = !allowResend;
+			if (msg) this.#say("msg", msg, "error");
+		}
+
+		#showLogged(me: MeResponse): void {
+			const user = me.user;
+			if (!user) return this.#showGuest();
+
+			const guest = this.#q("guest");
+			const logged = this.#q("logged");
+			if (guest) guest.hidden = true;
+			if (logged) logged.hidden = false;
+
+			const name = user.display_name || user.account || user.email.split("@")[0];
+			const nameEl = this.#q("name");
+			if (nameEl) nameEl.textContent = name;
+
+			const roleEl = this.#q("role");
+			if (roleEl) roleEl.textContent = ROLE_LABEL[user.role] ?? user.role;
+
+			const uidEl = this.#q("uid");
+			if (uidEl) uidEl.textContent = String(user.uid);
+
+			const accountEl = this.#q("account");
+			if (accountEl) accountEl.textContent = user.account || "—";
+
+			const emailEl = this.#q("email");
+			if (emailEl) emailEl.textContent = user.email;
+
+			const verifiedEl = this.#q("verified");
+			if (verifiedEl) verifiedEl.hidden = !user.email_verified;
+			const unverifiedEl = this.#q("unverified");
+			if (unverifiedEl) unverifiedEl.hidden = Boolean(user.email_verified);
+
+			const avatar = this.#q<HTMLImageElement>("avatar");
+			const fallback = this.#q("avatar-fallback");
+			if (avatar && fallback) {
+				if (user.avatar_url) {
+					avatar.src = user.avatar_url;
+					avatar.hidden = false;
+					fallback.hidden = true;
+				} else {
+					avatar.hidden = true;
+					fallback.hidden = false;
+					fallback.textContent = name.slice(0, 1).toUpperCase();
+				}
+			}
+
+			// 管理中心只对管理员显示；/admin/ 本身有服务端鉴权，这里只控制入口
+			const adminBlock = this.#q("admin-block");
+			if (adminBlock) adminBlock.hidden = user.role !== "admin";
+		}
+
+		async #refresh(): Promise<void> {
+			const r = await this.#call<MeResponse>("/api/auth/me", { method: "GET" });
+			if (r.status === 200 && r.data.authenticated) {
+				this.#showLogged(r.data);
+				return;
+			}
+			if (r.status === 403 && r.data.error === "email_unverified") {
+				this.#showGuest("邮箱还没验证，先去收信里的链接", true);
+				return;
+			}
+			if (r.status === 403 && r.data.error === "account_disabled") {
+				this.#showGuest("账号已被停用", false);
+				return;
+			}
+			this.#showGuest();
+		}
+
+		async #login(): Promise<void> {
+			const identifier = this.#q<HTMLInputElement>("identifier")?.value.trim() ?? "";
+			const password = this.#q<HTMLInputElement>("password")?.value ?? "";
+			const remember = this.#q<HTMLInputElement>("remember")?.checked === true;
+
+			if (!identifier || !password) {
+				this.#say("msg", "账号和密码都要填", "error");
+				return;
+			}
+
+			const submit = this.#q<HTMLButtonElement>("submit");
+			this.#say("msg", "", "");
+			setBusy(submit, true, "登录中…");
+
+			try {
+				const r = await this.#post<BasicResponse & { email?: string }>(
+					"/api/auth/login",
+					{ identifier, password, remember },
+				);
+
+				if (this.#failed(r, "msg")) return;
+
+				if (r.ok) {
+					const next = this.#nextTarget();
+					if (next) {
+						location.assign(next);
+						return;
+					}
+					await this.#refresh();
+					return;
+				}
+
+				if (r.data.error === "email_unverified") {
+					const resend = this.#q("resend-verify");
+					if (resend) resend.hidden = false;
+					this.#say("msg", "邮箱还没验证，先去收信，或点下面的按钮重发", "error");
+					return;
+				}
+				if (r.data.error === "account_disabled") {
+					this.#say("msg", "账号已被停用", "error");
+					return;
+				}
+				if (r.status === 429 && r.data.retry_after) {
+					this.#say(
+						"msg",
+						`尝试太频繁，${r.data.retry_after} 秒后再试`,
+						"error",
+					);
+					return;
+				}
+				this.#say("msg", r.data.message || "账号或密码不正确", "error");
+			} catch {
+				this.#say("msg", "网络异常，请稍后重试", "error");
+			} finally {
+				setBusy(submit, false);
+			}
+		}
+
+		async #resend(): Promise<void> {
+			const email = this.#q("email")?.textContent?.trim() ?? "";
+			const identifier =
+				email || (this.#q<HTMLInputElement>("identifier")?.value.trim() ?? "");
+			if (!identifier) {
+				this.#say("msg", "先填邮箱", "error");
+				return;
+			}
+			const r = await this.#post<BasicResponse>("/api/auth/resend-verification", {
+				email: identifier,
+			});
+			if (this.#failed(r, "msg")) return;
+			if (r.status === 429 && r.data.retry_after) {
+				this.#say("msg", `刚发过，${r.data.retry_after} 秒后再试`, "error");
+				return;
+			}
+			this.#say("msg", "验证邮件已发出，去邮箱看看", "ok");
+		}
+
+		async #changePassword(): Promise<void> {
+			const current =
+				this.#q<HTMLInputElement>("pw-current")?.value ?? "";
+			const next = this.#q<HTMLInputElement>("pw-new")?.value ?? "";
+			if (!next) {
+				this.#say("pw-msg", "先填新密码", "error");
+				return;
+			}
+			const r = await this.#post<BasicResponse>("/api/auth/password", {
+				current_password: current,
+				password: next,
+			});
+			if (this.#failed(r, "pw-msg")) return;
+			if (!r.ok) {
+				this.#say("pw-msg", r.data.message || "改密失败，请重试", "error");
+				return;
+			}
+			const currentInput = this.#q<HTMLInputElement>("pw-current");
+			const nextInput = this.#q<HTMLInputElement>("pw-new");
+			if (currentInput) currentInput.value = "";
+			if (nextInput) nextInput.value = "";
+			this.#say("pw-msg", "密码已更新，其它设备需要重新登录", "ok");
+		}
+
+		async #logout(allDevices: boolean): Promise<void> {
+			const r = await this.#post<BasicResponse>(
+				allDevices ? "/api/auth/logout-all" : "/api/auth/logout",
+				{},
+			);
+			if (this.#failed(r, "me-msg")) return;
+			if (!r.ok && r.status !== 401) {
+				this.#say("me-msg", "退出失败，请重试", "error");
+				return;
+			}
+			this.#say("me-msg", "", "");
+			await this.#refresh();
+		}
+	}
+
+	if (!customElements.get("account-center")) {
+		customElements.define("account-center", AccountCenter);
+	}
+</script>

@@ -5,6 +5,11 @@ export const prerender = true;
 const robotsTxt = `
 User-agent: *
 Disallow: /_astro/
+Disallow: /register/
+Disallow: /forgot-password/
+Disallow: /reset-password/
+Disallow: /verify/
+Disallow: /invite/
 Disallow: /archive/?tag=
 Disallow: /archive/?category=
 Disallow: /archive/?uncategorized=

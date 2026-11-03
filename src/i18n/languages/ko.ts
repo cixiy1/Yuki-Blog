@@ -17,7 +17,7 @@ export const ko: Translation = {
 	// 네비게이션 메뉴 그룹
 	[Key.navArticles]: "글",
 	[Key.navSocial]: "소셜",
-	[Key.navMine]: "마이",
+	[Key.navMine]: "Yukiho",
 	[Key.navAbout]: "소개",
 	[Key.navLinks]: "링크",
 	[Key.all]: "전체",

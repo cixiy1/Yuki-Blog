@@ -17,7 +17,7 @@ export const en: Translation = {
 	// Navbar menu groups
 	[Key.navArticles]: "Articles",
 	[Key.navSocial]: "Social",
-	[Key.navMine]: "Mine",
+	[Key.navMine]: "Yukiho",
 	[Key.navAbout]: "About",
 	[Key.navLinks]: "Links",
 	[Key.all]: "All",

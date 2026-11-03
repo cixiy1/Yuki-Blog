@@ -1,7 +1,8 @@
 import type { MusicPlayerConfig } from "../types/musicConfig";
+import { applyNamespace } from "./site-overrides";
 
-// 音乐播放器配置
-export const musicPlayerConfig: MusicPlayerConfig = {
+// 音乐播放器配置（默认值；管理端发布后由 site.json 的 `music` 分区覆盖）
+const musicPlayerConfigBase: MusicPlayerConfig = {
 	// 是否在导航栏显示音乐播放器入口
 	showInNavbar: true,
 
@@ -73,3 +74,8 @@ export const musicPlayerConfig: MusicPlayerConfig = {
 		],
 	},
 };
+
+export const musicPlayerConfig: MusicPlayerConfig = applyNamespace(
+	"music",
+	musicPlayerConfigBase,
+);

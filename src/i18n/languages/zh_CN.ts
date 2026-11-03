@@ -17,7 +17,7 @@ export const zh_CN: Translation = {
 	// 导航栏菜单分组
 	[Key.navArticles]: "文章",
 	[Key.navSocial]: "社交",
-	[Key.navMine]: "我的",
+	[Key.navMine]: "雪穗",
 	[Key.navAbout]: "关于",
 	[Key.navLinks]: "链接",
 	[Key.all]: "全部",

@@ -8,6 +8,7 @@
 @import './tags.css';
 @import './display-settings.css';
 @import './categories.css';
+@import './auth.css';
 @import './layout-base.css';
 
 @plugin '@tailwindcss/typography';
