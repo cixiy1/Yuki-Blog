@@ -187,18 +187,25 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 					<div class="mt-6 space-y-3">
 						<a
 							href={url("/me/profile/")}
-							class="flex items-center justify-between gap-3 rounded-xl border border-(--line-divider) p-4 transition-colors duration-150 hover:bg-(--btn-regular-bg)"
+							class="flex items-start justify-between gap-3 rounded-xl border border-(--line-divider) p-4 transition-colors duration-150 hover:bg-(--btn-regular-bg)"
 						>
-							<span class="flex items-center gap-2 text-sm font-semibold text-90">
-								<Icon
-									name="material-symbols:edit-outline"
-									class="text-base text-(--primary)"
-								/>
-								修改资料
+							<span class="min-w-0">
+								<span
+									class="flex items-center gap-2 text-sm font-semibold text-90"
+								>
+									<Icon
+										name="material-symbols:manage-accounts-outline"
+										class="text-base text-(--primary)"
+									/>
+									账号设置
+								</span>
+								<span class="mt-1.5 block text-xs text-50">
+									头像、昵称、简介与登录密码
+								</span>
 							</span>
 							<Icon
 								name="material-symbols:chevron-right"
-								class="text-base text-30"
+								class="mt-0.5 text-base text-30"
 							/>
 						</a>
 
@@ -220,46 +227,6 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 							>
 								进入创作台
 							</button>
-						</div>
-
-						<div class="rounded-xl border border-(--line-divider) p-4">
-							<div class="flex items-center gap-2 text-sm font-semibold text-90">
-								<Icon
-									name="material-symbols:lock-outline"
-									class="text-base text-(--primary)"
-								/>
-								修改密码
-							</div>
-							<form data-role="pw-form" novalidate class="mt-3 space-y-2.5">
-								<input
-									data-role="pw-current"
-									type="password"
-									autocomplete="current-password"
-									placeholder="当前密码（第一次设密码可留空）"
-									class={inputClass}
-								/>
-								<input
-									data-role="pw-new"
-									type="password"
-									autocomplete="new-password"
-									placeholder="新密码：至少 8 位，含字母和数字"
-									class={inputClass}
-								/>
-								<button type="submit" class={regularBtnClass}>
-									保存新密码
-								</button>
-								<div
-									data-role="pw-msg"
-									class="auth-status"
-									role="status"
-									aria-live="polite"
-									hidden
-								>
-								</div>
-								<p class="text-[11px] text-30">
-									改完会强制所有设备重新登录，当前浏览器自动续上。
-								</p>
-							</form>
 						</div>
 
 						<div
@@ -412,7 +379,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 		}
 
 		#say(
-			role: "msg" | "me-msg" | "pw-msg",
+			role: "msg" | "me-msg",
 			text: string,
 			state: "" | "ok" | "error",
 		): void {
@@ -430,7 +397,7 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 		/** 请求没到服务端时提前收口，别让它伪装成「账号或密码不正确」 */
 		#failed(
 			r: Pick<ApiResult<unknown>, "status" | "unreachable" | "malformed">,
-			slot: "msg" | "me-msg" | "pw-msg",
+			slot: "msg" | "me-msg",
 		): boolean {
 			if (!r.unreachable && !r.malformed) return false;
 			this.#say(slot, failureText(r), "error");
@@ -445,10 +412,6 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			this.#q("logout")?.addEventListener("click", () => void this.#logout(false));
 			this.#q("logout-all")?.addEventListener("click", () => void this.#logout(true));
 			this.#q("resend-verify")?.addEventListener("click", () => void this.#resend());
-			this.#q("pw-form")?.addEventListener("submit", (event) => {
-				event.preventDefault();
-				void this.#changePassword();
-			});
 			// 用整页跳转而不是 <a href>：/admin/ 是独立 SPA，不能被 Swup 接管替换容器
 			this.#q("admin-open")?.addEventListener("click", () => {
 				location.assign("/admin/");
@@ -642,30 +605,6 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 				return;
 			}
 			this.#say("msg", "验证邮件已发出，去邮箱看看", "ok");
-		}
-
-		async #changePassword(): Promise<void> {
-			const current =
-				this.#q<HTMLInputElement>("pw-current")?.value ?? "";
-			const next = this.#q<HTMLInputElement>("pw-new")?.value ?? "";
-			if (!next) {
-				this.#say("pw-msg", "先填新密码", "error");
-				return;
-			}
-			const r = await this.#post<BasicResponse>("/api/auth/password", {
-				current_password: current,
-				password: next,
-			});
-			if (this.#failed(r, "pw-msg")) return;
-			if (!r.ok) {
-				this.#say("pw-msg", r.data.message || "改密失败，请重试", "error");
-				return;
-			}
-			const currentInput = this.#q<HTMLInputElement>("pw-current");
-			const nextInput = this.#q<HTMLInputElement>("pw-new");
-			if (currentInput) currentInput.value = "";
-			if (nextInput) nextInput.value = "";
-			this.#say("pw-msg", "密码已更新，其它设备需要重新登录", "ok");
 		}
 
 		async #logout(allDevices: boolean): Promise<void> {

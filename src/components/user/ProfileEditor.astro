@@ -1,10 +1,13 @@
 ---
 /**
- * 修改自己的资料：头像、昵称、简介。
+ * 账号设置：头像、昵称、简介，以及修改密码。
  *
  * 登录名与 uid 只读——登录名是登录凭据（唯一索引 + 找回密码都靠它），
  * 改起来牵一发动全身，留给管理员在用户管理里处理。邮箱要改得先验证新地址，
  * 那是另一条流程，这里只展示当前值。
+ *
+ * 改密码原本在个人中心那张卡里，跟「改资料」隔着一个页面，改一次要来回跳。
+ * 现在合并到这一页：同一个表单页里改完资料接着改密码。
  *
  * 和 AccountCenter 一样：静态页拿不到登录态，表单与提示都由 <profile-editor>
  * 的脚本按 /api/auth/me 的结果切换。
@@ -30,8 +33,8 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 				name="material-symbols:lock-outline"
 				class="mx-auto text-2xl text-(--primary)"
 			/>
-			<h2 class="mt-3 text-lg font-bold text-90">登录后才能修改资料</h2>
-			<p class="mt-1.5 text-xs text-50">资料属于账号本身，先登录再编辑。</p>
+			<h2 class="mt-3 text-lg font-bold text-90">登录后才能改资料和密码</h2>
+			<p class="mt-1.5 text-xs text-50">资料与密码属于账号本身，先登录再改。</p>
 			<a
 				data-role="login"
 				href={url("/login/?next=/me/profile/")}
@@ -48,9 +51,9 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 		>
 			<header class="flex items-start justify-between gap-4">
 				<div class="min-w-0">
-					<h1 class="text-xl font-bold text-90">修改资料</h1>
+					<h1 class="text-xl font-bold text-90">账号设置</h1>
 					<p class="mt-1 text-xs leading-relaxed text-50">
-						头像、昵称与简介会出现在评论、投稿等公共位置，改完立刻生效。
+						头像、昵称与简介会出现在评论、投稿等公共位置，连同密码一起在这里改。
 					</p>
 				</div>
 				<a
@@ -160,12 +163,6 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 					<button data-role="save" type="submit" class={primaryBtnClass}>
 						保存资料
 					</button>
-					<a
-						href={url("/me/")}
-						class="text-xs text-50 transition-colors duration-150 hover:text-90"
-					>
-						改密码在个人中心
-					</a>
 				</div>
 
 				<div
@@ -177,6 +174,76 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 				>
 				</div>
 			</form>
+
+			<div class="my-7 h-px bg-(--line-divider)" role="separator"></div>
+
+			<section>
+				<div class="flex items-center gap-2">
+					<Icon
+						name="material-symbols:lock-outline"
+						class="text-base text-(--primary)"
+					/>
+					<h2 class="text-sm font-semibold text-90">修改密码</h2>
+				</div>
+				<p class="mt-1 text-[11px] leading-relaxed text-50">
+					改完会踢掉其它设备上的登录，当前浏览器自动续上。
+				</p>
+
+				<form data-role="pw-form" novalidate class="mt-4 space-y-4">
+					<div>
+						<label class={labelClass} for="pe-pw-current">当前密码</label>
+						<input
+							id="pe-pw-current"
+							data-role="pw-current"
+							type="password"
+							autocomplete="current-password"
+							class={inputClass}
+							placeholder="用 GitHub 登录、从未设过密码的可留空"
+						/>
+					</div>
+					<div>
+						<label class={labelClass} for="pe-pw-new">新密码</label>
+						<input
+							id="pe-pw-new"
+							data-role="pw-new"
+							type="password"
+							autocomplete="new-password"
+							class={inputClass}
+							placeholder="至少 8 位，同时含字母和数字"
+						/>
+					</div>
+					<div>
+						<label class={labelClass} for="pe-pw-confirm">确认新密码</label>
+						<input
+							id="pe-pw-confirm"
+							data-role="pw-confirm"
+							type="password"
+							autocomplete="new-password"
+							class={inputClass}
+							placeholder="再输一遍，避免手滑设成别的"
+						/>
+					</div>
+
+					<div class="flex flex-wrap items-center gap-3">
+						<button
+							data-role="pw-save"
+							type="submit"
+							class="btn-regular h-10 rounded-xl px-5 text-sm font-medium disabled:pointer-events-none disabled:opacity-60"
+						>
+							更新密码
+						</button>
+					</div>
+
+					<div
+						data-role="pw-msg"
+						class="auth-status"
+						role="status"
+						aria-live="polite"
+						hidden
+					>
+					</div>
+				</form>
+			</section>
 		</section>
 	</div>
 </profile-editor>
@@ -191,6 +258,8 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 	import {
 		type ApiResult,
 		failureText,
+		passwordHint,
+		postJson,
 		request,
 		say,
 		setBusy,
@@ -224,6 +293,8 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 	class ProfileEditor extends HTMLElement {
 		private guest!: HTMLElement;
 		private form!: HTMLElement;
+		/** 资料表单单独存：卡片容器也是 data-role="form"，绑在容器上会把密码表单的 submit 一起收 */
+		private profileForm!: HTMLFormElement;
 		private inputAvatar!: HTMLInputElement;
 		private inputName!: HTMLInputElement;
 		private inputBio!: HTMLTextAreaElement;
@@ -231,10 +302,19 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 		private fallback!: HTMLElement;
 		private msg!: HTMLElement;
 		private saveBtn!: HTMLButtonElement;
+		private pwForm!: HTMLFormElement;
+		private pwCurrent!: HTMLInputElement;
+		private pwNew!: HTMLInputElement;
+		private pwConfirm!: HTMLInputElement;
+		private pwMsg!: HTMLElement;
+		private pwSaveBtn!: HTMLButtonElement;
 
 		connectedCallback(): void {
 			this.guest = this.querySelector('[data-role="guest"]') as HTMLElement;
 			this.form = this.querySelector('[data-role="form"]') as HTMLElement;
+			this.profileForm = this.querySelector(
+				'[data-role="profile-form"]',
+			) as HTMLFormElement;
 			this.inputAvatar = this.querySelector(
 				'[data-role="avatar"]',
 			) as HTMLInputElement;
@@ -254,6 +334,22 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			this.saveBtn = this.querySelector(
 				'[data-role="save"]',
 			) as HTMLButtonElement;
+			this.pwForm = this.querySelector(
+				'[data-role="pw-form"]',
+			) as HTMLFormElement;
+			this.pwCurrent = this.querySelector(
+				'[data-role="pw-current"]',
+			) as HTMLInputElement;
+			this.pwNew = this.querySelector(
+				'[data-role="pw-new"]',
+			) as HTMLInputElement;
+			this.pwConfirm = this.querySelector(
+				'[data-role="pw-confirm"]',
+			) as HTMLInputElement;
+			this.pwMsg = this.querySelector('[data-role="pw-msg"]') as HTMLElement;
+			this.pwSaveBtn = this.querySelector(
+				'[data-role="pw-save"]',
+			) as HTMLButtonElement;
 
 			this.preview?.addEventListener("error", () => {
 				// 地址写错或图挂了：收起图片，露出底下的首字
@@ -268,9 +364,13 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 					1,
 				);
 			});
-			this.form?.addEventListener("submit", (event) => {
+			this.profileForm?.addEventListener("submit", (event) => {
 				event.preventDefault();
 				void this.save();
+			});
+			this.pwForm?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.changePassword();
 			});
 
 			void this.load();
@@ -368,6 +468,60 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			this.inputBio.value = user.bio ?? "";
 			this.paintAvatar(user.avatar_url);
 			say(this.msg, "资料已保存", "ok");
+		}
+
+		/**
+		 * 改密码。接口只认「当前密码 + 新密码」，确认框是页面自己加的：
+		 * 新密码打错一个字符，下次登录就进不去了。
+		 */
+		private async changePassword(): Promise<void> {
+			const current = this.pwCurrent?.value ?? "";
+			const next = this.pwNew?.value ?? "";
+			const confirm = this.pwConfirm?.value ?? "";
+
+			const hint = passwordHint(next);
+			if (hint) {
+				say(this.pwMsg, hint, "error");
+				this.pwNew?.focus();
+				return;
+			}
+			if (next !== confirm) {
+				say(this.pwMsg, "两次输入的新密码不一致", "error");
+				this.pwConfirm?.focus();
+				return;
+			}
+			if (current && next === current) {
+				say(this.pwMsg, "新密码与当前密码相同", "error");
+				this.pwNew?.focus();
+				return;
+			}
+
+			setBusy(this.pwSaveBtn, true, "更新中…");
+			say(this.pwMsg, "", "");
+			const result = await postJson<{
+				ok?: boolean;
+				error?: string;
+				message?: string;
+			}>("/api/auth/password", {
+				current_password: current,
+				password: next,
+			});
+			setBusy(this.pwSaveBtn, false);
+
+			if (!result.ok) {
+				const message =
+					result.data?.message ??
+					(result.malformed || result.unreachable
+						? failureText(result)
+						: "改密失败，稍后重试");
+				say(this.pwMsg, message, "error");
+				return;
+			}
+
+			if (this.pwCurrent) this.pwCurrent.value = "";
+			if (this.pwNew) this.pwNew.value = "";
+			if (this.pwConfirm) this.pwConfirm.value = "";
+			say(this.pwMsg, "密码已更新，其它设备需要重新登录", "ok");
 		}
 	}
 
