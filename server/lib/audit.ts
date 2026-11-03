@@ -14,6 +14,7 @@ export type AuditAction =
 	| "auth.password_forgot"
 	| "auth.password_reset"
 	| "auth.password_change"
+	| "user.profile.update"
 	| "admin.user.create"
 	| "admin.user.delete"
 	| "admin.user.status"

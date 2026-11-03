@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { writeAudit } from "../lib/audit";
 import {
 	type FieldValue,
 	joinMarkdown,
@@ -35,6 +36,144 @@ const MAX_COVER = 300;
 
 /** 只有这两个状态能改能删；pending 要先撤回，published 一律锁定 */
 const EDITABLE = new Set(["draft", "rejected"]);
+
+/* ---------------------------- 我的资料 ---------------------------- */
+
+const DISPLAY_NAME_MAX = 32;
+const BIO_MAX = 200;
+const AVATAR_MAX = 400;
+
+/**
+ * 头像只收 https 外链与站内绝对路径。
+ *
+ * http 图片在 https 页面上会被浏览器拦成混合内容（看着像图挂了）；
+ * data: 会把一行几 MB 塞进 users 表。上传要等媒体库，先不做。
+ * 返回 undefined 表示格式不合法，null 表示清空。
+ */
+function readAvatar(raw: unknown): string | null | undefined {
+	if (raw === undefined) return undefined;
+	if (typeof raw !== "string") return undefined;
+	const value = raw.trim();
+	if (!value) return null;
+	if (value.length > AVATAR_MAX) return undefined;
+	// 站内路径：// 开头是协议相对 URL，不算站内
+	if (value.startsWith("/") && !value.startsWith("//")) return value;
+	try {
+		const url = new URL(value);
+		return url.protocol === "https:" ? url.toString() : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+interface ProfileRow {
+	uid: number;
+	account: string;
+	email: string;
+	email_verified_at: string | null;
+	role: string;
+	status: string;
+	display_name: string;
+	avatar_url: string | null;
+	bio: string | null;
+}
+
+/**
+ * 改自己的资料。登录名（account）与邮箱不在这里：登录名是登录凭据，
+ * 改邮箱要走验证信，等专门的流程。
+ */
+me.patch(
+	"/profile",
+	requireAuth,
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const current = c.get("user");
+		if (!current) return c.json({ error: "unauthorized" }, 401);
+
+		const body = (await c.req.json().catch(() => null)) as Record<
+			string,
+			unknown
+		> | null;
+		if (!body) {
+			return c.json({ error: "bad_request", message: "请求格式不对" }, 400);
+		}
+
+		const name =
+			typeof body.display_name === "string" ? body.display_name.trim() : "";
+		if (!name || name.length > DISPLAY_NAME_MAX) {
+			return c.json(
+				{
+					error: "bad_name",
+					message: `昵称填 1–${DISPLAY_NAME_MAX} 个字符`,
+				},
+				400,
+			);
+		}
+
+		const avatar = readAvatar(body.avatar_url);
+		if (avatar === undefined) {
+			return c.json(
+				{
+					error: "bad_avatar",
+					message: "头像只支持 https 图片链接，或以 / 开头的站内路径",
+				},
+				400,
+			);
+		}
+
+		const bio = typeof body.bio === "string" ? body.bio.trim() : "";
+		if (bio.length > BIO_MAX) {
+			return c.json(
+				{ error: "bad_bio", message: `简介最多 ${BIO_MAX} 字` },
+				400,
+			);
+		}
+
+		const row = await c.env.DB.prepare(
+			`UPDATE users
+			    SET display_name = ?1,
+			        avatar_url = ?2,
+			        bio = ?3,
+			        updated_at = datetime('now')
+			  WHERE uid = ?4 AND status = 'active'
+			 RETURNING uid, account, email, email_verified_at, role, status,
+			           display_name, avatar_url, bio`,
+		)
+			.bind(name, avatar, bio || null, current.uid)
+			.first<ProfileRow>();
+
+		if (!row) {
+			return c.json(
+				{ error: "user_not_found", message: "账号状态异常，重新登录再试" },
+				404,
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: current.uid,
+			action: "user.profile.update",
+			target: row.account,
+			detail: { fields: ["display_name", "avatar_url", "bio"] },
+		});
+
+		return c.json({
+			ok: true,
+			user: {
+				uid: row.uid,
+				account: row.account,
+				email: row.email,
+				role: row.role,
+				status: row.status,
+				display_name: row.display_name,
+				avatar_url: row.avatar_url,
+				bio: row.bio,
+				email_verified: row.email_verified_at ? 1 : 0,
+			},
+		});
+	},
+);
+
 
 export interface PostRow {
 	id: number;

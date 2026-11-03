@@ -516,6 +516,7 @@ auth.get("/me", async (c) => {
 			status: user.status,
 			display_name: user.display_name,
 			avatar_url: user.avatar_url,
+			bio: user.bio,
 			email_verified: user.email_verified,
 		},
 	});

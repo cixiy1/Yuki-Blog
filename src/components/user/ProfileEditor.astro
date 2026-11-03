@@ -1,0 +1,373 @@
+---
+/**
+ * 修改自己的资料：头像、昵称、简介。
+ *
+ * 登录名与 uid 只读——登录名是登录凭据（唯一索引 + 找回密码都靠它），
+ * 改起来牵一发动全身，留给管理员在用户管理里处理。邮箱要改得先验证新地址，
+ * 那是另一条流程，这里只展示当前值。
+ *
+ * 和 AccountCenter 一样：静态页拿不到登录态，表单与提示都由 <profile-editor>
+ * 的脚本按 /api/auth/me 的结果切换。
+ */
+import { Icon } from "astro-icon/components";
+import { url } from "@/utils/url-utils";
+
+const inputClass =
+	"w-full px-4 py-2.5 rounded-xl border border-(--line-divider) bg-transparent text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:border-(--primary) focus:ring-1 focus:ring-(--primary) outline-none transition-all duration-200 text-sm";
+const primaryBtnClass =
+	"h-10 rounded-xl bg-(--primary) px-5 text-sm font-semibold text-white transition-opacity duration-150 hover:opacity-90 active:opacity-80 disabled:pointer-events-none disabled:opacity-60 dark:text-black/70";
+const labelClass = "mb-1.5 block text-xs font-medium text-75";
+---
+
+<profile-editor class="block w-full">
+	<div class="flex w-full flex-col items-center">
+		<section
+			data-role="guest"
+			hidden
+			class="card-base w-full max-w-[28rem] px-6 py-8 text-center md:px-8"
+		>
+			<Icon
+				name="material-symbols:lock-outline"
+				class="mx-auto text-2xl text-(--primary)"
+			/>
+			<h2 class="mt-3 text-lg font-bold text-90">登录后才能修改资料</h2>
+			<p class="mt-1.5 text-xs text-50">资料属于账号本身，先登录再编辑。</p>
+			<a
+				data-role="login"
+				href={url("/login/?next=/me/profile/")}
+				class="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-(--primary) px-6 text-sm font-semibold text-white transition-opacity duration-150 hover:opacity-90 dark:text-black/70"
+			>
+				去登录
+			</a>
+		</section>
+
+		<section
+			data-role="form"
+			hidden
+			class="card-base w-full max-w-[42rem] px-6 py-7 md:px-8"
+		>
+			<header class="flex items-start justify-between gap-4">
+				<div class="min-w-0">
+					<h1 class="text-xl font-bold text-90">修改资料</h1>
+					<p class="mt-1 text-xs leading-relaxed text-50">
+						头像、昵称与简介会出现在评论、投稿等公共位置，改完立刻生效。
+					</p>
+				</div>
+				<a
+					href={url("/me/")}
+					class="shrink-0 text-xs text-50 transition-colors duration-150 hover:text-90"
+				>
+					返回个人中心
+				</a>
+			</header>
+
+			<form data-role="profile-form" novalidate class="mt-6 space-y-5">
+				<div class="flex items-start gap-4">
+					<div
+						data-role="avatar-box"
+						class="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--btn-regular-bg) text-xl font-semibold text-(--btn-content)"
+					>
+						<span data-role="avatar-fallback"></span>
+						<!-- 首字垫在底下：图片没加载完或加载失败时不会只剩一个空圆 -->
+						<img
+							data-role="avatar-preview"
+							alt=""
+							class="absolute inset-0 h-full w-full object-cover"
+							hidden
+						/>
+					</div>
+					<div class="min-w-0 flex-1">
+						<label class={labelClass} for="pe-avatar">头像链接</label>
+						<input
+							id="pe-avatar"
+							data-role="avatar"
+							type="text"
+							inputmode="url"
+							autocomplete="off"
+							class={inputClass}
+							placeholder="https://… 或 /assets/images/avatar.png"
+						/>
+						<p class="mt-1.5 text-[11px] leading-relaxed text-50">
+							支持 https 图片链接；站内图片填以 / 开头的路径。留空则用昵称首字。
+						</p>
+					</div>
+				</div>
+
+				<div>
+					<label class={labelClass} for="pe-name">昵称</label>
+					<input
+						id="pe-name"
+						data-role="name"
+						type="text"
+						maxlength="32"
+						autocomplete="nickname"
+						class={inputClass}
+						placeholder="显示在评论与文章署名处"
+					/>
+				</div>
+
+				<div>
+					<label class={labelClass} for="pe-bio">简介</label>
+					<textarea
+						id="pe-bio"
+						data-role="bio"
+						rows="3"
+						maxlength="200"
+						class:list={[inputClass, "resize-y"]}
+						placeholder="一句话介绍自己，可留空"></textarea>
+				</div>
+
+				<dl
+					class="divide-y divide-(--line-divider) rounded-xl border border-(--line-divider) px-4 text-sm"
+				>
+					<div
+						class="flex items-center justify-between gap-3 py-2.5"
+					>
+						<dt class="shrink-0 text-50">登录名</dt>
+						<dd data-role="account" class="truncate text-90"></dd>
+					</div>
+					<div class="flex items-center justify-between gap-3 py-2.5">
+						<dt class="shrink-0 text-50">邮箱</dt>
+						<dd class="flex min-w-0 items-center gap-2 text-90">
+							<span data-role="email" class="truncate"></span>
+							<span
+								data-role="verified"
+								hidden
+								class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--btn-content)"
+								>已验证</span
+							>
+							<span
+								data-role="unverified"
+								hidden
+								class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--accent-text)"
+								>未验证</span
+							>
+						</dd>
+					</div>
+					<div class="flex items-center justify-between gap-3 py-2.5">
+						<dt class="shrink-0 text-50">UID</dt>
+						<dd
+							data-role="uid"
+							class="truncate tabular-nums text-90"
+						></dd>
+					</div>
+				</dl>
+				<p class="-mt-2 text-[11px] leading-relaxed text-50">
+					登录名与邮箱不在这里改：登录名是登录凭据，换邮箱需要先验证新地址。
+				</p>
+
+				<div class="flex flex-wrap items-center gap-3">
+					<button data-role="save" type="submit" class={primaryBtnClass}>
+						保存资料
+					</button>
+					<a
+						href={url("/me/")}
+						class="text-xs text-50 transition-colors duration-150 hover:text-90"
+					>
+						改密码在个人中心
+					</a>
+				</div>
+
+				<div
+					data-role="msg"
+					class="auth-status"
+					role="status"
+					aria-live="polite"
+					hidden
+				>
+				</div>
+			</form>
+		</section>
+	</div>
+</profile-editor>
+
+<style>
+	[hidden] {
+		display: none !important;
+	}
+</style>
+
+<script>
+	import {
+		type ApiResult,
+		failureText,
+		request,
+		say,
+		setBusy,
+	} from "./auth-client";
+
+	interface ProfileUser {
+		uid: number;
+		account: string;
+		email: string;
+		role: string;
+		display_name: string;
+		avatar_url: string | null;
+		bio: string | null;
+		email_verified: number;
+	}
+
+	interface MeResponse {
+		authenticated: boolean;
+		user?: ProfileUser;
+		error?: string;
+		message?: string;
+	}
+
+	interface ProfileResponse {
+		ok?: boolean;
+		user?: ProfileUser;
+		error?: string;
+		message?: string;
+	}
+
+	class ProfileEditor extends HTMLElement {
+		private guest!: HTMLElement;
+		private form!: HTMLElement;
+		private inputAvatar!: HTMLInputElement;
+		private inputName!: HTMLInputElement;
+		private inputBio!: HTMLTextAreaElement;
+		private preview!: HTMLImageElement;
+		private fallback!: HTMLElement;
+		private msg!: HTMLElement;
+		private saveBtn!: HTMLButtonElement;
+
+		connectedCallback(): void {
+			this.guest = this.querySelector('[data-role="guest"]') as HTMLElement;
+			this.form = this.querySelector('[data-role="form"]') as HTMLElement;
+			this.inputAvatar = this.querySelector(
+				'[data-role="avatar"]',
+			) as HTMLInputElement;
+			this.inputName = this.querySelector(
+				'[data-role="name"]',
+			) as HTMLInputElement;
+			this.inputBio = this.querySelector(
+				'[data-role="bio"]',
+			) as HTMLTextAreaElement;
+			this.preview = this.querySelector(
+				'[data-role="avatar-preview"]',
+			) as HTMLImageElement;
+			this.fallback = this.querySelector(
+				'[data-role="avatar-fallback"]',
+			) as HTMLElement;
+			this.msg = this.querySelector('[data-role="msg"]') as HTMLElement;
+			this.saveBtn = this.querySelector(
+				'[data-role="save"]',
+			) as HTMLButtonElement;
+
+			this.preview?.addEventListener("error", () => {
+				// 地址写错或图挂了：收起图片，露出底下的首字
+				this.preview.hidden = true;
+			});
+			this.inputAvatar?.addEventListener("input", () => {
+				this.paintAvatar(this.inputAvatar.value.trim() || null);
+			});
+			this.inputName?.addEventListener("input", () => {
+				this.fallback.textContent = (this.inputName.value.trim() || "?").slice(
+					0,
+					1,
+				);
+			});
+			this.form?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.save();
+			});
+
+			void this.load();
+		}
+
+		private async load(): Promise<void> {
+			const result = await request<MeResponse>("/api/auth/me");
+			const user = result.data?.user;
+			if (!result.ok || !user) {
+				this.guest.hidden = false;
+				this.form.hidden = true;
+				return;
+			}
+			this.guest.hidden = true;
+			this.form.hidden = false;
+
+			this.inputName.value = user.display_name ?? "";
+			this.inputAvatar.value = user.avatar_url ?? "";
+			this.inputBio.value = user.bio ?? "";
+			this.paintAvatar(user.avatar_url);
+
+			this.setText("account", user.account);
+			this.setText("email", user.email);
+			this.setText("uid", String(user.uid));
+			this.querySelector('[data-role="verified"]')!.hidden =
+				!user.email_verified;
+			this.querySelector('[data-role="unverified"]')!.hidden =
+				Boolean(user.email_verified);
+		}
+
+		private setText(role: string, value: string): void {
+			const el = this.querySelector(`[data-role="${role}"]`);
+			if (el) el.textContent = value;
+		}
+
+		/**
+		 * 头像预览：首字一直垫在底下，图片加载成功才盖上去。
+		 * 加载中/失败都只是「看起来还没换」，不会变成一个空圆。
+		 */
+		private paintAvatar(src: string | null): void {
+			this.fallback.textContent = (this.inputName?.value.trim() || "?").slice(
+				0,
+				1,
+			);
+			if (src) {
+				this.preview.src = src;
+				this.preview.hidden = false;
+			} else {
+				this.preview.hidden = true;
+				this.preview.removeAttribute("src");
+			}
+		}
+
+		private async save(): Promise<void> {
+			const name = this.inputName.value.trim();
+			if (!name) {
+				say(this.msg, "昵称不能为空", "error");
+				this.inputName.focus();
+				return;
+			}
+
+			setBusy(this.saveBtn, true, "保存中…");
+			say(this.msg, "", "");
+			const result: ApiResult<ProfileResponse> = await request<ProfileResponse>(
+				"/api/me/profile",
+				{
+					method: "PATCH",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						display_name: name,
+						avatar_url: this.inputAvatar.value.trim(),
+						bio: this.inputBio.value,
+					}),
+				},
+			);
+			setBusy(this.saveBtn, false);
+
+			if (!result.ok || !result.data?.user) {
+				const message =
+					result.data?.message ??
+					(result.malformed || result.unreachable
+						? failureText(result)
+						: "保存失败，稍后重试");
+				say(this.msg, message, "error");
+				return;
+			}
+
+			const user = result.data.user;
+			this.inputName.value = user.display_name;
+			this.inputAvatar.value = user.avatar_url ?? "";
+			this.inputBio.value = user.bio ?? "";
+			this.paintAvatar(user.avatar_url);
+			say(this.msg, "资料已保存", "ok");
+		}
+	}
+
+	if (!customElements.get("profile-editor")) {
+		customElements.define("profile-editor", ProfileEditor);
+	}
+</script>

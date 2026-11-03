@@ -185,6 +185,23 @@ const cardWidth = isCenter ? "max-w-[42rem]" : "max-w-[28rem]";
 			{
 				isCenter && (
 					<div class="mt-6 space-y-3">
+						<a
+							href={url("/me/profile/")}
+							class="flex items-center justify-between gap-3 rounded-xl border border-(--line-divider) p-4 transition-colors duration-150 hover:bg-(--btn-regular-bg)"
+						>
+							<span class="flex items-center gap-2 text-sm font-semibold text-90">
+								<Icon
+									name="material-symbols:edit-outline"
+									class="text-base text-(--primary)"
+								/>
+								修改资料
+							</span>
+							<Icon
+								name="material-symbols:chevron-right"
+								class="text-base text-30"
+							/>
+						</a>
+
 						<div class="rounded-xl border border-(--line-divider) p-4">
 							<div class="flex items-center gap-2 text-sm font-semibold text-90">
 								<Icon

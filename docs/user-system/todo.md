@@ -126,17 +126,17 @@
 - [ ] 发布链路需要 fine-grained PAT，未跑通真实写入；无令牌时只能「导出 JSON」手动提交
 - [ ] 导航项/侧栏组件/书签导航/追番类未纳入（结构性配置，JSON 表达不清）
 
-## P3.8 个人中心与交互补完（待做）
+## P3.8 个人中心与交互补完（一部分已完成）
 
-- [ ] 个人中心支持改自己的账号资料：昵称、邮箱、头像、密码。
-      现状：`/me/`（`src/components/user/AccountCenter.astro`）只有改密码 + 退出所有设备，
-      自助接口也只有 `POST /api/auth/password`。要新增 `PATCH /api/me`，不能在页面上拼 `PATCH /api/admin/users/:uid`
-      —— 那个接口只认 admin，且带角色/状态字段。
-      - 昵称走现有 `display_name` 规则校验（与 `admin.ts` 的 `readName` 同一套）
-      - 改邮箱：`email_verified_at` 清空 + 发确认信；确认前按未验证处理（登录仍可用账号名）
-      - 头像：先只收 `https` 外链与站内路径；上传要等媒体库（P6.1）
-      - 改完 `session_epoch` 不动（只改资料不强制重新登录），但要回写 `/api/auth/me` 的缓存
-      - UI 复用 `AuthPanel.astro` 的反馈约定：`.auth-status` 空内容即隐藏，提交中用 `setBusy()` 在按钮内转圈
+- [x] **修改资料独立成页**：`/me/profile/`（`src/components/user/ProfileEditor.astro`）+
+      `PATCH /api/me/profile`，改昵称、头像链接、简介；账号 / 邮箱 / UID 只读展示。
+      - 校验：昵称 1–32 字；头像只收 `https` 外链与以 `/` 开头的站内路径（`http` 会混合内容、
+        `data:` 会把库撑大），空串即清空；简介 ≤200 字。`session_epoch` 不动。
+      - `SessionUser` 补 `bio`，`/api/auth/me` 一并返回；审计动作 `user.profile.update`。
+      - 入口在个人中心账号信息下方，样式与「写文章」等卡片一致。
+- [ ] 改邮箱：`email_verified_at` 清空 + 发确认信给新地址，确认前按未验证处理（登录仍可用账号名）。
+      目前资料页只展示邮箱并说明「换邮箱要先验证新地址」。
+- [ ] 头像上传（等媒体库 P6.1）；现在只能填链接。
 - [ ] 管理端右侧抽屉改成居中弹窗：`admin/src/components/UserEditor.vue` 现在是 `position: fixed` 贴右边的面板，
       改为遮罩 + 居中卡片（宽 `min(32rem, 92vw)`，高 `max-height: 90vh` 内部滚动），Esc 与点遮罩关闭，
       关闭后焦点回到触发按钮。新建与编辑共用同一个弹窗，别做成两套。

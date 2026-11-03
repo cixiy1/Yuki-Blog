@@ -1,0 +1,12 @@
+---
+import ProfileEditor from "@/components/user/ProfileEditor.astro";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+const title = "修改资料";
+const description = "修改昵称、头像与简介。";
+---
+
+<MainGridLayout title={title} description={description}>
+	<meta slot="head" name="robots" content="noindex, nofollow" />
+	<ProfileEditor />
+</MainGridLayout>

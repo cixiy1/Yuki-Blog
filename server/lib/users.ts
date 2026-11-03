@@ -94,6 +94,8 @@ export interface SessionUser {
 	email_verified: number;
 	display_name: string;
 	avatar_url: string | null;
+	/** 个人简介，资料页要回显原值 */
+	bio: string | null;
 	session_epoch: number;
 }
 
@@ -107,6 +109,7 @@ export function toSessionUser(row: UserRow): SessionUser {
 		email_verified: row.email_verified_at ? 1 : 0,
 		display_name: row.display_name,
 		avatar_url: row.avatar_url,
+		bio: row.bio,
 		session_epoch: row.session_epoch,
 	};
 }
