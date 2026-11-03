@@ -120,7 +120,7 @@
 - [x] `server/lib/github-contents.ts`：Contents API 写文件（GET sha → PUT，冲突报 409）
 - [x] `src/pages/site-defaults.json.ts`：构建期导出六分区默认值，给管理端当表单底座
 - [x] 管理端 `/admin/#/settings` 九组 tab + 字段级热/冷标记 + 列表编辑器 + 状态卡 + 版本历史
-- [x] 热通道：`src/utils/hot-config.ts` 运行时改 `--hue`，`hueAuto` 区分「热配置」与「访客自选」，`yb-hot-hue` 同步设置面板
+- [x] 热通道：`src/utils/hot-config.ts` 运行时改 `--hue` 与 `data-wallpaper-mode`，`hueAuto` / `wallpaperModeAuto` 区分「热配置」与「访客自选」，`yb-hot-hue` 同步设置面板；管理端保存后自动 apply 热字段
 - [x] 移除占位的「站点管理」页
 - [x] 验收：六分区覆盖均进构建产物；接口 13 项（六分区保存、未知分区/字段、类型、越界、枚举、列表项、列表上限、立即应用、无令牌 412、公开接口只吐热字段）；浏览器 16 步（含列表增删移动、保存不丢、热色相跨刷新保持、访客自选不被覆盖）
 - [ ] 发布链路需要 fine-grained PAT，未跑通真实写入；无令牌时只能「导出 JSON」手动提交
