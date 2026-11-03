@@ -463,7 +463,24 @@ const saveHint = computed(() => {
 	return "自动保存已开启";
 });
 
-const TOOLBAR = [
+/**
+ * 工具栏里的自定义按钮图标。Vditor 会给工具栏里的 svg 套上
+ * `fill: currentColor; stroke-width: 0`，所以描边属性写在 g 的 style 上，
+ * 不然图标会被压成一条看不见的线。图本身画在 24 格里只占 70%，
+ * 放大 1.25 倍才和 Vditor 自带图标一样大。
+ */
+const MINDMAP_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M4 12h4.5"/>' +
+	'<path d="M8.5 12c0-3.4 1.6-5.2 4.5-5.2h3"/>' +
+	'<path d="M8.5 12c0 3.4 1.6 5.2 4.5 5.2h3"/>' +
+	'<path d="M8.5 12h7"/>' +
+	'<path d="M18 5.4h2.6"/>' +
+	'<path d="M18 12h2.6"/>' +
+	'<path d="M18 18.6h2.6"/>' +
+	"</g></svg>";
+
+const TOOLBAR: Array<string | IMenuItem> = [
 	"headings",
 	"bold",
 	"italic",
@@ -487,6 +504,13 @@ const TOOLBAR = [
 	"both",
 	"preview",
 	"fullscreen",
+	"|",
+	{
+		name: "mindmap",
+		tip: "思维导图",
+		icon: MINDMAP_ICON,
+		click: () => openMindMap(),
+	},
 ];
 
 const editorEl = ref<HTMLDivElement | null>(null);
@@ -1100,16 +1124,6 @@ watch(isDark, (dark) => {
 									{{ isRepo ? "仓库文件" : statusLabel }}
 								</span>
 								<span v-if="isMdx" class="mdx-tag">MDX · 源码模式</span>
-								<button
-									type="button"
-									class="mm-launch"
-									:disabled="!editable"
-									title="用画布画思维导图，插入到正文光标处"
-									@click="openMindMap"
-								>
-									<AppIcon name="mindmap" :size="13" />
-									思维导图
-								</button>
 								<span class="doc-sub-key">正文 <code class="fm-key">body</code></span>
 							</div>
 						</div>
@@ -1909,31 +1923,6 @@ watch(isDark, (dark) => {
 	color: var(--admonitions-color-note);
 	font-size: 0.64rem;
 	font-weight: 600;
-}
-
-/* 思维导图入口：贴在正文标签旁边，跟 slug / 状态这些胶囊同一档视觉重量 */
-.mm-launch {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.25rem;
-	padding: 0.1rem 0.5rem;
-	border: 1px solid var(--line-divider);
-	border-radius: 999px;
-	background: transparent;
-	color: var(--fg-75);
-	font-size: 0.66rem;
-	line-height: 1.5;
-	cursor: pointer;
-}
-
-.mm-launch:hover:not(:disabled) {
-	background: var(--btn-plain-bg-hover);
-	color: var(--fg-90);
-}
-
-.mm-launch:disabled {
-	opacity: 0.45;
-	cursor: not-allowed;
 }
 
 .save-state {
