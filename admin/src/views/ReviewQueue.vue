@@ -11,6 +11,7 @@ import {
 	rejectPost,
 } from "../lib/review";
 import { goReview } from "../router";
+import { preloadVditorCore } from "../lib/vditor-preload";
 
 const items = ref<QueueItem[]>([]);
 const loading = ref(true);
@@ -82,8 +83,13 @@ async function submitReject(item: QueueItem): Promise<void> {
 }
 
 onMounted(() => {
-	if (canReview.value) void load();
-	else loading.value = false;
+	if (canReview.value) {
+		void load();
+		// 点开正文要用的 Markdown 渲染器有 3.7 MB，趁现在读列表先拉下来
+		preloadVditorCore();
+	} else {
+		loading.value = false;
+	}
 });
 </script>
 

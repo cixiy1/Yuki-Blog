@@ -18,6 +18,7 @@ import {
 	rejectPost,
 } from "../lib/review";
 import { isDark } from "../lib/theme";
+import { preloadVditorCore } from "../lib/vditor-preload";
 import { go, route } from "../router";
 
 const id = computed(() => route.value.id ?? 0);
@@ -71,6 +72,15 @@ const category = computed(() => {
 });
 
 const wordCount = computed(() => post.value?.body.length ?? 0);
+
+/**
+ * 通过后真正会写进仓库的位置。
+ * 不能用 row.repo_path——老数据的 repo_path 还停在早期设计（inbox/.../index.mdx），
+ * 而 publishRowToRepo 实际写的是 src/content/posts/<slug>.md。
+ */
+const publishPath = computed(() =>
+	post.value ? `src/content/posts/${post.value.slug}.md` : "",
+);
 
 async function renderBody(): Promise<void> {
 	const target = bodyEl.value;
@@ -163,6 +173,8 @@ watch(isDark, () => {
 let stopRoute: (() => void) | null = null;
 
 onMounted(() => {
+	// 直接开详情页（没有经过队列）时也得把渲染器预热上
+	preloadVditorCore();
 	void load();
 	stopRoute = watch(id, () => void load());
 });
@@ -222,13 +234,15 @@ onBeforeUnmount(() => {
 					</div>
 
 					<p class="doc-slug">
-						<code>{{ post.repo_path }}</code>
+						<code>{{ publishPath }}</code>
 					</p>
 				</header>
 
 				<div class="doc-body">
 					<div ref="bodyEl" class="preview" />
-					<p v-if="rendering" class="state">正在渲染正文…</p>
+					<p v-if="rendering" class="state">
+						正在渲染正文…（渲染器约 3 MB，首次打开要等一会儿，之后走缓存）
+					</p>
 					<p v-if="!rendering && wordCount === 0" class="state">
 						这篇没有正文，只有标题和摘要。
 					</p>
@@ -256,7 +270,8 @@ onBeforeUnmount(() => {
 						退回
 					</button>
 					<p class="hint">
-						通过会写到 <code>{{ post.repo_path }}</code>，构建约 1 分钟后线上可见。
+						通过会写到 <code>{{ publishPath }}</code
+						>，构建约 1 分钟后线上可见。
 					</p>
 				</template>
 
