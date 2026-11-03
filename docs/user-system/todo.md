@@ -128,12 +128,17 @@
 
 ## P3.8 个人中心与交互补完（一部分已完成）
 
-- [x] **修改资料独立成页**：`/me/profile/`（`src/components/user/ProfileEditor.astro`）+
+- [x] **账号设置独立成页**：`/me/profile/`（`src/components/user/ProfileEditor.astro`）+
       `PATCH /api/me/profile`，改昵称、头像链接、简介；账号 / 邮箱 / UID 只读展示。
       - 校验：昵称 1–32 字；头像只收 `https` 外链与以 `/` 开头的站内路径（`http` 会混合内容、
         `data:` 会把库撑大），空串即清空；简介 ≤200 字。`session_epoch` 不动。
       - `SessionUser` 补 `bio`，`/api/auth/me` 一并返回；审计动作 `user.profile.update`。
       - 入口在个人中心账号信息下方，样式与「写文章」等卡片一致。
+- [x] **改密码并入同一页**：`POST /api/auth/password`（当前密码 + 新密码 + 确认框），
+      改完 `session_epoch + 1` 踢掉其它设备，当前浏览器原地续票。个人中心原来那张单独的
+      「修改密码」卡已删，入口只留一处；GitHub 登录、从没设过密码的，当前密码可留空。
+      - ⚠️ 同一容器里放两个 form 时，submit 监听要绑在具体 form 上。绑在容器上会把密码表单的
+        提交一起收走，改密与保存资料并发，后者带着旧 epoch 换回 401「请先登录」。
 - [ ] 改邮箱：`email_verified_at` 清空 + 发确认信给新地址，确认前按未验证处理（登录仍可用账号名）。
       目前资料页只展示邮箱并说明「换邮箱要先验证新地址」。
 - [ ] 头像上传（等媒体库 P6.1）；现在只能填链接。
@@ -149,7 +154,9 @@
 - [x] 审核队列 UI：列表只给标题/摘要/字数，点标题或「看正文」进 `#/review/<id>` 读全文
       （`GET /api/admin/review/:id` 返回正文与 meta，正文用 Vditor 静态预览渲染，深浅主题跟着切）
 - [ ] 通过：读 `inbox/` → 写 `src/content/posts/u/<uid>/<slug>/` → 删 `inbox/` 原件 → 一次 commit
-- [ ] 退回：写理由、作者可见
+- [x] 退回：写理由、作者可见
+- [x] 划词批注（`post_notes`）：审核员选中正文任意一段写建议，正文高亮并标序号，
+      作者在编辑页顶部「审核意见」卡里按条看到引用与建议；通过时清空批注
 - [ ] GitHub API 封装（token 从 secret 取，Contents API + 批量 tree 提交）
 - [ ] 构建状态展示（最近一次 commit 与部署结果）
 - [ ] 验收：提交到线上可访问，1–3 分钟内完成
