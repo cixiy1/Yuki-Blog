@@ -85,6 +85,8 @@ interface Def {
 	kind: Kind;
 	placeholder?: string;
 	hint?: string;
+	/** 不单独占一行：跟着别的字段一起渲染（系列序号并进系列那行） */
+	merged?: boolean;
 }
 
 interface Group {
@@ -130,7 +132,9 @@ const GROUPS: Group[] = [
 				key: "seriesOrder",
 				label: "系列序号",
 				kind: "number",
-				placeholder: "同系列内排序",
+				placeholder: "序号",
+				// 和「系列」是同一件事，渲染进系列那一行，不单独占一行
+				merged: true,
 			},
 			{
 				key: "image",
@@ -216,6 +220,11 @@ const GROUPS: Group[] = [
 ];
 
 const ALL_DEFS: Def[] = GROUPS.flatMap((group) => group.defs);
+
+/** 属性栏里单独占一行的字段；merged 的并进所在行手写渲染 */
+function rowDefs(group: Group): Def[] {
+	return group.defs.filter((def) => !def.merged);
+}
 const KNOWN = new Set([
 	...ALL_DEFS.map((def) => def.key),
 	"title",
@@ -1113,10 +1122,11 @@ watch(isDark, (dark) => {
 						<p class="panel-title">{{ group.title }}</p>
 						<p v-if="group.note" class="panel-hint">{{ group.note }}</p>
 
-						<div v-for="def in group.defs" :key="def.key" class="field-row">
+						<div v-for="def in rowDefs(group)" :key="def.key" class="field-row">
 							<label v-if="def.kind !== 'bool'" class="field-label" :for="`f-${def.key}`">
 								{{ def.label }}
 								<code class="fm-key">{{ def.key }}</code>
+								<code v-if="def.kind === 'series'" class="fm-key">seriesOrder</code>
 							</label>
 
 							<template v-if="def.kind === 'provenance'">
@@ -1189,20 +1199,44 @@ watch(isDark, (dark) => {
 							</template>
 
 							<template v-else-if="def.kind === 'series'">
-								<button
-									type="button"
-									class="picker-btn"
-									:disabled="!editable"
-									@click="openSeries"
-								>
-									<span
-										class="picker-val"
-										:class="{ 'is-empty': !textOf('series').trim() }"
+								<div class="series-row">
+									<button
+										type="button"
+										class="picker-btn"
+										:disabled="!editable"
+										@click="openSeries"
 									>
-										{{ textOf("series").trim() || def.placeholder }}
-									</span>
-									<AppIcon name="chevron" :size="14" />
-								</button>
+										<span
+											class="picker-val"
+											:class="{ 'is-empty': !textOf('series').trim() }"
+										>
+											{{ textOf("series").trim() || def.placeholder }}
+										</span>
+										<AppIcon name="chevron" :size="14" />
+									</button>
+									<input
+										id="f-seriesOrder"
+										v-model="vals.seriesOrder"
+										class="field order-input"
+										type="number"
+										min="1"
+										:disabled="!editable || !textOf('series').trim()"
+										placeholder="序号"
+										aria-label="系列序号"
+										@input="onFieldInput"
+									/>
+								</div>
+								<p v-if="seriesOrderHint" class="field-hint order-hint">
+									{{ seriesOrderHint }}
+									<button
+										v-if="editable && canSuggestOrder"
+										type="button"
+										class="hint-btn"
+										@click="useNextOrder"
+									>
+										填 {{ nextFreeOrder }}
+									</button>
+								</p>
 							</template>
 
 							<template v-else-if="def.kind === 'image'">
@@ -1275,20 +1309,6 @@ watch(isDark, (dark) => {
 								:placeholder="def.placeholder"
 								@input="onFieldInput"
 							/>
-							<p
-								v-if="def.key === 'seriesOrder' && seriesOrderHint"
-								class="field-hint order-hint"
-							>
-								{{ seriesOrderHint }}
-								<button
-									v-if="editable && canSuggestOrder"
-									type="button"
-									class="hint-btn"
-									@click="useNextOrder"
-								>
-									填 {{ nextFreeOrder }}
-								</button>
-							</p>
 							<p v-if="def.hint" class="field-hint">{{ def.hint }}</p>
 						</div>
 					</section>
@@ -1580,12 +1600,19 @@ watch(isDark, (dark) => {
 }
 
 /* ---- 系列选择器：长得像输入框，点开是弹窗 ---- */
+.series-row {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
 .picker-btn {
 	display: flex;
+	flex: 1;
+	min-width: 0;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.4rem;
-	width: 100%;
 	padding: 0.4rem 0.6rem;
 	border: 1px solid var(--line-divider);
 	border-radius: 0.55rem;
@@ -1600,6 +1627,23 @@ watch(isDark, (dark) => {
 
 :root.dark .picker-btn {
 	background: rgba(255, 255, 255, 0.06);
+}
+
+/* 序号跟着系列走，窄到只放得下两三位数 */
+.order-input {
+	flex: none;
+	width: 3.6rem;
+	padding: 0.4rem 0.3rem;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+	-moz-appearance: textfield;
+	appearance: textfield;
+}
+
+.order-input::-webkit-outer-spin-button,
+.order-input::-webkit-inner-spin-button {
+	margin: 0;
+	-webkit-appearance: none;
 }
 
 .picker-btn:hover:not(:disabled) {
