@@ -11,6 +11,7 @@ import { isDark, toggleTheme } from "../lib/theme";
 import { editOrigin, go, type RouteName, route } from "../router";
 import AllPosts from "../views/AllPosts.vue";
 import AuditLog from "../views/AuditLog.vue";
+import CommentsAdmin from "../views/CommentsAdmin.vue";
 import MediaLibrary from "../views/MediaLibrary.vue";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
@@ -30,6 +31,7 @@ const VIEWS: Record<RouteName, unknown> = {
 	components: MyComponents,
 	media: MediaLibrary,
 	review: ReviewQueue,
+	comments: CommentsAdmin,
 	users: UsersAdmin,
 	audit: AuditLog,
 	settings: SiteSettings,
@@ -86,6 +88,12 @@ const navGroups = computed<NavGroup[]>(() => {
 			label: "审核",
 			items: [
 				{ key: "review", label: "审核队列", icon: "review", path: "/review" },
+				{
+					key: "comments",
+					label: "评论",
+					icon: "comment",
+					path: "/comments",
+				},
 			],
 		});
 	}

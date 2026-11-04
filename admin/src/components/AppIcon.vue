@@ -88,6 +88,12 @@ const PATHS: Record<string, string[]> = {
 	],
 	// 图片：一个画框加一道山脊，笔数与自带图标同量级
 	image: ["M4 5h16v14H4z", "m4 16.4 4.4-4.4 3.2 3.2 2.9-2.9L20 16.6"],
+	// 评论：一个气泡加尾巴
+	comment: [
+		"M20.5 11.6a8 8 0 0 1-8.5 8 9 9 0 0 1-3.6-.8L4 20l1.3-4.1a8 8 0 1 1 15.2-4.3z",
+		"M9 11.5h7",
+		"M9 15h4",
+	],
 };
 
 const props = defineProps<{ name: string; size?: number }>();
