@@ -196,7 +196,7 @@ onMounted(refresh);
 			v-else
 			:items="visible"
 			show-status
-			:count-text="`${visible.length} 篇`"
+			:show-metrics="canReview"
 			sort-text="按最后改动时间排序"
 			@open="openPost"
 		>

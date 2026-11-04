@@ -60,11 +60,10 @@ onMounted(refresh);
 			desc="站点上已发布的全部文章，读的是仓库快照；编辑即改文件，保存后构建生效。"
 		>
 			<template #actions>
-				<input
-					v-model="keyword"
-					class="field search"
-					placeholder="搜索标题、摘要或标签"
-				/>
+				<label class="search-box">
+					<AppIcon name="search" :size="15" />
+					<input v-model="keyword" class="search-input" placeholder="搜索标题、摘要或标签" />
+				</label>
 				<button type="button" class="btn-regular" @click="refresh">
 					<AppIcon name="refresh" :size="15" />
 					刷新
@@ -96,9 +95,41 @@ onMounted(refresh);
 </template>
 
 <style scoped>
-.search {
+.search-box {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
 	width: 15rem;
 	height: 2.35rem;
+	padding: 0 0.7rem;
+	border-radius: 0.6rem;
+	background: var(--btn-regular-bg);
+	color: var(--fg-50);
+	transition:
+		background-color 0.15s ease,
+		box-shadow 0.15s ease,
+		color 0.15s ease;
+}
+
+/* 聚焦时整块换成描边高亮，比只给 input 描边更像一个完整的输入件 */
+.search-box:focus-within {
+	background: var(--card-bg);
+	color: var(--fg-90);
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
+}
+
+.search-input {
+	flex: 1;
+	min-width: 0;
+	border: none;
+	background: transparent;
+	outline: none;
+	font-size: 0.82rem;
+	color: var(--fg-90);
+}
+
+.search-input::placeholder {
+	color: var(--fg-50);
 }
 
 .state {
@@ -117,15 +148,18 @@ onMounted(refresh);
 	font-size: 0.8rem;
 }
 
+/* 脚注收成一条带强调线的说明，别让它在页面底部散成一团灰字 */
 .footnote {
-	margin: 1.1rem 0 0;
+	margin: 1.4rem 0 0;
+	padding-left: 0.75rem;
+	border-left: 2px solid var(--line-divider);
 	font-size: 0.72rem;
-	color: var(--fg-30);
-	line-height: 1.8;
+	color: var(--fg-50);
+	line-height: 1.9;
 }
 
 @media (max-width: 640px) {
-	.search {
+	.search-box {
 		width: 100%;
 	}
 }
