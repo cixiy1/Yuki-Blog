@@ -15,7 +15,8 @@
 			"!/api/dynamic.json",
 			"!/api/allPostMeta.json",
 			"!/api/post-index.json",
-			"!/api/media-index.json"
+			"!/api/media-index.json",
+			"!/api/stats-config.json"
 		]
 	},
 	"d1_databases": [

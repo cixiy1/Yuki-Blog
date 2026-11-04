@@ -27,6 +27,8 @@ export interface PostSummary {
 	review_note: string | null;
 	created_at: string;
 	updated_at: string;
+	/** 已通过审核的评论数；接口没给（老接口）时按 0 处理 */
+	comments?: number;
 }
 
 export interface PostDetail extends PostSummary {

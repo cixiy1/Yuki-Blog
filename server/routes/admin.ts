@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { writeAudit } from "../lib/audit";
 import { encryptPassword } from "../lib/password";
+import { readPostViews } from "../lib/post-views";
 import { notifyApproved } from "../lib/review-notify";
 import { findByAccount, findByEmail, randomUid } from "../lib/users";
 import {
@@ -135,6 +136,25 @@ async function readJson(
 admin.get("/ping", requireRole("admin"), (c) => {
 	const user = c.get("user");
 	return c.json({ ok: true, role: user?.role ?? null });
+});
+
+/**
+ * 批量文章阅读量。审核员也该看到自己审的稿子跑得怎么样，所以门槛是 reviewer。
+ *
+ * 计数服务是外部免费的，随时可能不通：拿不到就把 views 留空并带上 error，
+ * 前端静默隐藏数字，不要因为一个装饰性指标让整个列表报错。
+ */
+admin.get("/post-views", requireRole("reviewer"), async (c) => {
+	const raw = c.req.query("slugs") ?? "";
+	const slugs = raw
+		.split(",")
+		.map((slug) => slug.trim())
+		.filter(Boolean)
+		.slice(0, 100);
+	if (slugs.length === 0) return c.json({ views: {} });
+
+	const { views, error } = await readPostViews(c.env.ASSETS, slugs);
+	return c.json(error ? { views, error } : { views });
 });
 
 admin.get("/users", requireRole("admin"), async (c) => {

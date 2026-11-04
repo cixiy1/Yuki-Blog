@@ -279,6 +279,24 @@ function repoToSummary(post: RepoPost): Record<string, unknown> {
 	};
 }
 
+/**
+ * 每篇文章的已通过评论数，key 用 frontmatter slug（评论表的 target 就是这个）。
+ * 一次 GROUP BY 比逐个 slug 拼 IN 省事；表还没建（老库）时返回空表，
+ * 别让列表因为一个附属指标整个 500。
+ */
+async function commentCounts(db: D1Database): Promise<Map<string, number>> {
+	try {
+		const rows = await db
+			.prepare(
+				"SELECT target, COUNT(*) AS total FROM comments WHERE status = 'approved' GROUP BY target",
+			)
+			.all<{ target: string; total: number }>();
+		return new Map((rows.results ?? []).map((row) => [row.target, row.total]));
+	} catch {
+		return new Map();
+	}
+}
+
 function toSummary(row: PostRow): Record<string, unknown> {
 	const meta = parseMeta(row.meta_json);
 	return {
@@ -415,6 +433,7 @@ me.get("/posts", requireAuth, async (c) => {
 	const isAdmin = user.role === "admin";
 	const repoPosts = isAdmin ? await readRepoPosts(c.env.ASSETS) : [];
 	const repoBySlug = new Map(repoPosts.map((post) => [post.slug, post]));
+	const counts = await commentCounts(c.env.DB);
 
 	/*
 	 * 已经落到仓库的 D1 行（发布时写了 repo_path）按仓库文章呈现。
@@ -426,17 +445,25 @@ me.get("/posts", requireAuth, async (c) => {
 	for (const row of rows.results ?? []) {
 		const inRepo = isAdmin && row.status === "published" && row.repo_path;
 		if (!inRepo) {
-			mine.push(toSummary(row));
+			mine.push({ ...toSummary(row), comments: counts.get(row.slug) ?? 0 });
 			continue;
 		}
 		if (repoBySlug.has(row.slug)) continue;
-		mine.push({ ...toSummary(row), origin: "repo", id: 0 });
+		mine.push({
+			...toSummary(row),
+			origin: "repo",
+			id: 0,
+			comments: counts.get(row.slug) ?? 0,
+		});
 	}
 
 	const known = new Set(mine.map((post) => String(post.slug)));
 	const owned: Record<string, unknown>[] = repoPosts
 		.filter((post) => !known.has(post.slug))
-		.map((post) => repoToSummary(post));
+		.map((post) => ({
+			...repoToSummary(post),
+			comments: counts.get(post.slug) ?? 0,
+		}));
 
 	const posts = [...mine, ...owned].sort(
 		(a, b) =>
@@ -460,17 +487,23 @@ me.get("/all-posts", requireAuth, async (c) => {
 		);
 	}
 
-	const repo = (await readRepoPosts(c.env.ASSETS)).map((post) =>
-		repoToSummary(post),
-	);
+	const counts = await commentCounts(c.env.DB);
+	// 显式标类型：展开 Record<string, unknown> 会把索引签名丢掉，只剩新加的 comments，
+	// 后面访问 post.slug 就会报「属性不存在」
+	const repo: Record<string, unknown>[] = (
+		await readRepoPosts(c.env.ASSETS)
+	).map((post) => ({
+		...repoToSummary(post),
+		comments: counts.get(post.slug) ?? 0,
+	}));
 	const known = new Set(repo.map((post) => String(post.slug)));
 
 	const rows = await c.env.DB.prepare(
 		"SELECT * FROM posts WHERE status = 'published' ORDER BY published_at DESC LIMIT 200",
 	).all<PostRow>();
-	const extra = (rows.results ?? [])
+	const extra: Record<string, unknown>[] = (rows.results ?? [])
 		.filter((row) => !known.has(row.slug))
-		.map((row) => toSummary(row));
+		.map((row) => ({ ...toSummary(row), comments: counts.get(row.slug) ?? 0 }));
 
 	const posts = [...repo, ...extra].sort(
 		(a, b) =>
