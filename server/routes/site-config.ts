@@ -395,7 +395,9 @@ admin.put("/mail-config", sameOriginGuard, requireJsonBody, async (c) => {
 		{
 			mode: typeof raw.mode === "string" ? raw.mode : undefined,
 			from: typeof raw.from === "string" ? raw.from : undefined,
-			notifyTo: typeof raw.notifyTo === "string" ? raw.notifyTo : undefined,
+			// 数组或逗号分隔字符串都收；老前端还在传 notifyTo 时也认
+			adminEmails:
+				raw.adminEmails !== undefined ? raw.adminEmails : raw.notifyTo,
 			smtp: {
 				host: typeof smtp.host === "string" ? smtp.host : undefined,
 				port: Number(smtp.port) || undefined,

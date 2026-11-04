@@ -77,8 +77,8 @@ export type SmtpSecurity = "ssl" | "starttls" | "none";
 export interface MailConfig {
 	mode: MailMode;
 	from: string;
-	/** 有新稿待审时提醒谁，逗号分隔；留空 = 所有启用中的管理员与审核员账号 */
-	notifyTo: string;
+	/** 管理员邮箱：待审、撤回等提醒的收件人，可多个；留空 = 所有管理员与审核员账号 */
+	adminEmails: string[];
 	smtp: {
 		host: string;
 		port: number;

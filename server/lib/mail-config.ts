@@ -19,10 +19,10 @@ export interface MailConfigStored {
 	mode: MailMode;
 	from: string;
 	/**
-	 * 有新稿待审时提醒谁，逗号分隔。
+	 * 管理员邮箱。待审提醒、撤回提醒以及后续的告警都发到这里。
 	 * 留空则退化为「所有启用中的管理员与审核员账号的邮箱」。
 	 */
-	notifyTo: string;
+	adminEmails: string[];
 	smtp: {
 		host: string;
 		port: number;
@@ -42,9 +42,34 @@ export interface MailConfig extends MailConfigStored {
 export const MAIL_DEFAULTS: MailConfigStored = {
 	mode: "off",
 	from: DEFAULT_FROM,
-	notifyTo: "",
+	adminEmails: [],
 	smtp: { host: "", port: 465, security: "ssl", user: "" },
 };
+
+const MAX_ADMIN_EMAILS = 10;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * 收件人统一在这里收敛：逗号、分号、空格、换行都算分隔符，
+ * 去重、丢掉不合法的、最多 10 个。
+ *
+ * 入参放宽成 unknown：既要能吃管理端传来的数组，也要能吃老数据里
+ * 那串逗号分隔的 notifyTo。
+ */
+export function normalizeEmails(input: unknown): string[] {
+	const pieces = Array.isArray(input)
+		? input.map((item) => (typeof item === "string" ? item : ""))
+		: typeof input === "string"
+			? input.split(/[,;\s]+/)
+			: [];
+	const seen = new Set<string>();
+	for (const piece of pieces) {
+		const address = piece.trim();
+		if (EMAIL_RE.test(address)) seen.add(address);
+		if (seen.size >= MAX_ADMIN_EMAILS) break;
+	}
+	return [...seen];
+}
 
 function normalizeSecurity(value: unknown): SmtpSecurity {
 	return value === "starttls" || value === "none" ? value : "ssl";
@@ -62,20 +87,25 @@ function normalizeMode(value: unknown): MailMode | null {
 		: null;
 }
 
+/** 老数据把收件人存在 `notifyTo` 里（逗号分隔的字符串），读的时候兜住 */
+type StoredMail = Partial<MailConfigStored> & { notifyTo?: string };
+
+function readAdminEmails(stored: StoredMail): string[] {
+	const list = normalizeEmails(stored.adminEmails);
+	return list.length > 0 ? list : normalizeEmails(stored.notifyTo);
+}
+
 /** 管理端读：不含任何密钥，只有「配没配」由 secretStatus 那边回答 */
 export async function readMailSettings(
 	db: D1Database,
 ): Promise<MailConfigStored> {
-	const stored = await readSetting<Partial<MailConfigStored>>(
-		db,
-		MAIL_CONFIG_KEY,
-	);
+	const stored = await readSetting<StoredMail>(db, MAIL_CONFIG_KEY);
 	if (!stored) return structuredClone(MAIL_DEFAULTS);
 	const security = normalizeSecurity(stored.smtp?.security);
 	return {
 		mode: normalizeMode(stored.mode) ?? "off",
 		from: (stored.from ?? "").trim() || DEFAULT_FROM,
-		notifyTo: (stored.notifyTo ?? "").trim(),
+		adminEmails: readAdminEmails(stored),
 		smtp: {
 			host: (stored.smtp?.host ?? "").trim(),
 			port: normalizePort(stored.smtp?.port, security),
@@ -89,7 +119,8 @@ export async function readMailSettings(
 export interface MailConfigPatch {
 	mode?: string;
 	from?: string;
-	notifyTo?: string;
+	/** 数组或逗号分隔的字符串都收，也兼容老前端传来的 notifyTo */
+	adminEmails?: unknown;
 	smtp?: {
 		host?: string;
 		port?: number | string;
@@ -110,7 +141,11 @@ export async function writeMailSettings(
 	const next: MailConfigStored = {
 		mode: normalizeMode(patch.mode) ?? current.mode,
 		from: (patch.from ?? current.from).trim() || DEFAULT_FROM,
-		notifyTo: (patch.notifyTo ?? current.notifyTo).trim(),
+		// 旧键 notifyTo 不写回：存一次就完成迁移
+		adminEmails:
+			patch.adminEmails === undefined
+				? current.adminEmails
+				: normalizeEmails(patch.adminEmails),
 		smtp: {
 			host: (patch.smtp?.host ?? current.smtp.host).trim(),
 			port: normalizePort(patch.smtp?.port ?? current.smtp.port, security),
@@ -146,7 +181,7 @@ export async function mailSettingsView(env: Env): Promise<MailSettingsView> {
 			mode: runtime.mode,
 			from: runtime.from,
 			// env 里没有这一项，界面留空 = 走「所有管理员账号」的兜底
-			notifyTo: "",
+			adminEmails: [],
 			smtp: {
 				host: runtime.smtp.host,
 				port: runtime.smtp.port,
@@ -206,7 +241,7 @@ export async function resolveMailConfig(env: Env): Promise<MailConfig> {
 	return {
 		mode,
 		from: (env.MAIL_FROM || DEFAULT_FROM).trim(),
-		notifyTo: "",
+		adminEmails: [],
 		resendKey,
 		smtp: {
 			host: envHost,

@@ -1,11 +1,11 @@
+import { resolveAdminEmails } from "./admin-mail";
 import { sendReviewNotifyMail, sendReviewWithdrawMail } from "./mail";
-import { readMailSettings } from "./mail-config";
 
 /**
  * 「有新稿待审」的邮件提醒。
  *
- * 收件人两层：管理端「站点设置 → 集成 → 发信」里填的待审通知邮箱优先；
- * 没填则退化为所有启用中的管理员与审核员账号——刚部署完不配也能收到。
+ * 收件人取「管理员邮箱」：站点设置里填了就用它（可填多个），没填则退化为
+ * 所有启用中的管理员与审核员账号——刚部署完不配也能收到。
  *
  * 发信失败只写日志，不能让作者提交审核这件事跟着失败。
  */
@@ -17,29 +17,6 @@ export interface ReviewNotifyPost {
 	summary: string | null;
 	body: string | null;
 	meta_json: string | null;
-}
-
-function splitAddresses(raw: string): string[] {
-	const seen = new Set<string>();
-	for (const piece of raw.split(/[,;\s]+/)) {
-		const address = piece.trim();
-		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) seen.add(address);
-	}
-	return [...seen];
-}
-
-async function resolveRecipients(env: Env): Promise<string[]> {
-	const config = await readMailSettings(env.DB);
-	const configured = splitAddresses(config.notifyTo);
-	if (configured.length > 0) return configured;
-
-	const rows = await env.DB.prepare(
-		`SELECT email FROM users
-		  WHERE status = 'active' AND role IN ('admin', 'reviewer') AND email <> ''
-		  ORDER BY role DESC, id ASC
-		  LIMIT 20`,
-	).all<{ email: string }>();
-	return splitAddresses((rows.results ?? []).map((row) => row.email).join(","));
 }
 
 /** 中文按字算，英文按词算，取个两者都说得过去的估计 */
@@ -83,11 +60,9 @@ export async function notifyReviewers(
 	origin: string,
 ): Promise<void> {
 	try {
-		const to = await resolveRecipients(env);
+		const to = await resolveAdminEmails(env);
 		if (to.length === 0) {
-			console.log(
-				"[review] 没配待审通知邮箱，也没有可用的管理员账号，跳过提醒",
-			);
+			console.log("[review] 没配管理员邮箱，也没有可用的管理员账号，跳过提醒");
 			return;
 		}
 
@@ -138,7 +113,7 @@ export async function notifyWithdrawn(
 	origin: string,
 ): Promise<void> {
 	try {
-		const to = await resolveRecipients(env);
+		const to = await resolveAdminEmails(env);
 		if (to.length === 0) {
 			console.log("[review] 没有可通知的收件人，跳过撤回提醒");
 			return;

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import WallpaperModePicker from "../components/WallpaperModePicker.vue";
 import {
@@ -85,9 +84,13 @@ const tagInput = ref<Record<string, string>>({});
 const mailConfig = ref<MailConfig>({
 	mode: "off",
 	from: "Yuki Blog <mail@yiyu14.top>",
-	notifyTo: "",
+	adminEmails: [],
 	smtp: { host: "", port: 465, security: "ssl", user: "" },
 });
+/** 管理员邮箱的输入草稿：回车或逗号落成一个标签 */
+const adminEmailDraft = ref("");
+const ADMIN_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_ADMIN_EMAILS = 10;
 const mailSource = ref<"db" | "env">("db");
 const mailBusy = ref(false);
 const mailTesting = ref(false);
@@ -478,7 +481,38 @@ async function copyCallback(): Promise<void> {
 	}
 }
 
+/** 把输入框里的内容落成标签；有写错的段就留在框里，别默默吞掉 */
+function commitAdminEmail(): void {
+	const raw = adminEmailDraft.value;
+	if (!raw.trim()) return;
+	const list = mailConfig.value.adminEmails;
+	let hasInvalid = false;
+	for (const piece of raw.split(/[,;\s]+/)) {
+		const email = piece.trim();
+		if (!email) continue;
+		if (!ADMIN_EMAIL_RE.test(email)) {
+			hasInvalid = true;
+			continue;
+		}
+		if (list.includes(email) || list.length >= MAX_ADMIN_EMAILS) continue;
+		list.push(email);
+	}
+	if (!hasInvalid) adminEmailDraft.value = "";
+}
+
+function onAdminEmailKey(event: KeyboardEvent): void {
+	if (event.key !== "Enter" && event.key !== "," && event.key !== ";") return;
+	event.preventDefault();
+	commitAdminEmail();
+}
+
+function removeAdminEmail(index: number): void {
+	mailConfig.value.adminEmails.splice(index, 1);
+}
+
 async function onSaveMail(): Promise<void> {
+	// 输入框里还没按回车的地址也算数，否则填完直接点保存会丢
+	commitAdminEmail();
 	mailBusy.value = true;
 	mailResult.value = null;
 	try {
@@ -703,18 +737,43 @@ onMounted(() => void refresh());
 
 					<div class="row">
 						<div class="label">
-							<span class="name">待审通知</span>
+							<span class="name">管理员邮箱</span>
 							<span class="hint">
-								有新稿待审时提醒此邮箱；多个地址用逗号隔开，留空则发给全部管理员与审核员账号。
+								待审、撤回等提醒都发到这里，可填多个；留空则发给全部管理员与审核员账号。
 							</span>
 						</div>
 						<div class="control">
-							<input
-								v-model="mailConfig.notifyTo"
-								class="field"
-								autocomplete="off"
-								placeholder="me@example.com"
-							/>
+							<div class="email-chips">
+								<span
+									v-for="(email, index) in mailConfig.adminEmails"
+									:key="email"
+									class="email-chip"
+								>
+									{{ email }}
+									<button
+										type="button"
+										class="chip-remove"
+										:aria-label="`移除 ${email}`"
+										@click="removeAdminEmail(index)"
+									>
+										×
+									</button>
+								</span>
+								<input
+									v-model="adminEmailDraft"
+									class="email-input"
+									autocomplete="off"
+									:placeholder="
+										mailConfig.adminEmails.length
+											? '再加一个'
+											: 'me@example.com'
+									"
+									:disabled="mailConfig.adminEmails.length >= MAX_ADMIN_EMAILS"
+									@keydown="onAdminEmailKey"
+									@blur="commitAdminEmail"
+								/>
+							</div>
+							<p class="hint">回车或逗号分隔，最多 10 个。</p>
 						</div>
 					</div>
 
@@ -1253,6 +1312,81 @@ onMounted(() => void refresh());
 	font-size: 0.73rem;
 	color: var(--fg-50);
 	line-height: 1.5;
+}
+
+/* 管理员邮箱：已填的显示成标签，输入框跟在后面，回车落一个 */
+.email-chips {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.3rem 0.4rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.75rem;
+	background: rgba(0, 0, 0, 0.025);
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease;
+}
+
+.email-chips:focus-within {
+	border-color: var(--primary);
+	box-shadow: 0 0 0 1px var(--primary);
+}
+
+:global(:root.dark) .email-chips {
+	background: rgba(255, 255, 255, 0.06);
+}
+
+.email-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+	padding: 0.15rem 0.25rem 0.15rem 0.5rem;
+	border-radius: 0.5rem;
+	background: rgba(0, 0, 0, 0.06);
+	font-size: 0.8rem;
+	line-height: 1.4;
+}
+
+:global(:root.dark) .email-chip {
+	background: rgba(255, 255, 255, 0.12);
+}
+
+.chip-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.05rem;
+	height: 1.05rem;
+	border: 0;
+	border-radius: 0.35rem;
+	background: transparent;
+	color: var(--fg-50);
+	font-size: 0.85rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.chip-remove:hover {
+	background: rgba(0, 0, 0, 0.08);
+	color: var(--fg-90);
+}
+
+.email-input {
+	flex: 1;
+	min-width: 9rem;
+	padding: 0.15rem 0.3rem;
+	border: 0;
+	background: transparent;
+	color: var(--fg-90);
+	font: inherit;
+	font-size: 0.85rem;
+	outline: none;
+}
+
+.email-input::placeholder {
+	color: var(--fg-50);
 }
 
 .row {
