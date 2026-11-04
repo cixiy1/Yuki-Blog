@@ -15,6 +15,7 @@ import AppIcon from "../components/AppIcon.vue";
 import LoadingState from "../components/LoadingState.vue";
 import MediaPickerDialog from "../components/MediaPickerDialog.vue";
 import PageHeader from "../components/PageHeader.vue";
+import PagePreview from "../components/PagePreview.vue";
 import SeriesPickerDialog from "../components/SeriesPickerDialog.vue";
 import { ApiError } from "../lib/api";
 import { isAdmin } from "../lib/auth";
@@ -257,6 +258,14 @@ const KEY_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 /* ---------- 表单状态 ---------- */
 
 const form = reactive({ title: "", slug: "", body: "" });
+/** 页面预览：MDX 里的组件在编辑器里渲染不出来，只能看线上真实页面 */
+const previewOpen = ref(false);
+const previewUrl = computed(() => {
+	const slug = (form.slug || loadedSlug.value || "").trim();
+	if (!slug) return "";
+	// 站点部署在根路径，管理端在 /admin/，所以取 origin 再拼文章地址
+	return `${window.location.origin}/posts/${encodeURIComponent(slug)}/`;
+});
 /** 非布尔字段统一按字符串存，保存时按 kind 转回类型。
     number 输入框的 v-model 会给回数字，取值一律走 textOf */
 const vals = reactive<Record<string, string | number>>({});
@@ -1077,9 +1086,14 @@ function createEditor(): void {
 		resize: { enable: false },
 		theme: isDark.value ? "dark" : "classic",
 		cache: { enable: false },
-		toolbar: TOOLBAR,
+		// MDX 的分屏预览只会把 import 语句当正文、组件是个空标签，看了反而误判，直接不给
+		toolbar: isMdx.value
+			? TOOLBAR.filter((item) => item !== "both" && item !== "preview")
+			: TOOLBAR,
 		placeholder: "正文…",
 		preview: {
+			// MDX 只写源码：markdown 预览里 import 会变成一行正文、组件是空标签，看着像坏了
+			mode: isMdx.value ? "editor" : "both",
 			theme: { current: isDark.value ? "dark" : "light" },
 			hljs: { style: isDark.value ? "monokai" : "github", lineNumber: true },
 			math: { engine: "KaTeX" },
@@ -1441,6 +1455,16 @@ watch(isDark, (dark) => {
 					返回列表
 				</button>
 				<button
+					type="button"
+					class="btn-ghost"
+					:disabled="!previewUrl"
+					title="按桌面 / 平板 / 手机宽度看线上页面"
+					@click="previewOpen = true"
+				>
+					<AppIcon name="eye" :size="15" />
+					预览页面
+				</button>
+				<button
 					v-if="status === 'pending'"
 					type="button"
 					class="btn-regular"
@@ -1558,7 +1582,11 @@ watch(isDark, (dark) => {
 								<span class="pill" :data-status="isRepo ? 'published' : status">
 									{{ isRepo ? "仓库文件" : statusLabel }}
 								</span>
-								<span v-if="isMdx" class="mdx-tag">MDX · 源码模式</span>
+								<span
+									v-if="isMdx"
+									class="mdx-tag"
+									title="MDX 里的组件在编辑器里渲染不出来，用「预览页面」看效果"
+								>MDX · 源码模式</span>
 								<span class="doc-sub-key">正文 <code class="fm-key">body</code></span>
 							</div>
 						</div>
@@ -1858,6 +1886,13 @@ watch(isDark, (dark) => {
 			:target-label="mmTargetLabel"
 			@close="mmOpen = false"
 			@submit="applyMindMap"
+		/>
+
+		<PagePreview
+			v-if="previewOpen && previewUrl"
+			:url="previewUrl"
+			:title="form.title"
+			@close="previewOpen = false"
 		/>
 
 		<div
