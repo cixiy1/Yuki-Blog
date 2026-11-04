@@ -671,7 +671,7 @@ onBeforeUnmount(() => {
 					</p>
 				</template>
 
-				<div class="side-split" />
+				<div class="side-rule" />
 
 				<p class="side-title">
 					批注
@@ -1049,7 +1049,8 @@ onBeforeUnmount(() => {
 	font-weight: 500;
 }
 
-.side-split {
+/* 独立的一根横线，别和上面带文字的 .side-split 共用类名：两条规则会互相盖掉 */
+.side-rule {
 	height: 1px;
 	margin: 0.35rem 0 0.1rem;
 	background: var(--line-divider);
