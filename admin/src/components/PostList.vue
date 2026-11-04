@@ -120,13 +120,69 @@ function formatCount(value: number | undefined): string {
 
 /* ---------------- 封面 ---------------- */
 
-/** 加载失败的封面记一笔，回落到占位块，别留个破图图标在那儿 */
-const brokenCovers = reactive(new Set<string>());
+/**
+ * 封面加载失败先自动重试，还不行才落回占位块。
+ *
+ * 地址不是随文章一起就位的：仓库文章的封面由构建期解析（见
+ * src/pages/api/post-index.json.ts），刚上传封面那会儿列表已经能拿到地址，
+ * 但站点还没构建完，图片就是 404。以前失败一次就按 slug 记死，同一个标签页里
+ * 这张卡之后一直显示占位块——看着就像「封面没上传成功」，得整页刷新才好。
+ *
+ * 现在按「文章 + 地址」记失败次数：地址换了（重新选封面）重新算；失败后先躲
+ * 一下再带参数要一次，间隔越拉越长，够等一次构建跑完。四次都不成才认。
+ */
+const COVER_RETRY_DELAYS = [1500, 10_000, 30_000];
+
+/** 各封面失败过几次，超过重试次数就放弃 */
+const coverFails = reactive(new Map<string, number>());
+/** 正在等重试的封面：这段时间先显示占位块，别把破图图标摆出来 */
+const coverWaiting = reactive(new Set<string>());
+const coverTimers = new Set<number>();
+
+function coverKey(post: PostSummary): string {
+	return `${post.slug}\u0000${(post.cover ?? "").trim()}`;
+}
 
 function coverOf(post: PostSummary): string {
-	if (brokenCovers.has(post.slug)) return "";
-	return (post.cover ?? "").trim();
+	const url = (post.cover ?? "").trim();
+	if (!url) return "";
+	const key = coverKey(post);
+	const fails = coverFails.get(key) ?? 0;
+	if (fails > COVER_RETRY_DELAYS.length) return "";
+	if (coverWaiting.has(key)) return "";
+	// 同一个地址可能被 CF 缓存了 404，重试时带个参数绕开
+	return fails === 0
+		? url
+		: `${url}${url.includes("?") ? "&" : "?"}yb_retry=${fails}`;
 }
+
+function onCoverError(post: PostSummary): void {
+	const key = coverKey(post);
+	const fails = (coverFails.get(key) ?? 0) + 1;
+	coverFails.set(key, fails);
+	if (fails > COVER_RETRY_DELAYS.length) return;
+	coverWaiting.add(key);
+	const timer = window.setTimeout(
+		() => {
+			coverTimers.delete(timer);
+			coverWaiting.delete(key);
+		},
+		COVER_RETRY_DELAYS[fails - 1],
+	);
+	coverTimers.add(timer);
+}
+
+function resetCovers(): void {
+	for (const timer of coverTimers) window.clearTimeout(timer);
+	coverTimers.clear();
+	coverWaiting.clear();
+	coverFails.clear();
+}
+
+/* 列表重新拉过一遍，说明可能又有一次构建上线了，给之前失败的封面一次机会 */
+watch(() => props.items, resetCovers);
+
+onBeforeUnmount(resetCovers);
 
 /**
  * 没有封面的文章占多数（22 篇里只有 1 篇写了 image）。统一灰块会让列表变闷，
@@ -257,7 +313,7 @@ const rows = computed<Row[]>(() =>
 						:src="coverOf(row.post)"
 						:alt="row.post.title"
 						loading="lazy"
-						@error="brokenCovers.add(row.post.slug)"
+						@error="onCoverError(row.post)"
 					/>
 					<span v-else class="cover-mark" aria-hidden="true">{{
 						initialOf(row.post.title)
