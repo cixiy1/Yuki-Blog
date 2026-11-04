@@ -17,7 +17,10 @@ export interface AuditResult {
 	limit: number;
 }
 
-/** 与 server/lib/audit.ts 的 action 常量保持一致 */
+/**
+ * 与 server/lib/audit.ts 的 AuditAction 一一对应。
+ * 服务端加了新动作这里没跟上的话，筛选下拉选不到，列表还会把原始英文串直接甩出来。
+ */
 export const AUDIT_ACTIONS: string[] = [
 	"auth.register",
 	"auth.login",
@@ -28,12 +31,23 @@ export const AUDIT_ACTIONS: string[] = [
 	"auth.password_forgot",
 	"auth.password_reset",
 	"auth.password_change",
+	"user.profile.update",
+	"user.email.request",
+	"user.email.change",
 	"admin.user.create",
 	"admin.user.delete",
 	"admin.user.status",
 	"admin.user.role",
 	"admin.user.profile",
 	"admin.user.password",
+	"org.create",
+	"org.update",
+	"org.member.add",
+	"org.member.remove",
+	"org.invite.create",
+	"org.invite.revoke",
+	"org.invite.accept",
+	"admin.org.review",
 	"admin.settings.save",
 	"admin.settings.apply",
 	"admin.settings.publish",
@@ -46,6 +60,9 @@ export const AUDIT_ACTIONS: string[] = [
 	"review.note",
 	"review.body",
 	"review.reject",
+	"review.withdraw",
+	"media.upload",
+	"media.delete",
 ];
 
 export const ACTION_LABEL: Record<string, string> = {
@@ -58,12 +75,23 @@ export const ACTION_LABEL: Record<string, string> = {
 	"auth.password_forgot": "申请重置密码",
 	"auth.password_reset": "重置密码",
 	"auth.password_change": "修改密码",
+	"user.profile.update": "改个人资料",
+	"user.email.request": "申请换邮箱",
+	"user.email.change": "换邮箱",
 	"admin.user.create": "新建用户",
 	"admin.user.delete": "删除用户",
 	"admin.user.status": "改用户状态",
 	"admin.user.role": "改用户角色",
 	"admin.user.profile": "改用户资料",
 	"admin.user.password": "重置用户密码",
+	"org.create": "新建组织",
+	"org.update": "改组织",
+	"org.member.add": "加成员",
+	"org.member.remove": "移成员",
+	"org.invite.create": "发邀请",
+	"org.invite.revoke": "撤销邀请",
+	"org.invite.accept": "接受邀请",
+	"admin.org.review": "审核组织",
 	"admin.settings.save": "保存设置草稿",
 	"admin.settings.apply": "应用设置草稿",
 	"admin.settings.publish": "发布设置",
@@ -76,6 +104,9 @@ export const ACTION_LABEL: Record<string, string> = {
 	"review.note": "审核批注",
 	"review.body": "审核改稿",
 	"review.reject": "审核退回",
+	"review.withdraw": "撤回审核",
+	"media.upload": "上传图片",
+	"media.delete": "删除图片",
 };
 
 export async function listAudit(
