@@ -2,18 +2,17 @@
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
+import PostList from "../components/PostList.vue";
 import { ApiError } from "../lib/api";
 import { canReview, isAdmin } from "../lib/auth";
 import {
 	createPost,
 	deletePost,
-	formatTime,
 	isEditable,
 	listPosts,
 	type PostStatus,
 	type PostSummary,
 	publishPost,
-	STATUS_LABEL,
 	submitPost,
 	withdrawPost,
 } from "../lib/posts";
@@ -142,6 +141,12 @@ async function onDelete(post: PostSummary): Promise<void> {
 	}
 }
 
+/** 点行就进编辑器：仓库文章改文件，站内稿子进 D1 草稿页 */
+function openPost(post: PostSummary): void {
+	if (post.origin === "repo") goRepoEdit(post.slug);
+	else go(`/posts/${post.id}`);
+}
+
 onMounted(refresh);
 </script>
 
@@ -181,110 +186,86 @@ onMounted(refresh);
 		<p v-if="notice" class="notice">{{ notice }}</p>
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
+		<div v-if="!loading && visible.length" class="list-head">
+			<span class="list-count">{{ visible.length }} 篇</span>
+			<span class="list-sort">按最后改动时间排序</span>
+		</div>
+
 		<div v-if="loading" class="state">读取中…</div>
-		<div v-else-if="visible.length === 0" class="state">
+		<div v-else-if="visible.length === 0" class="state card-base">
 			这里还没有文章。点上面的「新建文章」开始写。
 		</div>
 
-		<ul v-else class="list">
-			<li
-				v-for="post in visible"
-				:key="post.origin === 'repo' ? `repo-${post.slug}` : `db-${post.id}`"
-				class="row card-base"
-			>
-				<div class="row-main">
-					<p class="row-title">
-						<span class="row-name">{{ post.title }}</span>
-						<span class="badge" :data-status="post.status">
-							{{ STATUS_LABEL[post.status] ?? post.status }}
-						</span>
-						<span v-if="post.origin === 'repo'" class="badge src">仓库</span>
-						<span v-if="post.source_link" class="badge repost">转载</span>
-					</p>
-					<p class="row-meta">
-						<code>/posts/{{ post.slug }}/</code>
-						<span>·</span>
-						<span>{{ formatTime(post.updated_at) }}</span>
-						<span v-if="post.tags.length">·</span>
-						<span v-if="post.tags.length">{{ post.tags.join(" / ") }}</span>
-					</p>
-					<p v-if="post.status === 'rejected' && post.review_note" class="row-note">
-						退回理由：{{ post.review_note }}
-					</p>
-				</div>
-				<div class="row-actions">
-					<template v-if="post.origin === 'repo'">
-						<button
-							type="button"
-							class="btn-regular"
-							@click="goRepoEdit(post.slug)"
-						>
-							编辑
-						</button>
-						<a
-							class="btn-ghost"
-							:href="`/posts/${post.slug}/`"
-							target="_blank"
-							rel="noopener"
-						>
-							<AppIcon name="external" :size="15" />
-						</a>
-					</template>
-					<template v-else>
-						<button
-							type="button"
-							class="btn-regular"
-							:disabled="busyId === post.id"
-							@click="go(`/posts/${post.id}`)"
-						>
-							{{ isEditable(post.status) ? "编辑" : "查看" }}
-						</button>
-						<button
-							v-if="isEditable(post.status) && isAdmin"
-							type="button"
-							class="btn-ghost"
-							:disabled="busyId === post.id"
-							@click="onPublish(post)"
-						>
-							发布
-						</button>
-						<button
-							v-if="isEditable(post.status) && !isAdmin"
-							type="button"
-							class="btn-ghost"
-							:disabled="busyId === post.id"
-							@click="onSubmit(post)"
-						>
-							提交审核
-						</button>
-						<button
-							v-if="post.status === 'pending'"
-							type="button"
-							class="btn-ghost"
-							:disabled="busyId === post.id"
-							@click="onWithdraw(post)"
-						>
-							撤回
-						</button>
-						<button
-							v-if="isEditable(post.status)"
-							type="button"
-							class="btn-ghost danger"
-							:disabled="busyId === post.id"
-							@click="onDelete(post)"
-						>
-							<AppIcon name="trash" :size="15" />
-						</button>
-					</template>
-				</div>
-			</li>
-		</ul>
+		<PostList v-else :items="visible" show-status @open="openPost">
+			<template #actions="{ post }">
+				<template v-if="post.origin === 'repo'">
+					<button type="button" class="btn-regular act" @click="goRepoEdit(post.slug)">
+						编辑
+					</button>
+					<a
+						class="btn-ghost act"
+						:href="`/posts/${post.slug}/`"
+						target="_blank"
+						rel="noopener"
+					>
+						<AppIcon name="external" :size="15" />
+					</a>
+				</template>
+				<template v-else>
+					<button
+						type="button"
+						class="btn-regular act"
+						:disabled="busyId === post.id"
+						@click="go(`/posts/${post.id}`)"
+					>
+						{{ isEditable(post.status) ? "编辑" : "查看" }}
+					</button>
+					<button
+						v-if="isEditable(post.status) && isAdmin"
+						type="button"
+						class="btn-ghost act"
+						:disabled="busyId === post.id"
+						@click="onPublish(post)"
+					>
+						发布
+					</button>
+					<button
+						v-if="isEditable(post.status) && !isAdmin"
+						type="button"
+						class="btn-ghost act"
+						:disabled="busyId === post.id"
+						@click="onSubmit(post)"
+					>
+						提交审核
+					</button>
+					<button
+						v-if="post.status === 'pending'"
+						type="button"
+						class="btn-ghost act"
+						:disabled="busyId === post.id"
+						@click="onWithdraw(post)"
+					>
+						撤回
+					</button>
+					<button
+						v-if="isEditable(post.status)"
+						type="button"
+						class="btn-ghost act danger"
+						:disabled="busyId === post.id"
+						:title="`删除《${post.title}》`"
+						@click="onDelete(post)"
+					>
+						<AppIcon name="trash" :size="15" />
+					</button>
+				</template>
+			</template>
+		</PostList>
 
 		<p class="footnote">
 			<template v-if="canReview">
-				带「仓库」标签的是 <code>src/content/posts/</code> 里的已发布文章，编辑即改文件，
-				保存会提交一次 git 并触发构建；不带标签的是站内草稿，自动保存不产生提交。
-				管理员点「发布」直接上线，其他人的稿子走「提交审核」。
+				站内草稿自动保存，不产生 git 提交，写完点「发布」直接上线；已发布的那几篇对应
+				<code>src/content/posts/</code> 里的文件，编辑即改文件，保存会触发构建。
+				别人的稿子走「提交审核」。
 			</template>
 			<template v-else>
 				草稿存在站内，自动保存不会上线。写完点「提交审核」，通过后自动发布。
@@ -355,115 +336,25 @@ onMounted(refresh);
 	color: var(--fg-50);
 }
 
-.list {
-	margin: 0;
-	padding: 0;
-	list-style: none;
+.list-head {
 	display: flex;
-	flex-direction: column;
-	gap: 0.55rem;
-}
-
-.row {
-	display: flex;
-	align-items: center;
+	align-items: baseline;
 	justify-content: space-between;
-	gap: 1rem;
-	padding: 0.85rem 1rem;
-}
-
-.row-main {
-	min-width: 0;
-}
-
-.row-title {
-	margin: 0;
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 0.45rem;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--fg-90);
-}
-
-/* 标题是唯一允许压缩的项；徽章一缩就变成竖排的「已发布」 */
-.row-name {
-	min-width: 0;
-	overflow-wrap: anywhere;
-}
-
-.badge {
-	flex: none;
-	white-space: nowrap;
-	font-size: 0.68rem;
-	font-weight: 600;
-	padding: 0.06rem 0.42rem;
-	border-radius: 999px;
-	background: var(--btn-regular-bg);
-	color: var(--fg-90);
-}
-
-.badge[data-status="pending"] {
-	background: color-mix(in oklab, var(--admonitions-color-warning) 18%, transparent);
-	color: var(--admonitions-color-warning);
-}
-
-.badge[data-status="published"] {
-	background: color-mix(in oklab, var(--admonitions-color-tip) 18%, transparent);
-	color: var(--admonitions-color-tip);
-}
-
-.badge[data-status="rejected"] {
-	background: color-mix(in oklab, var(--admonitions-color-caution) 16%, transparent);
-	color: var(--admonitions-color-caution);
-}
-
-/* 「仓库」表示这篇来自 src/content/posts，编辑即改文件；「转载」看 sourceLink */
-.badge.src {
-	background: transparent;
-	border: 1px solid var(--line-divider);
-	color: var(--fg-50);
-	padding: calc(0.06rem - 1px) calc(0.42rem - 1px);
-}
-
-/* 「转载」看 frontmatter 的 sourceLink */
-.badge.repost {
-	background: color-mix(in oklab, var(--admonitions-color-note) 16%, transparent);
-	color: var(--admonitions-color-note);
-}
-
-.row-meta {
-	margin: 0.2rem 0 0;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.35rem;
-	font-size: 0.75rem;
+	gap: 0.75rem;
+	margin: 0 0 0.5rem;
+	padding: 0 0.15rem;
+	font-size: 0.72rem;
 	color: var(--fg-50);
 }
 
-.row-meta code {
-	background: var(--license-block-bg);
-	padding: 0.02rem 0.3rem;
-	border-radius: 0.35rem;
+.list-count {
+	color: var(--fg-75);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
 }
 
-.row-note {
-	margin: 0.3rem 0 0;
-	font-size: 0.75rem;
-	color: var(--admonitions-color-caution);
-}
-
-.row-actions {
-	display: flex;
-	align-items: center;
-	gap: 0.3rem;
-	flex: none;
-}
-
-.row-actions .btn-regular,
-.row-actions .btn-ghost {
-	padding: 0.35rem 0.7rem;
+.act {
+	padding: 0.32rem 0.68rem;
 	font-size: 0.78rem;
 }
 
@@ -476,12 +367,5 @@ onMounted(refresh);
 	font-size: 0.76rem;
 	color: var(--fg-50);
 	line-height: 1.8;
-}
-
-@media (max-width: 700px) {
-	.row {
-		flex-direction: column;
-		align-items: flex-start;
-	}
 }
 </style>

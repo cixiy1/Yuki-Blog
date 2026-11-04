@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview } from "../lib/auth";
-import { formatTime } from "../lib/posts";
+import { splitDate } from "../lib/posts";
 import {
 	approvePost,
 	listQueue,
@@ -25,6 +25,11 @@ const rejectNote = ref("");
 const confirmingId = ref<number | null>(null);
 
 const count = computed(() => items.value.length);
+
+/** 左侧日期柱：用提交时间，审核员按到达顺序处理 */
+function dateOf(item: QueueItem): { day: string; year: string } {
+	return splitDate(item.submitted_at);
+}
 
 async function load(): Promise<void> {
 	loading.value = true;
@@ -136,23 +141,28 @@ onMounted(() => {
 			没有待审的稿子。有人提交后会出现在这里。
 		</p>
 
-		<ul v-else class="list">
-			<li v-for="item in items" :key="item.id" class="row card-base">
-				<div class="row-main">
-					<button type="button" class="row-title" @click="goReview(item.id)">
-						{{ item.title }}
-						<AppIcon name="eye" :size="14" />
-					</button>
+		<ul v-else class="queue card-base">
+			<li v-for="item in items" :key="item.id" class="row">
+				<div class="col-date">
+					<span class="date-day">{{ dateOf(item).day }}</span>
+					<span class="date-year">{{ dateOf(item).year }}</span>
+				</div>
+
+				<div class="col-main">
+					<h2 class="row-title">
+						<button type="button" class="title-btn" @click="goReview(item.id)">
+							{{ item.title }}
+							<AppIcon name="eye" :size="14" />
+						</button>
+					</h2>
 					<p class="row-meta">
 						<span>{{ item.author }}</span>
 						<span>·</span>
-						<code>/posts/{{ item.slug }}/</code>
-						<span>·</span>
-						<span>提交于 {{ formatTime(item.submitted_at) }}</span>
-						<span>·</span>
 						<span>{{ item.body_len }} 字</span>
+						<span>·</span>
+						<code>/posts/{{ item.slug }}/</code>
 					</p>
-					<p v-if="item.summary" class="row-note">{{ item.summary }}</p>
+					<p v-if="item.summary" class="row-summary">{{ item.summary }}</p>
 
 					<div v-if="rejectingId === item.id" class="reject-box">
 						<input
@@ -181,7 +191,7 @@ onMounted(() => {
 				<div v-if="rejectingId !== item.id" class="row-actions">
 					<button
 						type="button"
-						class="btn-regular"
+						class="btn-regular act"
 						@click="goReview(item.id)"
 					>
 						<AppIcon name="eye" :size="15" />
@@ -189,19 +199,19 @@ onMounted(() => {
 					</button>
 					<button
 						type="button"
-						class="btn-regular"
+						class="btn-regular act"
 						:disabled="busyId === item.id"
 						@click="startReject(item)"
 					>
 						退回
 					</button>
 					<template v-if="confirmingId === item.id">
-						<button type="button" class="btn-ghost" @click="cancelApprove()">
+						<button type="button" class="btn-ghost act" @click="cancelApprove()">
 							取消
 						</button>
 						<button
 							type="button"
-							class="btn-primary"
+							class="btn-primary act"
 							:disabled="busyId === item.id"
 							@click="onApprove(item)"
 						>
@@ -211,7 +221,7 @@ onMounted(() => {
 					<button
 						v-else
 						type="button"
-						class="btn-primary"
+						class="btn-primary act"
 						:disabled="busyId === item.id"
 						@click="startApprove(item)"
 					>
@@ -249,29 +259,70 @@ onMounted(() => {
 	color: var(--fg-50);
 }
 
-.list {
+.queue {
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	display: flex;
-	flex-direction: column;
-	gap: 0.55rem;
+	overflow: hidden;
 }
 
 .row {
 	display: flex;
 	align-items: flex-start;
-	justify-content: space-between;
 	gap: 1rem;
-	padding: 0.85rem 1rem;
+	padding: 0.95rem 1.15rem;
+	transition: background-color 0.15s ease;
 }
 
-.row-main {
-	min-width: 0;
+.row + .row {
+	border-top: 1px solid var(--line-divider);
+}
+
+.row:hover {
+	background: var(--btn-plain-bg-hover);
+}
+
+.col-date {
+	flex: none;
+	width: 2.9rem;
+	padding-top: 0.12rem;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	line-height: 1.25;
+}
+
+.date-day {
+	font-size: 0.82rem;
+	font-weight: 600;
+	color: var(--fg-75);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
+}
+
+.date-year {
+	font-size: 0.66rem;
+	color: var(--fg-50);
+	font-variant-numeric: tabular-nums;
+}
+
+.col-main {
 	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.28rem;
 }
 
 .row-title {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 600;
+	line-height: 1.45;
+	color: var(--fg-90);
+}
+
+.title-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
@@ -279,23 +330,22 @@ onMounted(() => {
 	padding: 0;
 	border: none;
 	background: none;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--fg-90);
+	font: inherit;
+	color: inherit;
 	text-align: left;
 	cursor: pointer;
 }
 
-.row-title:hover {
-	color: var(--primary);
+.title-btn:hover {
+	color: var(--accent-text);
 }
 
 .row-meta {
-	margin: 0.2rem 0 0;
+	margin: 0;
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
-	gap: 0.3rem;
+	gap: 0.35rem;
 	font-size: 0.72rem;
 	color: var(--fg-50);
 }
@@ -304,10 +354,11 @@ onMounted(() => {
 	font-size: 0.7rem;
 }
 
-.row-note {
-	margin: 0.35rem 0 0;
-	font-size: 0.78rem;
-	color: var(--fg-75);
+.row-summary {
+	margin: 0;
+	font-size: 0.8rem;
+	line-height: 1.6;
+	color: var(--content-meta);
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
@@ -316,8 +367,15 @@ onMounted(() => {
 
 .row-actions {
 	display: flex;
-	gap: 0.4rem;
+	align-items: center;
+	gap: 0.3rem;
 	flex: none;
+	padding-top: 0.05rem;
+}
+
+.act {
+	padding: 0.32rem 0.68rem;
+	font-size: 0.78rem;
 }
 
 .reject-box {

@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
-import { formatTime, listAllPosts, type PostSummary } from "../lib/posts";
-import { goRepoEdit } from "../router";
+import PostList from "../components/PostList.vue";
+import { listAllPosts, type PostSummary } from "../lib/posts";
+import { go, goRepoEdit } from "../router";
 
 /**
  * 全站文章：站点上已经发布的内容，来自 src/content/posts。
@@ -18,10 +19,16 @@ const visible = computed(() => {
 	const query = keyword.value.trim().toLowerCase();
 	if (!query) return posts.value;
 	return posts.value.filter((post) =>
-		[post.title, post.slug, post.tags.join(" ")].some((text) =>
+		[post.title, post.slug, post.summary, post.tags.join(" ")].some((text) =>
 			text.toLowerCase().includes(query),
 		),
 	);
+});
+
+const summaryText = computed(() => {
+	if (loading.value) return "";
+	if (!keyword.value.trim()) return `共 ${posts.value.length} 篇`;
+	return `${visible.value.length} / ${posts.value.length} 篇`;
 });
 
 async function refresh(): Promise<void> {
@@ -34,6 +41,12 @@ async function refresh(): Promise<void> {
 	} finally {
 		loading.value = false;
 	}
+}
+
+/** 仓库文章进编辑器改文件；D1 里的已发布行只能回详情页看 */
+function open(post: PostSummary): void {
+	if (post.origin === "repo") goRepoEdit(post.slug, "all-posts");
+	else go(`/posts/${post.id}`);
 }
 
 onMounted(refresh);
@@ -49,7 +62,7 @@ onMounted(refresh);
 				<input
 					v-model="keyword"
 					class="field search"
-					placeholder="搜索标题、地址或标签"
+					placeholder="搜索标题、摘要或标签"
 				/>
 				<button type="button" class="btn-regular" @click="refresh">
 					<AppIcon name="refresh" :size="15" />
@@ -60,51 +73,17 @@ onMounted(refresh);
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
+		<div class="list-head">
+			<span class="list-count">{{ summaryText }}</span>
+			<span class="list-sort">按发布时间倒序</span>
+		</div>
+
 		<div v-if="loading" class="state">读取中…</div>
-		<div v-else-if="visible.length === 0" class="state">
+		<div v-else-if="visible.length === 0" class="state card-base">
 			{{ keyword ? "没有匹配的文章" : "站点上还没有已发布的文章" }}
 		</div>
 
-		<ul v-else class="list">
-			<li
-				v-for="post in visible"
-				:key="post.slug"
-				class="row card-base"
-			>
-				<div class="row-main">
-					<p class="row-title">
-						{{ post.title }}
-						<span v-if="post.source_link" class="badge repost">转载</span>
-					</p>
-					<p class="row-meta">
-						<code>/posts/{{ post.slug }}/</code>
-						<span>·</span>
-						<span>{{ formatTime(post.published_at) }}</span>
-						<span v-if="post.category">·</span>
-						<span v-if="post.category">{{ post.category }}</span>
-						<span v-if="post.tags.length">·</span>
-						<span v-if="post.tags.length">{{ post.tags.join(" / ") }}</span>
-					</p>
-				</div>
-				<div class="row-actions">
-					<button
-						type="button"
-						class="btn-regular"
-						@click="goRepoEdit(post.slug, 'all-posts')"
-					>
-						编辑
-					</button>
-					<a
-						class="btn-ghost"
-						:href="`/posts/${post.slug}/`"
-						target="_blank"
-						rel="noopener"
-					>
-						<AppIcon name="external" :size="15" />
-					</a>
-				</div>
-			</li>
-		</ul>
+		<PostList v-else :items="visible" date-field="published_at" @open="open" />
 
 		<p class="footnote">
 			这里的每一篇都对应 <code>src/content/posts/</code> 下的一个文件。列表是构建时的
@@ -119,75 +98,37 @@ onMounted(refresh);
 	height: 2.35rem;
 }
 
-.list {
-	margin: 0;
-	padding: 0;
-	list-style: none;
+.list-head {
 	display: flex;
-	flex-direction: column;
-	gap: 0.55rem;
-}
-
-.row {
-	display: flex;
-	align-items: center;
-	gap: 1rem;
-	padding: 0.8rem 1rem;
-}
-
-.row-main {
-	min-width: 0;
-	flex: 1;
-}
-
-.row-title {
-	margin: 0;
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 0.35rem;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--fg-90);
-}
-
-.row-meta {
-	margin: 0.25rem 0 0;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.35rem;
-	font-size: 0.75rem;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin: 0 0 0.5rem;
+	padding: 0 0.15rem;
+	font-size: 0.72rem;
 	color: var(--fg-50);
 }
 
-.row-meta code {
-	font-size: 0.72rem;
-}
-
-.row-actions {
-	display: flex;
-	align-items: center;
-	gap: 0.35rem;
-	flex: none;
-}
-
-.badge {
-	font-size: 0.68rem;
+.list-count {
+	color: var(--fg-75);
 	font-weight: 600;
-	padding: 0.06rem 0.42rem;
-	border-radius: 999px;
-}
-
-.badge.repost {
-	background: color-mix(in oklab, var(--admonitions-color-note) 16%, transparent);
-	color: var(--admonitions-color-note);
+	font-variant-numeric: tabular-nums;
 }
 
 .state {
-	padding: 2rem 0;
+	padding: 2rem 1rem;
 	text-align: center;
 	font-size: 0.85rem;
 	color: var(--fg-50);
+}
+
+.error {
+	margin: 0 0 0.75rem;
+	padding: 0.45rem 0.7rem;
+	border-radius: 0.6rem;
+	background: color-mix(in oklab, var(--admonitions-color-caution) 14%, transparent);
+	color: var(--admonitions-color-caution);
+	font-size: 0.8rem;
 }
 
 .footnote {
@@ -200,12 +141,6 @@ onMounted(refresh);
 @media (max-width: 640px) {
 	.search {
 		width: 100%;
-	}
-
-	.row {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.6rem;
 	}
 }
 </style>

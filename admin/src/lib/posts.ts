@@ -62,6 +62,23 @@ export function formatTime(iso: string | null): string {
 	return date.toLocaleString("zh-CN", { hour12: false });
 }
 
+/**
+ * 列表左侧的日期柱：拆成「月-日」和「年」两行。
+ * 纯日期（frontmatter 的 published）原样拆，别过一遍时区换算；
+ * D1 的时间戳是 UTC 没带标记，补 Z 之后按本地时区取，免得 23:00 的稿子显示成第二天。
+ */
+export function splitDate(iso: string | null): { day: string; year: string } {
+	if (!iso) return { day: "—", year: "" };
+	const plain = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+	if (plain) return { day: `${plain[2]}-${plain[3]}`, year: plain[1] };
+	const normalized = iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`;
+	const date = new Date(normalized);
+	if (Number.isNaN(date.getTime())) return { day: iso, year: "" };
+	const mm = String(date.getMonth() + 1).padStart(2, "0");
+	const dd = String(date.getDate()).padStart(2, "0");
+	return { day: `${mm}-${dd}`, year: String(date.getFullYear()) };
+}
+
 export async function listPosts(): Promise<PostSummary[]> {
 	const data = await api.get<{ posts: PostSummary[] }>("/api/me/posts");
 	return data.posts ?? [];
