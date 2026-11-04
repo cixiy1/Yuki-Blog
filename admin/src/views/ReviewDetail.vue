@@ -44,8 +44,11 @@ const rendering = ref(false);
 const errorText = ref("");
 const notice = ref("");
 const busy = ref(false);
-const rejecting = ref(false);
+/** 审核结论三态：没选 / 打回 / 通过，侧栏同一时间只展开其中一块 */
+const verdict = ref<"idle" | "reject" | "approve">("idle");
 const rejectNote = ref("");
+/** 通过时给作者的备注，会随邮件一起发出去 */
+const approveNote = ref("");
 const bodyEl = ref<HTMLDivElement | null>(null);
 /** Vditor 会把宿主元素本身变成 .vditor，所以再套一层子节点给它 */
 const editorEl = ref<HTMLDivElement | null>(null);
@@ -87,8 +90,6 @@ const composerText = ref("");
 const savingNote = ref(false);
 /** 侧栏里高亮的那一条 */
 const activeNote = ref<number | null>(null);
-/** 有批注时通过要按两次 */
-const approveAnyway = ref(false);
 
 /** 与 src/config/provenanceConfig.ts 的种类对齐；顺序决定展示文案 */
 const PROV_LABEL: Record<string, string> = {
@@ -426,26 +427,37 @@ async function saveBody(): Promise<void> {
 	}
 }
 
+function startApprove(): void {
+	errorText.value = "";
+	approveNote.value = "";
+	verdict.value = "approve";
+}
+
+function startReject(): void {
+	errorText.value = "";
+	rejectNote.value = "";
+	verdict.value = "reject";
+}
+
+function cancelVerdict(): void {
+	verdict.value = "idle";
+	approveNote.value = "";
+	rejectNote.value = "";
+}
+
 async function onApprove(): Promise<void> {
 	if (!post.value) return;
-	// 通过发的是作者原文，编辑器里没保存的改动不会跟着走，先说清楚
-	if (
-		bodyPending.value &&
-		!window.confirm("正文还有没保存的改动，通过会按作者原文发布。继续？")
-	) {
-		return;
-	}
-	if (notes.value.length > 0 && !approveAnyway.value) {
-		approveAnyway.value = true;
-		errorText.value = `还有 ${notes.value.length} 条批注没处理，确实要通过的话再点一次`;
-		return;
-	}
 	busy.value = true;
 	errorText.value = "";
 	try {
-		await approvePost(post.value.id);
-		notice.value = `《${post.value.title}》已通过，约一分钟后上线`;
-		setTimeout(() => go("/review"), 900);
+		const { mailedTo } = await approvePost(
+			post.value.id,
+			approveNote.value.trim(),
+		);
+		notice.value = mailedTo
+			? `《${post.value.title}》已通过，回信发到了 ${mailedTo}，约一分钟后上线`
+			: `《${post.value.title}》已通过，约一分钟后上线；作者没填邮箱，备注没发出去`;
+		setTimeout(() => go("/review"), 1600);
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "操作失败";
 	} finally {
@@ -583,7 +595,7 @@ onBeforeUnmount(() => {
 			</button>
 
 			<aside class="side card-base">
-				<template v-if="!rejecting">
+				<template v-if="verdict === 'idle'">
 					<p class="side-title">修改稿</p>
 					<button
 						type="button"
@@ -613,7 +625,7 @@ onBeforeUnmount(() => {
 						type="button"
 						class="btn-regular full"
 						:disabled="busy || !isPending"
-						@click="rejecting = true"
+						@click="startReject"
 					>
 						打回修改
 					</button>
@@ -621,14 +633,55 @@ onBeforeUnmount(() => {
 						type="button"
 						class="btn-primary full"
 						:disabled="busy || !isPending"
-						@click="onApprove"
+						@click="startApprove"
 					>
-						{{ approveAnyway ? "确认通过" : "通过并发布" }}
+						通过并发布
 					</button>
 					<p class="hint">
 						通过会写到 <code>{{ publishPath }}</code
 						>，构建约 1 分钟后线上可见。
 					</p>
+				</template>
+
+				<template v-else-if="verdict === 'approve'">
+					<label class="side-label" for="approve-note">给作者的备注</label>
+					<textarea
+						id="approve-note"
+						v-model="approveNote"
+						class="field area"
+						rows="4"
+						maxlength="200"
+						placeholder="会随邮件发给作者，比如：标题我调了一下，其余照发"
+					/>
+					<p class="hint">
+						发到
+						<code>{{ post.author_email || "作者没填邮箱，发不出去" }}</code
+						>；不写备注也会发一封「已通过」。
+					</p>
+					<p v-if="notes.length" class="hint warn">
+						还有 {{ notes.length }} 条批注没处理，通过后会被清掉。
+					</p>
+					<p v-if="bodyPending" class="hint warn">
+						正文有没保存的改动，通过按作者原文发布。
+					</p>
+					<div class="side-actions">
+						<button
+							type="button"
+							class="btn-primary"
+							:disabled="busy"
+							@click="onApprove"
+						>
+							{{ busy ? "发布中…" : "确认通过" }}
+						</button>
+						<button
+							type="button"
+							class="btn-ghost"
+							:disabled="busy"
+							@click="cancelVerdict"
+						>
+							取消
+						</button>
+					</div>
 				</template>
 
 				<template v-else>
@@ -658,10 +711,7 @@ onBeforeUnmount(() => {
 							type="button"
 							class="btn-ghost"
 							:disabled="busy"
-							@click="
-								rejecting = false;
-								rejectNote = '';
-							"
+							@click="cancelVerdict"
 						>
 							取消
 						</button>
@@ -1087,6 +1137,11 @@ onBeforeUnmount(() => {
 .hint code {
 	font-size: 0.66rem;
 	word-break: break-all;
+}
+
+/* 「还有 3 条批注没处理」这类提醒，用警示色，别和普通说明混在一起 */
+.hint.warn {
+	color: var(--admonitions-color-caution);
 }
 
 .composer {

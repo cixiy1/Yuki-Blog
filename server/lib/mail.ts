@@ -484,6 +484,55 @@ export async function sendReviewNotifyMail(
 	return await sendToEach(env, payload.to, { subject, text, html });
 }
 
+export interface ReviewApprovedMail {
+	to: string;
+	title: string;
+	/** 审核员写的备注，可为空 */
+	note: string;
+	/** 作者看到的文章地址 */
+	link: string;
+}
+
+/**
+ * 稿子通过后回信给作者。
+ * 备注是顺手留的话，没写就只报一句「已发布」——作者提交审核后本来就该知道结果。
+ */
+export async function sendReviewApprovedMail(
+	env: Env,
+	payload: ReviewApprovedMail,
+): Promise<MailResult> {
+	const title = payload.title.trim() || "（未命名）";
+	const note = payload.note.trim();
+
+	const text = [
+		`《${title}》已通过审核，已经发布。`,
+		"",
+		...(note ? ["审核员留了一句话：", note, ""] : []),
+		`阅读：${payload.link}`,
+		"",
+		"发布后仍可在「我的文章」里重新编辑。",
+	].join("\n");
+
+	const html = `<div style="${STYLE}">
+  <p>《${escapeHtml(title)}》已通过审核，已经发布。</p>
+  ${
+		note
+			? `<p style="color:#59636e;font-size:13px;margin:14px 0 4px">审核员留了一句话：</p>
+  <blockquote style="margin:0 0 4px;padding:10px 14px;border-left:3px solid #d5d9de;color:#3d444d;font-size:14px;white-space:pre-wrap">${escapeHtml(note)}</blockquote>`
+			: ""
+	}
+  ${buttonHtml(payload.link, "打开文章")}
+  <p style="color:#59636e;font-size:13px">发布后仍可在「我的文章」里重新编辑。</p>
+</div>`;
+
+	return await sendMail(env, {
+		to: payload.to,
+		subject: `已通过：《${title}》 · Yuki Blog`,
+		text,
+		html,
+	});
+}
+
 export interface ReviewWithdrawMail {
 	to: string[];
 	title: string;

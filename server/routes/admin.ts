@@ -1,6 +1,7 @@
 import { type Context, Hono } from "hono";
 import { writeAudit } from "../lib/audit";
 import { encryptPassword } from "../lib/password";
+import { notifyApproved } from "../lib/review-notify";
 import { findByAccount, findByEmail, randomUid } from "../lib/users";
 import {
 	checkPasswordPolicy,
@@ -11,7 +12,7 @@ import {
 import { requireRole } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
-import { type PostRow, publishRowToRepo, toDetail } from "./me";
+import { originOf, type PostRow, publishRowToRepo, toDetail } from "./me";
 
 /**
  * 管理端接口：用户管理 + 审计日志。
@@ -752,13 +753,14 @@ admin.get("/review/:id", requireRole("reviewer"), async (c) => {
 	}
 
 	const author = await c.env.DB.prepare(
-		"SELECT display_name, account, avatar_url FROM users WHERE uid = ?1",
+		"SELECT display_name, account, avatar_url, email FROM users WHERE uid = ?1",
 	)
 		.bind(row.uid)
 		.first<{
 			display_name: string | null;
 			account: string;
 			avatar_url: string | null;
+			email: string | null;
 		}>();
 
 	return c.json({
@@ -767,6 +769,7 @@ admin.get("/review/:id", requireRole("reviewer"), async (c) => {
 			author: author?.display_name || author?.account || `uid ${row.uid}`,
 			author_account: author?.account ?? "",
 			author_avatar: author?.avatar_url ?? null,
+			author_email: author?.email ?? "",
 			notes: await listNotes(c.env.DB, id),
 		},
 	});
@@ -1006,6 +1009,9 @@ admin.delete(
 /**
  * 通过：写仓库 → 状态切 published。
  * 写仓库复用发布那条路，审核通过和管理员自己发没有区别。
+ *
+ * 可以带一句备注回给作者（`{ note }`），会随「已通过」邮件发到作者邮箱。
+ * 请求体允许为空——老的管理端和命令行调用不发 body，不能因此 415。
  */
 admin.post(
 	"/review/:id/approve",
@@ -1019,6 +1025,12 @@ admin.post(
 		if (!Number.isInteger(id) || id <= 0) {
 			return c.json({ error: "bad_request", message: "id 非法" }, 400);
 		}
+
+		const payload = await readJson(c);
+		const note =
+			typeof payload?.note === "string"
+				? payload.note.trim().slice(0, QUEUE_MAX_NOTE)
+				: "";
 
 		const row = await c.env.DB.prepare("SELECT * FROM posts WHERE id = ?1")
 			.bind(id)
@@ -1072,7 +1084,7 @@ admin.post(
 			actorUid: me.uid,
 			action: "review.approve",
 			target: row.slug,
-			detail: { id, uid: row.uid },
+			detail: { id, uid: row.uid, ...(note ? { note } : {}) },
 		});
 
 		// 稿子已经发出去，留在稿子上的批注没有意义了，作者不该在已发布文章里看到它们
@@ -1080,10 +1092,33 @@ admin.post(
 			.bind(id)
 			.run();
 
+		// 备注写进库会被误当成「退回理由」，它只走邮件和审计；这里只想拿到收件地址
+		const author = await c.env.DB.prepare(
+			"SELECT email FROM users WHERE uid = ?1",
+		)
+			.bind(row.uid)
+			.first<{ email: string | null }>();
+		const mailedTo = (author?.email ?? "").trim();
+
+		// 发信可能要一两秒，不该拖住审核员点完按钮的反馈
+		const task = notifyApproved(
+			c.env,
+			{ title: row.title, slug: row.slug },
+			note,
+			mailedTo,
+			originOf(c),
+		);
+		try {
+			c.executionCtx.waitUntil(task);
+		} catch {
+			void task;
+		}
+
 		return c.json({
 			post: { id, slug: row.slug, status: "published" },
 			repoPath: written.path,
 			building: true,
+			mailedTo: mailedTo || null,
 		});
 	},
 );

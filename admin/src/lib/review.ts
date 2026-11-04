@@ -44,6 +44,8 @@ export interface ReviewPost {
 	author: string;
 	author_account: string;
 	author_avatar: string | null;
+	/** 通过时回信用的收件地址，作者没填就是空串 */
+	author_email: string;
 	repo_path: string;
 	submitted_at: string | null;
 	updated_at: string;
@@ -78,8 +80,19 @@ export async function deleteReviewNote(
 	await api.delete(`/api/admin/review/${id}/notes/${noteId}`);
 }
 
-export async function approvePost(id: number): Promise<void> {
-	await api.post(`/api/admin/review/${id}/approve`, {});
+/**
+ * 通过并发布。`note` 是给作者的备注，可选，会随「已通过」邮件发出去；
+ * 返回的 mailedTo 是实际收件地址，空表示作者没填邮箱、信没发。
+ */
+export async function approvePost(
+	id: number,
+	note = "",
+): Promise<{ mailedTo: string | null }> {
+	const data = await api.post<{ mailedTo?: string | null }>(
+		`/api/admin/review/${id}/approve`,
+		{ note },
+	);
+	return { mailedTo: data.mailedTo ?? null };
 }
 
 export async function rejectPost(id: number, note: string): Promise<void> {

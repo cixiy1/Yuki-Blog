@@ -1,5 +1,9 @@
 import { resolveAdminEmails } from "./admin-mail";
-import { sendReviewNotifyMail, sendReviewWithdrawMail } from "./mail";
+import {
+	sendReviewApprovedMail,
+	sendReviewNotifyMail,
+	sendReviewWithdrawMail,
+} from "./mail";
 
 /**
  * 「有新稿待审」的邮件提醒。
@@ -145,6 +149,57 @@ export async function notifyWithdrawn(
 	} catch (error) {
 		console.error(
 			"[review] 撤回提醒异常:",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+}
+
+export interface ReviewApprovedPost {
+	title: string;
+	slug: string;
+}
+
+/**
+ * 通过之后回信给作者，带上审核员写的备注。
+ *
+ * 只发作者本人，不走「管理员邮箱」——那是给自己人看的收件人；
+ * 这封是给写作者的答复，抄给管理员只会让两边都收到重复邮件。
+ * 作者账号没填邮箱就跳过，日志里留一句，别让通过流程跟着失败。
+ */
+export async function notifyApproved(
+	env: Env,
+	post: ReviewApprovedPost,
+	note: string,
+	authorEmail: string,
+	origin: string,
+): Promise<void> {
+	try {
+		const to = authorEmail.trim();
+		if (!to) {
+			console.log("[review] 作者没填邮箱，跳过通过提醒");
+			return;
+		}
+
+		const result = await sendReviewApprovedMail(env, {
+			to,
+			title: post.title,
+			note,
+			link: `${origin}/posts/${post.slug}/`,
+		});
+
+		if (!result.ok) {
+			console.error(
+				"[review] 通过提醒没发出去:",
+				result.hint ?? result.providerMessage ?? "未知原因",
+			);
+			return;
+		}
+		console.log(
+			`[review] 通过提醒已发送（${result.mode}${result.sent ? "" : "，未配置通道只记日志"}）→ ${to}`,
+		);
+	} catch (error) {
+		console.error(
+			"[review] 通过提醒异常:",
 			error instanceof Error ? error.message : String(error),
 		);
 	}
