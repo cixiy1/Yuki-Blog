@@ -1,6 +1,17 @@
 import { Hono } from "hono";
+import { writeAudit } from "../lib/audit";
 import { decodeBase64, sha256HexBytes } from "../lib/crypto";
-import { requireAuth } from "../middleware/auth";
+import {
+	deleteMedia,
+	fetchLiveMedia,
+	type IncomingFile,
+	MAX_UPLOAD_BYTES,
+	MAX_UPLOAD_FILES,
+	readMediaIndex,
+	resolveGithubToken,
+	uploadMedia,
+} from "../lib/media-store";
+import { requireAuth, requireRole } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
 
@@ -101,6 +112,235 @@ media.post("/", requireAuth, requireJsonBody, sameOriginGuard, async (c) => {
 		201,
 	);
 });
+
+/* --------------------- 媒体库：仓库里的静态文件 --------------------- */
+
+/** 一次上传的原始字节上限：客户端会先压到几百 KB，这个数只是兜底 */
+const MAX_TOTAL_BYTES = 12 * 1024 * 1024;
+
+/** 上游（GitHub / 业务层）给的状态码要收进 Hono 认识的集合，不认识的统一 502 */
+const KNOWN_HTTP = [
+	400, 401, 403, 404, 409, 412, 413, 415, 422, 429, 500, 502, 503,
+] as const;
+type KnownHttp = (typeof KNOWN_HTTP)[number];
+
+function asStatus(status: number): KnownHttp {
+	return (KNOWN_HTTP as readonly number[]).includes(status)
+		? (status as KnownHttp)
+		: 502;
+}
+
+/**
+ * 列表：默认读构建期快照（不带令牌，快）。
+ * `?refresh=1` 现拉一次 GitHub 目录树，用来在上传后不重新构建就看到新图；
+ * 这条要走令牌，只给管理员。
+ */
+media.get("/library", requireAuth, async (c) => {
+	const user = c.get("user");
+	if (!user) return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+
+	const index = await readMediaIndex(c.env.ASSETS);
+
+	if (c.req.query("refresh") === "1") {
+		if (user.role !== "admin") {
+			return c.json(
+				{ error: "forbidden", message: "只有管理员能刷新索引" },
+				403,
+			);
+		}
+		const token = await resolveGithubToken(c.env);
+		if (!token) {
+			return c.json(
+				{ error: "github_token_missing", message: "还没配置 GitHub 令牌" },
+				412,
+			);
+		}
+		const live = await fetchLiveMedia(token);
+		if (!live.ok) {
+			return c.json(
+				{ error: "github_failed", message: live.message ?? "读取仓库目录失败" },
+				502,
+			);
+		}
+		live.entries.sort((a, b) => b.path.localeCompare(a.path));
+		return c.json({
+			files: live.entries,
+			refs: index.refs,
+			generated: Date.now(),
+			live: true,
+		});
+	}
+
+	return c.json({ ...index, live: false });
+});
+
+/**
+ * 上传：多张图合并成一次提交。
+ *
+ * 路径固定 `public/assets/uploads/<yyyy>/<mm>/<词干>-<内容摘要8位>.<ext>`，
+ * 内容相同就是同一路径，所以重复上传不会让仓库变胖。
+ */
+media.post(
+	"/upload",
+	requireAuth,
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const user = c.get("user");
+		if (!user)
+			return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+
+		const payload = (await c.req.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		const list = Array.isArray(payload.files) ? payload.files : [];
+		if (list.length === 0) {
+			return c.json({ error: "no_files", message: "没有收到文件" }, 400);
+		}
+		if (list.length > MAX_UPLOAD_FILES) {
+			return c.json(
+				{
+					error: "too_many_files",
+					message: `一次最多传 ${MAX_UPLOAD_FILES} 张`,
+				},
+				413,
+			);
+		}
+
+		const files: IncomingFile[] = [];
+		let total = 0;
+		for (const item of list) {
+			const record = (item ?? {}) as Record<string, unknown>;
+			const name = typeof record.name === "string" ? record.name : "";
+			const mime = typeof record.mime === "string" ? record.mime : "";
+			const data = typeof record.data === "string" ? record.data : "";
+			const bytes = decodeBase64(data);
+			if (!bytes || bytes.byteLength === 0) {
+				return c.json(
+					{
+						error: "invalid_data",
+						message: `${name || "文件"} 不是合法的 base64`,
+					},
+					400,
+				);
+			}
+			if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+				return c.json(
+					{ error: "file_too_large", message: `${name || "文件"} 超过 5 MB` },
+					413,
+				);
+			}
+			total += bytes.byteLength;
+			if (total > MAX_TOTAL_BYTES) {
+				return c.json(
+					{
+						error: "batch_too_large",
+						message: "这一批总大小超过 12 MB，分两批传",
+					},
+					413,
+				);
+			}
+			files.push({ name, mime, bytes });
+		}
+
+		const token = await resolveGithubToken(c.env);
+		if (!token) {
+			return c.json(
+				{
+					error: "github_token_missing",
+					message: "还没配置 GitHub 令牌，去「站点设置 → 集成」填一个",
+				},
+				412,
+			);
+		}
+
+		const result = await uploadMedia({ token, files, actorUid: user.uid });
+		if (!result.ok) {
+			await writeAudit(c.env.DB, {
+				actorUid: user.uid,
+				action: "media.upload",
+				target: "media",
+				detail: { count: files.length, status: result.status },
+			});
+			return c.json(
+				{ error: "upload_failed", message: result.message ?? "上传失败" },
+				asStatus(result.status),
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: user.uid,
+			action: "media.upload",
+			target: "media",
+			detail: {
+				count: result.created.length,
+				path: result.created[0]?.path ?? result.reused[0]?.path,
+			},
+		});
+
+		return c.json(
+			{
+				ok: true,
+				commit: result.commit ?? null,
+				created: result.created,
+				reused: result.reused,
+			},
+			result.created.length > 0 ? 201 : 200,
+		);
+	},
+);
+
+/** 删除：先查引用，被文章用着就拦住并列出来 */
+media.delete(
+	"/library",
+	requireRole("admin"),
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const user = c.get("user");
+		if (!user)
+			return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+
+		const body = (await c.req.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		const path = typeof body.path === "string" ? body.path : "";
+		if (!path) {
+			return c.json({ error: "bad_request", message: "缺少 path" }, 400);
+		}
+
+		const token = await resolveGithubToken(c.env);
+		if (!token) {
+			return c.json(
+				{ error: "github_token_missing", message: "还没配置 GitHub 令牌" },
+				412,
+			);
+		}
+
+		const result = await deleteMedia({ env: c.env, token, path });
+		if (!result.ok) {
+			return c.json(
+				{
+					error: result.status === 409 ? "in_use" : "delete_failed",
+					message: result.message ?? "删除失败",
+					usedBy: result.usedBy,
+				},
+				asStatus(result.status),
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: user.uid,
+			action: "media.delete",
+			target: path,
+			detail: { path },
+		});
+
+		return c.json({ ok: true, commit: result.commit ?? null });
+	},
+);
 
 /**
  * D1 的 BLOB 在不同运行时不一定是 ArrayBuffer：

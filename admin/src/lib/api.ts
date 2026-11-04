@@ -90,6 +90,7 @@ export const api = {
 		request<T>(path, { method: "PUT", body }),
 	patch: <T>(path: string, body?: unknown): Promise<T> =>
 		request<T>(path, { method: "PATCH", body }),
-	delete: <T>(path: string): Promise<T> =>
-		request<T>(path, { method: "DELETE" }),
+	// 删除要带路径时用 body：路径里可能有斜杠与点，塞进 query 更容易被转义搞坏
+	delete: <T>(path: string, body?: unknown): Promise<T> =>
+		request<T>(path, { method: "DELETE", body }),
 };

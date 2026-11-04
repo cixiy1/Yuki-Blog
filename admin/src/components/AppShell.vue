@@ -11,6 +11,7 @@ import { isDark, toggleTheme } from "../lib/theme";
 import { editOrigin, go, type RouteName, route } from "../router";
 import AllPosts from "../views/AllPosts.vue";
 import AuditLog from "../views/AuditLog.vue";
+import MediaLibrary from "../views/MediaLibrary.vue";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
 import Overview from "../views/OverviewPage.vue";
@@ -27,6 +28,7 @@ const VIEWS: Record<RouteName, unknown> = {
 	"all-posts": AllPosts,
 	"post-edit": PostEdit,
 	components: MyComponents,
+	media: MediaLibrary,
 	review: ReviewQueue,
 	users: UsersAdmin,
 	audit: AuditLog,
@@ -69,6 +71,7 @@ const navGroups = computed<NavGroup[]>(() => {
 						]
 					: []),
 				{ key: "posts", label: "我的文章", icon: "posts", path: "/posts" },
+				{ key: "media", label: "媒体库", icon: "image", path: "/media" },
 				{
 					key: "components",
 					label: "我的组件",

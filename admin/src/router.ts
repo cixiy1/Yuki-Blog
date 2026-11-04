@@ -10,6 +10,7 @@ export type RouteName =
 	| "all-posts"
 	| "post-edit"
 	| "components"
+	| "media"
 	| "review"
 	| "users"
 	| "audit"
@@ -29,6 +30,7 @@ const ROUTES: RouteName[] = [
 	"all-posts",
 	"post-edit",
 	"components",
+	"media",
 	"review",
 	"users",
 	"audit",

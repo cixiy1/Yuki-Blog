@@ -12,6 +12,7 @@ import {
 	watch,
 } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import MediaPickerDialog from "../components/MediaPickerDialog.vue";
 import PageHeader from "../components/PageHeader.vue";
 import SeriesPickerDialog from "../components/SeriesPickerDialog.vue";
 import { ApiError } from "../lib/api";
@@ -58,6 +59,12 @@ const isRepo = computed(() => repoSlug.value.length > 0);
 const loadedSlug = ref("");
 /** 仓库文章所在目录的 raw 前缀，正文里的相对图片要靠它才能在编辑器里预览 */
 const rawBase = ref("");
+/** 仓库文章的路径，用来算相对图片路径要退几层 */
+const repoPath = ref("");
+/** 封面选择器：封面能选库里的图，也能直接传 */
+const coverPicker = ref(false);
+/** 正文插图：从媒体库挑一张，插在光标处 */
+const bodyPicker = ref(false);
 /**
  * .mdx 里有 import 与组件标签（<ClassSchedule />），IR 模式会把组件渲染成一个看不见的
  * 空元素，作者一眼看过去像被删了。这类文件一律用分屏源码模式打开。
@@ -513,6 +520,13 @@ const MINDMAP_ICON: string =
 	'<path d="M18 18.6h2.6"/>' +
 	"</g></svg>";
 
+/** 同一个画框图标，工具栏里用；描边写在 g 上，否则被 Vditor 的样式压平 */
+const IMAGE_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M4 5h16v14H4z"/>' +
+	'<path d="m4 16.4 4.4-4.4 3.2 3.2 2.9-2.9L20 16.6"/>' +
+	"</g></svg>";
+
 const TOOLBAR: Array<string | IMenuItem> = [
 	"headings",
 	"bold",
@@ -539,6 +553,14 @@ const TOOLBAR: Array<string | IMenuItem> = [
 	"fullscreen",
 	"|",
 	{
+		name: "media",
+		tip: "从媒体库插图",
+		icon: IMAGE_ICON,
+		click: () => {
+			bodyPicker.value = true;
+		},
+	},
+	{
 		name: "mindmap",
 		tip: "思维导图",
 		icon: MINDMAP_ICON,
@@ -562,6 +584,13 @@ function splitTags(): string[] {
 		.map((tag) => tag.trim())
 		.filter((tag) => tag.length > 0);
 }
+
+/** 文章所在目录（相对 src/content/posts）：决定 `./images/...` 要退几层 */
+const postDir = computed(() => {
+	const path = repoPath.value.replace(/^src\/content\/posts\//, "");
+	const slash = path.lastIndexOf("/");
+	return slash >= 0 ? path.slice(0, slash) : "";
+});
 
 /** 封面可能是不带前导 ./ 的相对路径，管理端下解析不到，转到仓库 raw 上预览 */
 const coverBroken = ref(false);
@@ -651,6 +680,7 @@ function loadFields(fields: Record<string, FieldValue>): void {
 
 function fill(post: PostDetail): void {
 	loadedSlug.value = post.slug;
+	repoPath.value = "";
 	status.value = post.status;
 	lastSaved.value = formatTime(post.updated_at);
 	form.slug = post.slug;
@@ -664,6 +694,7 @@ function fill(post: PostDetail): void {
 
 function fillRepo(post: RepoPostDetail): void {
 	loadedSlug.value = post.slug;
+	repoPath.value = post.repoPath;
 	status.value = "published";
 	lastSaved.value = "";
 	form.slug = post.slug;
@@ -895,11 +926,7 @@ async function onSubmit(): Promise<void> {
 	if (!editable.value) return;
 	const saved = await save();
 	if (!saved) return;
-	if (
-		!window.confirm(
-			"提交审核后正文会锁定，想改可以随时撤回。确定提交？",
-		)
-	) {
+	if (!window.confirm("提交审核后正文会锁定，想改可以随时撤回。确定提交？")) {
 		return;
 	}
 	try {
@@ -970,6 +997,18 @@ async function onUpload(files: File[]): Promise<string | null> {
 	vditor.insertValue(`${snippets.join("\n")}\n`);
 	scheduleSave();
 	return null;
+}
+
+/** 从媒体库挑一张插进正文：插在光标处，编辑器没就绪就追加到末尾 */
+function insertLibraryImage(ref: string): void {
+	const markdown = `![](${ref})\n`;
+	bodyPicker.value = false;
+	if (vditor) {
+		vditor.insertValue(markdown);
+		return;
+	}
+	form.body = `${form.body.trimEnd()}\n\n${markdown}`;
+	onFieldInput();
 }
 
 function createEditor(): void {
@@ -1609,6 +1648,15 @@ watch(isDark, (dark) => {
 											onFieldInput();
 										"
 									/>
+									<button
+										type="button"
+										class="cover-pick"
+										:disabled="!editable"
+										title="从媒体库里挑一张，或直接上传"
+										@click="coverPicker = true"
+									>
+										<AppIcon name="image" :size="14" />
+									</button>
 								</div>
 							</template>
 
@@ -1705,6 +1753,29 @@ watch(isDark, (dark) => {
 				</aside>
 			</div>
 		</template>
+
+		<MediaPickerDialog
+			v-if="coverPicker"
+			context="post"
+			:post-dir="postDir"
+			:initial="textOf('image')"
+			@close="coverPicker = false"
+			@select="
+				(value) => {
+					vals.image = value;
+					coverBroken = false;
+					onFieldInput();
+				}
+			"
+		/>
+
+		<MediaPickerDialog
+			v-if="bodyPicker"
+			context="post"
+			:post-dir="postDir"
+			@close="bodyPicker = false"
+			@select="insertLibraryImage"
+		/>
 
 		<SeriesPickerDialog
 			v-if="seriesOpen"
@@ -2266,6 +2337,33 @@ watch(isDark, (dark) => {
 	border: 1px solid var(--line-divider);
 	object-fit: cover;
 	background: var(--btn-regular-bg);
+}
+
+/* 封面输入框右边的「选图」：跟输入框等高，别喧宾夺主 */
+.cover-pick {
+	display: grid;
+	flex: none;
+	place-items: center;
+	width: 2rem;
+	height: 2rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.5rem;
+	background: transparent;
+	color: var(--fg-50);
+	cursor: pointer;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.cover-pick:hover:not(:disabled) {
+	background: var(--btn-plain-bg-hover);
+	color: var(--fg-90);
+}
+
+.cover-pick:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 
 /* ---- 代笔声明：三档用胶囊选择，比下拉更好扫 ---- */

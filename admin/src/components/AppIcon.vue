@@ -86,6 +86,8 @@ const PATHS: Record<string, string[]> = {
 		"M18 12h2.6",
 		"M18 18.6h2.6",
 	],
+	// 图片：一个画框加一道山脊，笔数与自带图标同量级
+	image: ["M4 5h16v14H4z", "m4 16.4 4.4-4.4 3.2 3.2 2.9-2.9L20 16.6"],
 };
 
 const props = defineProps<{ name: string; size?: number }>();

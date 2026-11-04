@@ -43,7 +43,9 @@ export type AuditAction =
 	| "review.note"
 	| "review.body"
 	| "review.reject"
-	| "review.withdraw";
+	| "review.withdraw"
+	| "media.upload"
+	| "media.delete";
 
 const DETAIL_KEYS = new Set([
 	"from",
@@ -68,6 +70,9 @@ const DETAIL_KEYS = new Set([
 	"security",
 	"mode",
 	"ok",
+	// 媒体库：动了哪个文件、一次几张
+	"path",
+	"count",
 ]);
 
 export interface AuditInput {
