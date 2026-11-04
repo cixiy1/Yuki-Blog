@@ -43,6 +43,15 @@
 | Resend | 有自己的域名，愿意配 DNS | API Key（`re_` 开头）+ 已验证的发件域名 |
 | SMTP | 用现成邮箱发（QQ / 163 / 企业邮） | 主机、端口、加密方式、账号、授权码 |
 
+### 邮件版式
+
+所有邮件共用一套模板（`server/lib/mail-template.ts`）：浅色页底、白色卡片、1px 描边、16px 圆角，顶部一条强调色，按钮、链接、徽章同色系。品牌行显示站点名与副标题。
+
+- 强调色跟主题色相走：读 `site.config.published` 里的 `site.themeColor.hue`，再用 HSL 折算成十六进制。邮件客户端不认 oklch 和 CSS 变量，这一步只能在服务端做。站点没发布过配置时用 `siteConfig` 的默认值 180。
+- 布局是嵌套 table。Outlook 用 Word 渲染，flex / grid / 圆角都可能失效，退化后仍要能读。
+- 正文左右内边距 30px，手机宽度下收到 20px（`@media` 配 `class`，内联样式得靠 `!important` 才压得住）。
+- 调版式不用连 SMTP：各封邮件的 HTML 组装都单独导出了（`verifyMailHtml`、`reviewNotifyHtml` 等），用 `npx tsx` 直接渲染成文件，浏览器打开就是收信人看到的样子。
+
 ### Resend
 
 1. Resend 后台 → Domains → 添加 `yiyu14.top`

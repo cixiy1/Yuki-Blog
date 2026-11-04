@@ -4,6 +4,24 @@ import {
 	type MailMode,
 	resolveMailConfig,
 } from "./mail-config";
+import {
+	escapeHtml,
+	factTable,
+	hintText,
+	inlineCode,
+	linkLine,
+	type MailBrand,
+	type MailTheme,
+	mailTheme,
+	metaLine,
+	paragraph,
+	primaryButton,
+	quoteBlock,
+	renderMail,
+	resolveBrand,
+	sectionLabel,
+	warnBlock,
+} from "./mail-template";
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
@@ -39,8 +57,28 @@ export interface MailResult {
 	hint?: string;
 }
 
-const STYLE =
-	"font-family:system-ui,-apple-system,'PingFang SC',sans-serif;line-height:1.7;color:#1f2328";
+/**
+ * 邮件里要用对外地址。Worker 里的发信函数拿不到请求，所以：
+ * env.SITE_ORIGIN 优先，其次用邮件里那个链接的 origin，最后回退线上域名。
+ */
+function originFrom(env: Env, fallbackLink: string): string {
+	const configured = env.SITE_ORIGIN;
+	if (configured?.startsWith("http")) return configured.replace(/\/$/, "");
+	try {
+		return new URL(fallbackLink).origin;
+	} catch {
+		return "https://yiyu14.top";
+	}
+}
+
+/** 品牌与配色一起取，各封邮件开头都调它 */
+async function mailStyle(
+	env: Env,
+	fallbackLink: string,
+): Promise<{ brand: MailBrand; theme: MailTheme }> {
+	const brand = await resolveBrand(env.DB, originFrom(env, fallbackLink));
+	return { brand, theme: mailTheme(brand.hue) };
+}
 
 /** `Yuki Blog <mail@yiyu14.top>` → { name, email } */
 function parseFrom(raw: string): { name?: string; email: string } {
@@ -215,23 +253,26 @@ export async function sendTestMail(
 	origin: string,
 ): Promise<MailResult & { configMode: MailMode; from: string }> {
 	const config = await resolveMailConfig(env);
+	const { brand, theme } = await mailStyle(env, origin);
+	const channel =
+		config.mode === "smtp"
+			? `SMTP ${config.smtp.host}:${config.smtp.port}`
+			: config.mode;
 	const text = [
 		"这封是 Yuki Blog 管理端发出的测试邮件。",
 		"",
-		`发信通道：${config.mode === "smtp" ? `SMTP（${config.smtp.host}:${config.smtp.port}）` : config.mode}`,
+		`发信通道：${channel}`,
 		`发件人：${config.from}`,
 		`站点：${origin}`,
 		"",
 		"收到它说明验证码、找回密码这类邮件也能正常发出去。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>这封是 <strong>Yuki Blog 管理端</strong> 发出的测试邮件。</p>
-  <p>发信通道：<code>${config.mode === "smtp" ? `SMTP ${config.smtp.host}:${config.smtp.port}` : config.mode}</code><br>
-     发件人：<code>${config.from}</code><br>
-     站点：<code>${origin}</code></p>
-  <p style="color:#59636e;font-size:13px">收到它说明验证码、找回密码这类邮件也能正常发出去。</p>
-</div>`;
+	const html = testMailHtml(brand, theme, {
+		channel,
+		from: config.from,
+		origin,
+	});
 
 	const result = await sendMail(env, {
 		to,
@@ -242,8 +283,33 @@ export async function sendTestMail(
 	return { ...result, configMode: config.mode, from: config.from };
 }
 
-function buttonHtml(link: string, label: string): string {
-	return `<p style="margin:20px 0"><a href="${link}" style="display:inline-block;padding:10px 20px;border-radius:10px;background:#0f766e;color:#fff;text-decoration:none;font-weight:600">${label}</a></p>`;
+/**
+ * 各封邮件的 HTML 组装单独导出：发信要连 SMTP，调版式不该被它挡住。
+ * 预览脚本直接拿这些函数渲染，看到的就是线上那封信。
+ */
+export function testMailHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { channel: string; from: string; origin: string },
+): string {
+	return renderMail(brand, theme, {
+		preheader: `发信通道 ${info.channel}，配置已生效`,
+		heading: "发信配置测试",
+		badge: { text: "通道已生效", tone: "accent" },
+		body: [
+			paragraph(theme, "下面三项是这封邮件实际用的配置。"),
+			factTable(theme, [
+				["发信通道", info.channel],
+				["发件人", info.from],
+				["站点", info.origin],
+			]),
+			hintText(
+				theme,
+				"收到它说明验证码、找回密码、待审提醒这些邮件也能正常发出去。",
+			),
+		].join("\n"),
+		footNote: "这封只在管理端点「发送测试邮件」时发出。",
+	});
 }
 
 export async function sendVerifyMail(
@@ -252,6 +318,7 @@ export async function sendVerifyMail(
 	link: string,
 	account: string,
 ): Promise<MailResult> {
+	const { brand, theme } = await mailStyle(env, link);
 	const text = [
 		`你好 ${account}，欢迎注册 Yuki Blog。`,
 		"",
@@ -261,13 +328,7 @@ export async function sendVerifyMail(
 		"如果不是你本人注册，忽略这封邮件即可。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>你好 <strong>${account}</strong>，欢迎注册 Yuki Blog。</p>
-  <p>点击下面的按钮完成邮箱验证，链接 24 小时内有效：</p>
-  ${buttonHtml(link, "验证邮箱")}
-  <p style="color:#59636e;font-size:13px">按钮打不开就复制这个地址：<br>${link}</p>
-  <p style="color:#59636e;font-size:13px">如果不是你本人注册，忽略这封邮件即可。</p>
-</div>`;
+	const html = verifyMailHtml(brand, theme, { account, link });
 
 	return await sendMail(env, {
 		to,
@@ -277,11 +338,34 @@ export async function sendVerifyMail(
 	});
 }
 
+export function verifyMailHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { account: string; link: string },
+): string {
+	return renderMail(brand, theme, {
+		preheader: "验证这个邮箱，24 小时内有效。",
+		heading: "验证你的邮箱",
+		badge: { text: "24 小时内有效", tone: "muted" },
+		body: [
+			paragraph(
+				theme,
+				`你好 <strong>${escapeHtml(info.account)}</strong>，欢迎注册 ${escapeHtml(brand.name)}。`,
+			),
+			paragraph(theme, "点下面的按钮完成验证，这个链接 24 小时内有效。"),
+			primaryButton(theme, info.link, "验证邮箱"),
+			linkLine(theme, info.link),
+			hintText(theme, "如果不是你本人注册，忽略这封邮件即可。"),
+		].join("\n"),
+	});
+}
+
 export async function sendResetMail(
 	env: Env,
 	to: string,
 	link: string,
 ): Promise<MailResult> {
+	const { brand, theme } = await mailStyle(env, link);
 	const text = [
 		"有人请求重置这个邮箱在 Yuki Blog 的密码。",
 		"",
@@ -291,19 +375,32 @@ export async function sendResetMail(
 		"如果不是你本人操作，忽略这封邮件即可，密码不会变。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>有人请求重置这个邮箱在 Yuki Blog 的密码。</p>
-  <p>点击下面的按钮设置新密码，链接 1 小时内有效：</p>
-  ${buttonHtml(link, "重置密码")}
-  <p style="color:#59636e;font-size:13px">按钮打不开就复制这个地址：<br>${link}</p>
-  <p style="color:#59636e;font-size:13px">如果不是你本人操作，忽略这封邮件即可，密码不会变。</p>
-</div>`;
+	const html = resetMailHtml(brand, theme, link);
 
 	return await sendMail(env, {
 		to,
 		subject: "重置密码 · Yuki Blog",
 		text,
 		html,
+	});
+}
+
+export function resetMailHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	link: string,
+): string {
+	return renderMail(brand, theme, {
+		preheader: "设置新密码，链接 1 小时内有效。",
+		heading: "重置密码",
+		badge: { text: "1 小时内有效", tone: "muted" },
+		body: [
+			paragraph(theme, "有人请求重置这个邮箱的密码。"),
+			paragraph(theme, "点下面的按钮设置新密码，链接 1 小时内有效。"),
+			primaryButton(theme, link, "设置新密码"),
+			linkLine(theme, link),
+			hintText(theme, "如果不是你本人操作，忽略这封邮件即可，密码不会变。"),
+		].join("\n"),
 	});
 }
 
@@ -314,6 +411,7 @@ export async function sendAccountExistsMail(
 	loginUrl: string,
 	resetUrl: string,
 ): Promise<MailResult> {
+	const { brand, theme } = await mailStyle(env, loginUrl);
 	const text = [
 		"有人用这个邮箱尝试注册 Yuki Blog，但该邮箱已经有账号了。",
 		"",
@@ -323,19 +421,42 @@ export async function sendAccountExistsMail(
 		"如果这不是你本人操作，忽略这封邮件即可。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>有人用这个邮箱尝试注册 Yuki Blog，但该邮箱已经有账号了。</p>
-  <p>如果就是你本人，直接登录或重置密码即可：</p>
-  <p><a href="${loginUrl}" style="color:#0f766e">${loginUrl}</a><br>
-     <a href="${resetUrl}" style="color:#0f766e">${resetUrl}</a></p>
-  <p style="color:#59636e;font-size:13px">如果这不是你本人操作，忽略这封邮件即可。</p>
-</div>`;
+	const html = accountExistsMailHtml(brand, theme, {
+		loginUrl,
+		resetUrl,
+	});
 
 	return await sendMail(env, {
 		to,
 		subject: "这个邮箱已经注册过了 · Yuki Blog",
 		text,
 		html,
+	});
+}
+
+export function accountExistsMailHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { loginUrl: string; resetUrl: string },
+): string {
+	const { loginUrl, resetUrl } = info;
+	const resetLink = `<a href="${escapeHtml(resetUrl)}" style="color:${theme.accentDeep};text-decoration:none;">重置密码</a>`;
+
+	return renderMail(brand, theme, {
+		preheader: "这个邮箱已有账号，直接登录即可。",
+		heading: "这个邮箱已经注册过了",
+		badge: { text: "无需重复注册", tone: "muted" },
+		body: [
+			paragraph(
+				theme,
+				`有人用这个邮箱尝试注册 ${escapeHtml(brand.name)}，但它已经有账号了。`,
+			),
+			paragraph(theme, "如果就是你本人，直接登录就行。"),
+			primaryButton(theme, loginUrl, "直接登录"),
+			linkLine(theme, loginUrl),
+			paragraph(theme, `忘记密码的话，可以${resetLink}。`),
+			hintText(theme, "如果这不是你本人操作，忽略这封邮件即可。"),
+		].join("\n"),
 	});
 }
 
@@ -349,6 +470,7 @@ export async function sendEmailChangeMail(
 	account: string,
 	currentEmail: string,
 ): Promise<MailResult> {
+	const { brand, theme } = await mailStyle(env, link);
 	const text = [
 		`你好 ${account}，有人请求把 Yuki Blog 账号的邮箱改成这个地址。`,
 		"",
@@ -360,20 +482,49 @@ export async function sendEmailChangeMail(
 		"如果这不是你本人操作，忽略这封邮件即可，邮箱不会变。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>你好 <strong>${escapeHtml(account)}</strong>，有人请求把 Yuki Blog 账号的邮箱改成这个地址。</p>
-  <p>当前邮箱：<code>${escapeHtml(currentEmail)}</code></p>
-  <p>点击下面的按钮确认更换，链接 24 小时内有效：</p>
-  ${buttonHtml(link, "确认更换邮箱")}
-  <p style="color:#59636e;font-size:13px">按钮打不开就复制这个地址：<br>${link}</p>
-  <p style="color:#59636e;font-size:13px">如果这不是你本人操作，忽略这封邮件即可，邮箱不会变。</p>
-</div>`;
+	const html = emailChangeMailHtml(brand, theme, {
+		account,
+		currentEmail,
+		newEmail: to,
+		link,
+	});
 
 	return await sendMail(env, {
 		to,
 		subject: "确认更换邮箱 · Yuki Blog",
 		text,
 		html,
+	});
+}
+
+export function emailChangeMailHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: {
+		account: string;
+		currentEmail: string;
+		newEmail: string;
+		link: string;
+	},
+): string {
+	return renderMail(brand, theme, {
+		preheader: `确认把账号邮箱从 ${info.currentEmail} 换成这个地址。`,
+		heading: "确认更换邮箱",
+		badge: { text: "24 小时内有效", tone: "muted" },
+		body: [
+			paragraph(
+				theme,
+				`你好 <strong>${escapeHtml(info.account)}</strong>，有人请求把账号绑定的邮箱换成这个地址。`,
+			),
+			factTable(theme, [
+				["当前邮箱", info.currentEmail],
+				["新邮箱", info.newEmail],
+			]),
+			paragraph(theme, "点下面的按钮确认更换，链接 24 小时内有效。"),
+			primaryButton(theme, info.link, "确认更换邮箱"),
+			linkLine(theme, info.link),
+			hintText(theme, "如果这不是你本人操作，忽略这封邮件即可，邮箱不会变。"),
+		].join("\n"),
 	});
 }
 
@@ -385,6 +536,7 @@ export async function sendEmailChangedNoticeMail(
 	newEmail: string,
 	resetUrl: string,
 ): Promise<MailResult> {
+	const { brand, theme } = await mailStyle(env, resetUrl);
 	const text = [
 		`Yuki Blog 账号 ${account} 的邮箱已经改成了 ${newEmail}。`,
 		"",
@@ -392,12 +544,11 @@ export async function sendEmailChangedNoticeMail(
 		`如果不是，立刻用这个地址找回密码，然后到账号设置里改回去并更换密码：${resetUrl}`,
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>Yuki Blog 账号 <strong>${escapeHtml(account)}</strong> 的邮箱已经改成了 <code>${escapeHtml(newEmail)}</code>。</p>
-  <p style="color:#59636e;font-size:13px">如果这是你本人操作，忽略这封邮件。</p>
-  <p style="color:#b45309;font-size:13px">如果不是你操作，立刻用这个地址找回密码，然后到账号设置里把邮箱改回来并更换密码：</p>
-  ${buttonHtml(resetUrl, "找回密码")}
-</div>`;
+	const html = emailChangedMailHtml(brand, theme, {
+		account,
+		newEmail,
+		resetUrl,
+	});
 
 	return await sendMail(env, {
 		to,
@@ -407,12 +558,28 @@ export async function sendEmailChangedNoticeMail(
 	});
 }
 
-function escapeHtml(raw: string): string {
-	return raw
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;");
+export function emailChangedMailHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { account: string; newEmail: string; resetUrl: string },
+): string {
+	return renderMail(brand, theme, {
+		preheader: `账号邮箱已改成 ${info.newEmail}`,
+		heading: "账号邮箱已更换",
+		badge: { text: "安全提醒", tone: "warn" },
+		body: [
+			paragraph(
+				theme,
+				`账号 <strong>${escapeHtml(info.account)}</strong> 的邮箱已经改成了 ${inlineCode(theme, info.newEmail)}。`,
+			),
+			paragraph(theme, "如果是你本人操作，这封邮件不用管。"),
+			warnBlock(
+				"如果不是你改的，说明有人拿到了你的账号。立刻用下面的按钮找回密码，再去账号设置里把邮箱改回来并换一个密码。",
+			),
+			primaryButton(theme, info.resetUrl, "找回密码"),
+			linkLine(theme, info.resetUrl),
+		].join("\n"),
+	});
 }
 
 /**
@@ -457,6 +624,7 @@ export async function sendReviewNotifyMail(
 		`字数：${payload.wordCount}`,
 	].filter(Boolean);
 	const summary = payload.summary.trim();
+	const { brand, theme } = await mailStyle(env, payload.link);
 
 	const text = [
 		"有一篇新文章提交审核。",
@@ -470,18 +638,38 @@ export async function sendReviewNotifyMail(
 		"审核通过后会写到仓库并触发构建，约 1 分钟后线上可见。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>有一篇新文章提交审核。</p>
-  <p style="font-size:17px;font-weight:600;margin:12px 0 6px">《${escapeHtml(title)}》</p>
-  <p style="color:#59636e;font-size:13px;margin:0 0 14px">${escapeHtml(facts.join(" · "))}</p>
-  ${summary ? `<blockquote style="margin:0 0 4px;padding:10px 14px;border-left:3px solid #d5d9de;color:#3d444d;font-size:14px">${escapeHtml(summary)}</blockquote>` : ""}
-  ${buttonHtml(payload.link, "去审核")}
-  <p style="color:#59636e;font-size:13px">按钮打不开就复制这个地址：<br>${escapeHtml(payload.link)}</p>
-  <p style="color:#59636e;font-size:13px">通过后写进仓库并触发构建，约 1 分钟后线上可见。</p>
-</div>`;
+	const html = reviewNotifyHtml(brand, theme, {
+		title,
+		facts,
+		summary,
+		link: payload.link,
+	});
 
 	const subject = `待审：《${title}》 · Yuki Blog`;
 	return await sendToEach(env, payload.to, { subject, text, html });
+}
+
+export function reviewNotifyHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { title: string; facts: string[]; summary: string; link: string },
+): string {
+	return renderMail(brand, theme, {
+		preheader: `《${info.title}》等你审`,
+		heading: `《${info.title}》`,
+		badge: { text: "待审核", tone: "accent" },
+		body: [
+			metaLine(theme, info.facts.join(" · ")),
+			...(info.summary
+				? [sectionLabel(theme, "摘要"), quoteBlock(theme, info.summary)]
+				: []),
+			primaryButton(theme, info.link, "去审核"),
+			linkLine(theme, info.link),
+			hintText(theme, "通过后写进仓库并触发构建，约 1 分钟后线上可见。"),
+		].join("\n"),
+		footNote:
+			"收到这封是因为你的邮箱在「站点设置 → 集成 → 发信 → 管理员邮箱」里。",
+	});
 }
 
 export interface ReviewApprovedMail {
@@ -503,6 +691,7 @@ export async function sendReviewApprovedMail(
 ): Promise<MailResult> {
 	const title = payload.title.trim() || "（未命名）";
 	const note = payload.note.trim();
+	const { brand, theme } = await mailStyle(env, payload.link);
 
 	const text = [
 		`《${title}》已通过审核，已经发布。`,
@@ -513,23 +702,39 @@ export async function sendReviewApprovedMail(
 		"发布后仍可在「我的文章」里重新编辑。",
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>《${escapeHtml(title)}》已通过审核，已经发布。</p>
-  ${
-		note
-			? `<p style="color:#59636e;font-size:13px;margin:14px 0 4px">审核员留了一句话：</p>
-  <blockquote style="margin:0 0 4px;padding:10px 14px;border-left:3px solid #d5d9de;color:#3d444d;font-size:14px;white-space:pre-wrap">${escapeHtml(note)}</blockquote>`
-			: ""
-	}
-  ${buttonHtml(payload.link, "打开文章")}
-  <p style="color:#59636e;font-size:13px">发布后仍可在「我的文章」里重新编辑。</p>
-</div>`;
+	const html = reviewApprovedHtml(brand, theme, {
+		title,
+		note,
+		link: payload.link,
+	});
 
 	return await sendMail(env, {
 		to: payload.to,
 		subject: `已通过：《${title}》 · Yuki Blog`,
 		text,
 		html,
+	});
+}
+
+export function reviewApprovedHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { title: string; note: string; link: string },
+): string {
+	return renderMail(brand, theme, {
+		preheader: `《${info.title}》已发布${info.note ? "，审核员留了句话" : ""}`,
+		heading: `《${info.title}》`,
+		badge: { text: "已通过审核", tone: "accent" },
+		body: [
+			...(info.note
+				? [
+						sectionLabel(theme, "审核员留了一句话"),
+						quoteBlock(theme, info.note),
+					]
+				: [paragraph(theme, "审核员没有留备注，稿子已按原文发布。")]),
+			primaryButton(theme, info.link, "打开文章"),
+			hintText(theme, "发布后仍可在「我的文章」里重新编辑。"),
+		].join("\n"),
 	});
 }
 
@@ -551,6 +756,7 @@ export async function sendReviewWithdrawMail(
 ): Promise<MailResult> {
 	const title = payload.title.trim() || "（未命名）";
 	const author = payload.author.trim();
+	const { brand, theme } = await mailStyle(env, payload.link);
 
 	const text = [
 		`《${title}》已被作者撤回，不用再审。`,
@@ -560,14 +766,32 @@ export async function sendReviewWithdrawMail(
 		`审核队列：${payload.link}`,
 	].join("\n");
 
-	const html = `<div style="${STYLE}">
-  <p>下面这篇已被作者撤回，不用再审。</p>
-  <p style="font-size:17px;font-weight:600;margin:12px 0 6px">《${escapeHtml(title)}》</p>
-  ${author ? `<p style="color:#59636e;font-size:13px;margin:0 0 14px">作者：${escapeHtml(author)}</p>` : ""}
-  <p style="color:#59636e;font-size:13px">这篇回到草稿状态继续修改，改完重新提交会再发一封提醒。</p>
-  ${buttonHtml(payload.link, "打开审核队列")}
-</div>`;
+	const html = reviewWithdrawHtml(brand, theme, {
+		title,
+		author,
+		link: payload.link,
+	});
 
 	const subject = `已撤回：《${title}》 · Yuki Blog`;
 	return await sendToEach(env, payload.to, { subject, text, html });
+}
+
+export function reviewWithdrawHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { title: string; author: string; link: string },
+): string {
+	return renderMail(brand, theme, {
+		preheader: `《${info.title}》被作者撤回，不用再审`,
+		heading: `《${info.title}》`,
+		badge: { text: "不用再审", tone: "muted" },
+		body: [
+			...(info.author ? [metaLine(theme, `作者：${info.author}`)] : []),
+			paragraph(
+				theme,
+				"作者把稿子撤回了，这篇不在待审队列里。改完重新提交会再发一封提醒。",
+			),
+			primaryButton(theme, info.link, "打开审核队列"),
+		].join("\n"),
+	});
 }
