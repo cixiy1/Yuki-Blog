@@ -145,6 +145,12 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 								class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--accent-text)"
 								>未验证</span
 							>
+							<!-- 换邮箱请求发出后：库里还是旧地址，这里补一句「等确认」 -->
+							<span
+								data-role="email-pending"
+								hidden
+								class="shrink-0 rounded-full bg-(--btn-regular-bg) px-2 py-0.5 text-[11px] text-(--btn-content)"
+							></span>
 						</dd>
 					</div>
 					<div class="flex items-center justify-between gap-3 py-2.5">
@@ -156,7 +162,7 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 					</div>
 				</dl>
 				<p class="-mt-2 text-[11px] leading-relaxed text-50">
-					登录名与邮箱不在这里改：登录名是登录凭据，换邮箱需要先验证新地址。
+					登录名不在这里改：它是登录凭据，要换找站主。邮箱在下面单独走验证流程。
 				</p>
 
 				<div class="flex flex-wrap items-center gap-3">
@@ -174,6 +180,66 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 				>
 				</div>
 			</form>
+
+			<div class="my-7 h-px bg-(--line-divider)" role="separator"></div>
+
+			<section>
+				<div class="flex items-center gap-2">
+					<Icon
+						name="material-symbols:mail-outline"
+						class="text-base text-(--primary)"
+					/>
+					<h2 class="text-sm font-semibold text-90">更换邮箱</h2>
+				</div>
+				<p class="mt-1 text-[11px] leading-relaxed text-50">
+					确认信发到<strong class="text-75">新地址</strong>，点完链接才生效；换成功后原邮箱会收到一封通知。
+				</p>
+
+				<form data-role="email-form" novalidate class="mt-4 space-y-4">
+					<div>
+						<label class={labelClass} for="pe-email">新邮箱</label>
+						<input
+							id="pe-email"
+							data-role="email-new"
+							type="email"
+							inputmode="email"
+							autocomplete="email"
+							class={inputClass}
+							placeholder="new@example.com"
+						/>
+					</div>
+					<div data-role="email-pw-row">
+						<label class={labelClass} for="pe-email-pw">当前密码</label>
+						<input
+							id="pe-email-pw"
+							data-role="email-pw"
+							type="password"
+							autocomplete="current-password"
+							class={inputClass}
+							placeholder="邮箱是找回密码的入口，先确认是本人"
+						/>
+					</div>
+
+					<div class="flex flex-wrap items-center gap-3">
+						<button
+							data-role="email-save"
+							type="submit"
+							class="btn-regular h-10 rounded-xl px-5 text-sm font-medium disabled:pointer-events-none disabled:opacity-60"
+						>
+							发送确认信
+						</button>
+					</div>
+
+					<div
+						data-role="email-msg"
+						class="auth-status"
+						role="status"
+						aria-live="polite"
+						hidden
+					>
+					</div>
+				</form>
+			</section>
 
 			<div class="my-7 h-px bg-(--line-divider)" role="separator"></div>
 
@@ -274,6 +340,8 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 		avatar_url: string | null;
 		bio: string | null;
 		email_verified: number;
+		/** 0 表示纯 GitHub 登录、没有本地密码，换邮箱时不要求填密码 */
+		has_password?: number;
 	}
 
 	interface MeResponse {
@@ -308,6 +376,15 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 		private pwConfirm!: HTMLInputElement;
 		private pwMsg!: HTMLElement;
 		private pwSaveBtn!: HTMLButtonElement;
+		private emailForm!: HTMLFormElement;
+		private emailNew!: HTMLInputElement;
+		private emailPw!: HTMLInputElement;
+		private emailPwRow!: HTMLElement;
+		private emailMsg!: HTMLElement;
+		private emailSaveBtn!: HTMLButtonElement;
+		/** 当前邮箱：新地址填成一样就没必要发信 */
+		private currentEmail = "";
+		private hasPassword = true;
 
 		connectedCallback(): void {
 			this.guest = this.querySelector('[data-role="guest"]') as HTMLElement;
@@ -350,6 +427,24 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			this.pwSaveBtn = this.querySelector(
 				'[data-role="pw-save"]',
 			) as HTMLButtonElement;
+			this.emailForm = this.querySelector(
+				'[data-role="email-form"]',
+			) as HTMLFormElement;
+			this.emailNew = this.querySelector(
+				'[data-role="email-new"]',
+			) as HTMLInputElement;
+			this.emailPw = this.querySelector(
+				'[data-role="email-pw"]',
+			) as HTMLInputElement;
+			this.emailPwRow = this.querySelector(
+				'[data-role="email-pw-row"]',
+			) as HTMLElement;
+			this.emailMsg = this.querySelector(
+				'[data-role="email-msg"]',
+			) as HTMLElement;
+			this.emailSaveBtn = this.querySelector(
+				'[data-role="email-save"]',
+			) as HTMLButtonElement;
 
 			this.preview?.addEventListener("error", () => {
 				// 地址写错或图挂了：收起图片，露出底下的首字
@@ -371,6 +466,10 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			this.pwForm?.addEventListener("submit", (event) => {
 				event.preventDefault();
 				void this.changePassword();
+			});
+			this.emailForm?.addEventListener("submit", (event) => {
+				event.preventDefault();
+				void this.requestEmailChange();
 			});
 
 			void this.load();
@@ -395,6 +494,10 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			this.setText("account", user.account);
 			this.setText("email", user.email);
 			this.setText("uid", String(user.uid));
+			this.currentEmail = user.email;
+			this.hasPassword = Boolean(user.has_password);
+			// 没有本地密码的账号（GitHub 建的）不摆一个永远填不出来的密码框
+			if (this.emailPwRow) this.emailPwRow.hidden = !this.hasPassword;
 			const verified = this.querySelector<HTMLElement>(
 				'[data-role="verified"]',
 			);
@@ -522,6 +625,73 @@ const labelClass = "mb-1.5 block text-xs font-medium text-75";
 			if (this.pwNew) this.pwNew.value = "";
 			if (this.pwConfirm) this.pwConfirm.value = "";
 			say(this.pwMsg, "密码已更新，其它设备需要重新登录", "ok");
+		}
+
+		/**
+		 * 换邮箱：只发确认信，库里此刻还是旧地址。
+		 * 提示语必须说「已发送」而不是「已更换」，否则用户会以为已经生效、
+		 * 关掉页面就再也找不到那封信。
+		 */
+		private async requestEmailChange(): Promise<void> {
+			const email = this.emailNew?.value.trim() ?? "";
+			const password = this.emailPw?.value ?? "";
+
+			if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+				say(this.emailMsg, "邮箱格式不对", "error");
+				this.emailNew?.focus();
+				return;
+			}
+			if (email.toLowerCase() === this.currentEmail.toLowerCase()) {
+				say(this.emailMsg, "新邮箱和现在的邮箱一样", "error");
+				this.emailNew?.focus();
+				return;
+			}
+			if (this.hasPassword && !password) {
+				say(this.emailMsg, "填一下当前密码", "error");
+				this.emailPw?.focus();
+				return;
+			}
+
+			setBusy(this.emailSaveBtn, true, "发送中…");
+			say(this.emailMsg, "", "");
+			const result = await postJson<{
+				ok?: boolean;
+				pending_email?: string;
+				message?: string;
+				debug_link?: string;
+			}>("/api/auth/change-email", { email, password });
+			setBusy(this.emailSaveBtn, false);
+
+			if (!result.ok) {
+				const message =
+					result.data?.message ??
+					(result.malformed || result.unreachable
+						? failureText(result)
+						: "发送失败，稍后重试");
+				say(this.emailMsg, message, "error");
+				return;
+			}
+
+			if (this.emailNew) this.emailNew.value = "";
+			if (this.emailPw) this.emailPw.value = "";
+			// 「待确认」贴在邮箱那一行：不然用户会以为没提交成功
+			const pending = this.querySelector<HTMLElement>(
+				'[data-role="email-pending"]',
+			);
+			if (pending) {
+				pending.textContent = `待确认 ${email}`;
+				pending.hidden = false;
+			}
+			// 调试链接只在本地露出来（服务端 AUTH_DEBUG 打开时才有）
+			const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+			const link = isLocal ? result.data?.debug_link : "";
+			say(
+				this.emailMsg,
+				link
+					? `确认信已发到 ${email}，点开链接生效。调试链接：${link}`
+					: `确认信已发到 ${email}，24 小时内点开链接才生效`,
+				"ok",
+			);
 		}
 	}
 

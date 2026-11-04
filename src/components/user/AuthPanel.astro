@@ -207,6 +207,9 @@ const { title, desc } = titles[mode];
 		message?: string;
 		retry_after?: number;
 		debug_link?: string;
+		/** 验证链接同时用于注册激活与换邮箱确认，靠这个字段区分 */
+		email_changed?: boolean;
+		user?: { email?: string };
 	}
 
 	class AuthPanel extends HTMLElement {
@@ -404,6 +407,15 @@ const { title, desc } = titles[mode];
 						: "链接无效或已过期，去登录页重新发一封";
 				return this.#say(text, "error");
 			}
+
+			// 换邮箱确认：不动会话，也不该把人往个人中心顶
+			if (r.data?.email_changed) {
+				const email = r.data.user?.email ?? "新地址";
+				this.#say(`邮箱已换成 ${email}，正在返回账号设置…`, "ok");
+				setTimeout(() => location.assign("/me/profile/"), 1200);
+				return;
+			}
+
 			this.#say("验证成功，正在进入个人中心…", "ok");
 			setTimeout(() => location.assign(readNext() ?? "/me/"), 900);
 		}

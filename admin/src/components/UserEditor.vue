@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ApiError } from "../lib/api";
 import { ACTION_LABEL } from "../lib/audit";
 import {
@@ -204,21 +204,54 @@ const auditText = computed(() =>
 		at: formatTime(item.created_at),
 	})),
 );
+
+/**
+ * 弹窗的键盘与焦点：Esc 关闭，关闭后把焦点还给点开它的那个按钮。
+ * 不收口的话，键盘用户关完弹窗会掉回页面顶部，得重新 Tab 一遍。
+ */
+const panel = ref<HTMLElement | null>(null);
+let opener: HTMLElement | null = null;
+
+function onKeydown(event: KeyboardEvent): void {
+	if (event.key === "Escape") {
+		event.stopPropagation();
+		emit("close");
+	}
+}
+
+onMounted(() => {
+	opener =
+		document.activeElement instanceof HTMLElement
+			? document.activeElement
+			: null;
+	window.addEventListener("keydown", onKeydown);
+	// 落在第一个输入框；没有输入框（不太可能）才退回头部的关闭按钮
+	const first =
+		panel.value?.querySelector<HTMLElement>(
+			".panel-body input, .panel-body select",
+		) ?? panel.value?.querySelector<HTMLElement>(".panel-head button");
+	first?.focus();
+});
+
+onBeforeUnmount(() => {
+	window.removeEventListener("keydown", onKeydown);
+	opener?.focus();
+});
 </script>
 
 <template>
 	<Teleport to="body">
 		<div class="mask" @click.self="emit('close')">
-			<aside class="panel" role="dialog" aria-modal="true">
+			<aside ref="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="ue-title">
 				<header class="panel-head">
 					<div>
-						<h2>{{ title }}</h2>
+						<h2 id="ue-title">{{ title }}</h2>
 						<p v-if="isEdit && target" class="sub">
 							@{{ target.account }} · uid {{ target.uid }}
 						</p>
 					</div>
 					<button type="button" class="icon-btn" aria-label="关闭" @click="emit('close')">
-						<AppIcon name="back" :size="16" />
+						<AppIcon name="close" :size="16" />
 					</button>
 				</header>
 
@@ -377,17 +410,21 @@ const auditText = computed(() =>
 	z-index: 60;
 	background: rgb(0 0 0 / 0.36);
 	display: flex;
-	justify-content: flex-end;
+	align-items: center;
+	justify-content: center;
+	padding: 1.25rem;
 }
 
 .panel {
-	width: min(26rem, 100vw);
-	height: 100%;
+	width: min(32rem, 100%);
+	max-height: 90vh;
 	background: var(--card-bg);
-	border-left: 1px solid var(--line-divider);
+	border: 1px solid var(--line-divider);
+	border-radius: 1rem;
 	display: flex;
 	flex-direction: column;
-	box-shadow: -12px 0 32px rgb(0 0 0 / 0.12);
+	overflow: hidden;
+	box-shadow: 0 24px 60px rgb(0 0 0 / 0.22);
 }
 
 .panel-head {
@@ -421,11 +458,6 @@ const auditText = computed(() =>
 	display: grid;
 	place-items: center;
 	cursor: pointer;
-}
-
-/* 关闭按钮用返回图标，转 180° 就是「收起」 */
-.icon-btn :deep(svg) {
-	transform: rotate(180deg);
 }
 
 .panel-body {

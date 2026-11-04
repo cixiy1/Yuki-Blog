@@ -17,6 +17,8 @@ import {
 import {
 	debugAuthEnabled,
 	sendAccountExistsMail,
+	sendEmailChangedNoticeMail,
+	sendEmailChangeMail,
 	sendResetMail,
 	sendVerifyMail,
 } from "../lib/mail";
@@ -46,9 +48,11 @@ import {
 	findByAccount,
 	findByEmail,
 	findByIdentifier,
+	findByRowId,
 	findByUid,
 	publicUser,
 	randomUid,
+	USER_COLUMNS,
 	type UserRow,
 } from "../lib/users";
 import {
@@ -518,6 +522,7 @@ auth.get("/me", async (c) => {
 			avatar_url: user.avatar_url,
 			bio: user.bio,
 			email_verified: user.email_verified,
+			has_password: user.has_password,
 		},
 	});
 });
@@ -548,6 +553,70 @@ auth.post("/verify-email", sameOriginGuard, requireJsonBody, async (c) => {
 	const consumed = await consumeEmailToken(c.env.DB, token);
 	if (!consumed) {
 		return c.json({ error: "token_invalid", message: "链接无效或已过期" }, 400);
+	}
+
+	const before = await findByRowId(c.env.DB, consumed.userId);
+	if (!before) {
+		return c.json({ error: "token_invalid", message: "链接无效或已过期" }, 400);
+	}
+
+	/*
+	 * 同一个 token 表服务两件事，靠「token 上的邮箱 vs 账号当前邮箱」分流：
+	 * 相同 = 注册激活（顺带登录）；不同 = 更换邮箱确认（不动会话）。
+	 */
+	if (before.email !== consumed.email) {
+		const target = consumed.email;
+		let changed: UserRow | null = null;
+		try {
+			changed = await c.env.DB.prepare(
+				`UPDATE users
+				    SET email = ?1,
+				        email_verified_at = datetime('now'),
+				        updated_at = datetime('now')
+				  WHERE id = ?2 AND status IN ('pending', 'active')
+				 RETURNING ${USER_COLUMNS}`,
+			)
+				.bind(target, before.id)
+				.first<UserRow>();
+		} catch {
+			// 唯一索引撞车：确认信发出后这个地址被别的账号换走了
+			return c.json(
+				{
+					error: "email_taken",
+					message: "这个邮箱刚被别的账号用了，去账号设置换一个",
+				},
+				409,
+			);
+		}
+
+		if (!changed) {
+			return c.json(
+				{ error: "account_disabled", message: "账号已被停用" },
+				403,
+			);
+		}
+
+		// 旧地址收到告知信：账号若被人接管，这是他唯一能察觉的地方
+		await sendEmailChangedNoticeMail(
+			c.env,
+			before.email,
+			changed.account,
+			target,
+			`${siteOrigin(c)}/forgot-password/`,
+		);
+		await writeAudit(c.env.DB, {
+			actorUid: changed.uid,
+			action: "user.email.change",
+			target: changed.account,
+			detail: { from: before.email, to: target },
+			ipHash: ip,
+		});
+
+		return c.json({
+			ok: true,
+			email_changed: true,
+			user: publicUser(changed),
+		});
 	}
 
 	const updated = await c.env.DB.prepare(
@@ -618,6 +687,138 @@ auth.post(
 		});
 
 		return c.json({ ok: true, ...debugLink(c, link) }, 202);
+	},
+);
+
+/* ---------------------------- 更换邮箱 ---------------------------- */
+
+/**
+ * 换邮箱第一步：给**新**地址发确认信。
+ *
+ * 旧地址在确认前一直是账号邮箱，所以这里不改库；点完链接才算数
+ * （见 /verify-email 的分流）。本地密码账号要再输一次当前密码——
+ * 邮箱是找回密码的入口，能被一个没关的页面顺手改掉就失去意义了。
+ */
+auth.post(
+	"/change-email",
+	requireAuth,
+	sameOriginGuard,
+	requireJsonBody,
+	async (c) => {
+		const secrets = readSecrets(c);
+		if (!secrets) return misconfigured(c);
+
+		const current = c.get("user");
+		if (!current) {
+			return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+		}
+
+		const body = await readJson(c);
+		const email = normalizeEmail(body?.email);
+		if (!email) {
+			return c.json(
+				{ error: "invalid_email", message: "邮箱格式不正确", field: "email" },
+				400,
+			);
+		}
+		if (email === current.email) {
+			return c.json(
+				{ error: "same_email", message: "新邮箱和现在的邮箱一样" },
+				400,
+			);
+		}
+
+		// 邮箱唯一索引只能靠人话解释：不说清楚，用户只会以为按钮坏了
+		const owner = await findByEmail(c.env.DB, email);
+		if (owner && owner.uid !== current.uid) {
+			return c.json(
+				{
+					error: "email_taken",
+					message: "这个邮箱已经被别的账号用了",
+					field: "email",
+				},
+				409,
+			);
+		}
+
+		const ip = await ipHash(c, secrets.pepper);
+		const quota = await consumeRate(
+			c.env.DB,
+			"email:change",
+			String(current.uid),
+			3,
+			3600,
+			nowSeconds(),
+		);
+		if (!quota.allowed) return rateLimited(c, quota.retryAfter, "email:change");
+
+		const row = await findByUid(c.env.DB, current.uid);
+		if (!row) {
+			return c.json(
+				{ error: "user_not_found", message: "账号状态异常，重新登录再试" },
+				404,
+			);
+		}
+
+		if (row.password_enc) {
+			const password = typeof body?.password === "string" ? body.password : "";
+			if (!password) {
+				return c.json(
+					{
+						error: "password_required",
+						message: "换邮箱要确认当前密码",
+						field: "password",
+					},
+					400,
+				);
+			}
+			const verdict = await verifyPassword(
+				passwordKeys(secrets),
+				row.uid,
+				row.password_enc,
+				password,
+			);
+			if (verdict === "mismatch") {
+				return c.json(
+					{
+						error: "wrong_password",
+						message: "当前密码不对",
+						field: "password",
+					},
+					401,
+				);
+			}
+		}
+
+		// 一封新确认信就作废旧的那封，避免同时存在多个可用入口
+		await revokeTokens(c.env.DB, "email_verification_tokens", row.id);
+		const token = await issueEmailToken(c.env.DB, row.id, email);
+		const link = `${siteOrigin(c)}/verify/?token=${token}`;
+		const mail = await sendEmailChangeMail(
+			c.env,
+			email,
+			link,
+			row.account,
+			row.email,
+		);
+
+		await writeAudit(c.env.DB, {
+			actorUid: row.uid,
+			action: "user.email.request",
+			target: row.account,
+			detail: { to: email, ok: mail.sent },
+			ipHash: ip,
+		});
+
+		return c.json(
+			{
+				ok: true,
+				pending_email: email,
+				mail_sent: mail.sent,
+				...debugLink(c, link),
+			},
+			202,
+		);
 	},
 );
 
