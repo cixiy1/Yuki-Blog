@@ -1,15 +1,17 @@
 <script setup lang="ts">
 /**
- * 评论管理。
+ * 评论管理：审内容、删评论。
  *
- * 评论不走构建：新评论进 D1 就能在站点上出现（先审后发时通过审核即显示）。
- * 这个页面同时管两件事——审内容、改开关。开关改完立刻生效，不用等部署。
+ * 评论不走构建，新评论进 D1 就能在站点上出现（先审后发时通过审核即显示）。
+ * 开关（是否开启、先审后发、允许游客等）统一放在「站点设置 → 评论」，
+ * 这里只留一个跳转，免得同一个开关有两处入口。
  */
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { api } from "../lib/api";
 import { isAdmin } from "../lib/auth";
+import { go } from "../router";
 
 interface AdminComment {
 	id: number;
@@ -23,14 +25,6 @@ interface AdminComment {
 	is_admin: boolean;
 	created_at: string;
 	reviewed_at: string | null;
-}
-
-interface CommentSettings {
-	enabled: boolean;
-	requireApproval: boolean;
-	allowGuest: boolean;
-	maxLength: number;
-	rateSeconds: number;
 }
 
 // 「全部」放最前：它是默认页签，排在末尾像是补上去的
@@ -61,17 +55,6 @@ const busyId = ref(0);
 const opened = ref(0);
 
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-
-const settingsOpen = ref(false);
-const config = ref<CommentSettings>({
-	enabled: true,
-	requireApproval: false,
-	allowGuest: true,
-	maxLength: 2000,
-	rateSeconds: 20,
-});
-const configIssues = ref("");
-const savingConfig = ref(false);
 
 function formatTime(value: string): string {
 	const at = new Date(value);
@@ -149,35 +132,9 @@ async function remove(row: AdminComment): Promise<void> {
 	}
 }
 
-async function openSettings(): Promise<void> {
-	settingsOpen.value = true;
-	configIssues.value = "";
-	try {
-		const data = await api.get<{ config: CommentSettings }>(
-			"/api/admin/comments/config",
-		);
-		config.value = { ...data.config };
-	} catch (err) {
-		configIssues.value = err instanceof Error ? err.message : "读取设置失败";
-	}
-}
-
-async function saveSettings(): Promise<void> {
-	savingConfig.value = true;
-	configIssues.value = "";
-	try {
-		const data = await api.put<{ config: CommentSettings }>(
-			"/api/admin/comments/config",
-			{ ...config.value },
-		);
-		config.value = { ...data.config };
-		settingsOpen.value = false;
-		note.value = "设置已保存，下一次打开页面就按新规则走。";
-	} catch (err) {
-		configIssues.value = err instanceof Error ? err.message : "保存失败";
-	} finally {
-		savingConfig.value = false;
-	}
+/** 开关统一在「站点设置 → 评论」里改，这里点了直接落到那一组 */
+function openSettings(): void {
+	go("/settings/comments");
 }
 
 onMounted(() => void load());
@@ -303,73 +260,6 @@ onMounted(() => void load());
 				>
 					下一页
 				</button>
-			</div>
-		</div>
-
-		<div v-if="settingsOpen" class="mask" @click.self="settingsOpen = false">
-			<div class="dialog" role="dialog" aria-modal="true" aria-label="评论设置">
-				<header class="dialog-head">
-					<p class="dialog-title">评论设置</p>
-					<button
-						type="button"
-						class="close"
-						title="关闭"
-						@click="settingsOpen = false"
-					>
-						<AppIcon name="close" :size="14" />
-					</button>
-				</header>
-
-				<div class="dialog-body">
-					<label class="switch-row">
-						<input v-model="config.enabled" type="checkbox" />
-						<span>
-							<strong>开启评论</strong>
-							<small>关掉后全站评论区隐藏，已有评论保留。</small>
-						</span>
-					</label>
-					<label class="switch-row">
-						<input v-model="config.requireApproval" type="checkbox" />
-						<span>
-							<strong>先审后发</strong>
-							<small>默认关闭：评论发出即显示。打开后新评论进待审，通过才显示。</small>
-						</span>
-					</label>
-					<label class="switch-row">
-						<input v-model="config.allowGuest" type="checkbox" />
-						<span>
-							<strong>允许游客评论</strong>
-							<small>关掉后必须登录才能发言。</small>
-						</span>
-					</label>
-
-					<div class="number-row">
-						<label>
-							<span>正文长度上限</span>
-							<input v-model.number="config.maxLength" type="number" min="1" max="5000" />
-						</label>
-						<label>
-							<span>两次发言最小间隔（秒）</span>
-							<input v-model.number="config.rateSeconds" type="number" min="0" max="600" />
-						</label>
-					</div>
-
-					<p v-if="configIssues" class="error">{{ configIssues }}</p>
-				</div>
-
-				<footer class="dialog-foot">
-					<button type="button" class="btn-ghost" @click="settingsOpen = false">
-						取消
-					</button>
-					<button
-						type="button"
-						class="btn-primary"
-						:disabled="savingConfig"
-						@click="saveSettings()"
-					>
-						{{ savingConfig ? "保存中…" : "保存" }}
-					</button>
-				</footer>
 			</div>
 		</div>
 	</div>
@@ -572,117 +462,5 @@ onMounted(() => void load());
 .pager-actions {
 	display: flex;
 	gap: 0.3rem;
-}
-
-/* ---------- 设置弹窗 ---------- */
-
-.mask {
-	position: fixed;
-	inset: 0;
-	z-index: 60;
-	display: grid;
-	place-items: center;
-	padding: 1rem;
-	background: color-mix(in oklab, #000 45%, transparent);
-}
-
-.dialog {
-	width: min(32rem, 100%);
-	max-height: 90vh;
-	display: flex;
-	flex-direction: column;
-	border: 1px solid var(--line-divider);
-	border-radius: var(--radius-large);
-	background: var(--card-bg);
-	overflow: hidden;
-}
-
-.dialog-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0.85rem 1rem;
-	border-bottom: 1px solid var(--line-divider);
-}
-
-.dialog-title {
-	margin: 0;
-	font-size: 0.9rem;
-	font-weight: 600;
-	color: var(--fg-90);
-}
-
-.close {
-	padding: 0.2rem;
-	border: none;
-	background: none;
-	color: var(--fg-50);
-	cursor: pointer;
-}
-
-.dialog-body {
-	padding: 0.9rem 1rem;
-	overflow-y: auto;
-	display: flex;
-	flex-direction: column;
-	gap: 0.85rem;
-}
-
-.switch-row {
-	display: flex;
-	align-items: flex-start;
-	gap: 0.55rem;
-	font-size: 0.8rem;
-	color: var(--fg-90);
-	cursor: pointer;
-}
-
-.switch-row input {
-	margin-top: 0.15rem;
-}
-
-.switch-row span {
-	display: flex;
-	flex-direction: column;
-	gap: 0.1rem;
-}
-
-.switch-row small {
-	color: var(--fg-50);
-	font-size: 0.74rem;
-	font-weight: 400;
-}
-
-.number-row {
-	display: flex;
-	gap: 0.8rem;
-	flex-wrap: wrap;
-}
-
-.number-row label {
-	display: flex;
-	flex-direction: column;
-	gap: 0.3rem;
-	font-size: 0.76rem;
-	color: var(--fg-50);
-	flex: 1 1 10rem;
-}
-
-.number-row input {
-	padding: 0.35rem 0.55rem;
-	border: 1px solid var(--line-divider);
-	border-radius: 0.4rem;
-	background: var(--btn-regular-bg);
-	color: var(--fg-90);
-	font-size: 0.8rem;
-	font-family: inherit;
-}
-
-.dialog-foot {
-	display: flex;
-	justify-content: flex-end;
-	gap: 0.5rem;
-	padding: 0.75rem 1rem;
-	border-top: 1px solid var(--line-divider);
 }
 </style>

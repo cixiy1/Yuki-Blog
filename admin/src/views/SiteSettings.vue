@@ -4,7 +4,9 @@ import PageHeader from "../components/PageHeader.vue";
 import WallpaperModePicker from "../components/WallpaperModePicker.vue";
 import {
 	applyHot,
+	type CommentSettings,
 	type ConfigVersion,
+	loadCommentConfig,
 	loadMailConfig,
 	loadSecrets,
 	loadSettings,
@@ -13,6 +15,7 @@ import {
 	publishDraft,
 	rollbackTo,
 	type SecretStatus,
+	saveCommentConfig,
 	saveDraft,
 	saveMailConfig,
 	saveSecret,
@@ -28,6 +31,7 @@ import {
 	type SettingSection,
 	writePath,
 } from "../lib/settings-schema";
+import { replaceHash, route } from "../router";
 
 type Plain = Record<string, unknown>;
 
@@ -56,12 +60,19 @@ const GITHUB_LOGIN_SECRETS = ["github_client_id", "github_client_secret"];
 const MAIL_SECRETS = ["resend_api_key", "smtp_pass"];
 const PUBLISH_SECRETS = ["github_token"];
 
+/** /settings/<tab> 能直接落到某一组，比如从评论页点「评论设置」过来 */
+function initialTab(): string {
+	const wanted = route.value.tab;
+	return wanted && tabs.some((item) => item.key === wanted) ? wanted : "basic";
+}
+
 const tabs = [
 	...SETTING_GROUPS.map((g) => ({ key: g.key, label: g.label })),
+	{ key: "comments", label: "评论" },
 	{ key: "integrations", label: "集成" },
 ];
 
-const tab = ref("basic");
+const tab = ref(initialTab());
 const loading = ref(true);
 const errorText = ref("");
 const notice = ref("");
@@ -97,6 +108,28 @@ const mailTesting = ref(false);
 const mailResult = ref<(MailTestResult & { failed?: boolean }) | null>(null);
 /** OAuth 回调地址必须和 GitHub 上填的一字不差 */
 const callbackUrl = ref("");
+
+/* ---------- 评论开关（存 D1，改完即生效，不参与草稿/发布） ---------- */
+const commentConfig = ref<CommentSettings>({
+	enabled: true,
+	requireApproval: false,
+	allowGuest: true,
+	maxLength: 2000,
+	rateSeconds: 20,
+});
+/** 上次从服务端读回来的值，用来判断「有没有改过」 */
+const commentSaved = ref<CommentSettings>({ ...commentConfig.value });
+const commentBusy = ref(false);
+const commentDirty = computed(
+	() =>
+		JSON.stringify(commentConfig.value) !== JSON.stringify(commentSaved.value),
+);
+
+/** 页签写进地址：刷新、或者从评论页跳过来再走开，位置都不会丢 */
+function switchTab(key: string): void {
+	tab.value = key;
+	replaceHash(`/settings/${key}`);
+}
 
 const group = computed(() => SETTING_GROUPS.find((g) => g.key === tab.value));
 
@@ -320,10 +353,16 @@ async function refresh(): Promise<void> {
 			data.repo ? merge<Plain>(defaultsDoc, data.repo) : defaultsDoc,
 		);
 		versions.value = data.versions;
-		secrets.value = await loadSecrets();
-		const mail = await loadMailConfig();
+		const [secretList, mail, comments] = await Promise.all([
+			loadSecrets(),
+			loadMailConfig(),
+			loadCommentConfig(),
+		]);
+		secrets.value = secretList;
 		mailConfig.value = mail.config;
 		mailSource.value = mail.source;
+		commentConfig.value = comments;
+		commentSaved.value = { ...comments };
 		callbackUrl.value = `${location.origin}/api/auth/github/callback`;
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "读取失败";
@@ -525,6 +564,22 @@ async function onSaveMail(): Promise<void> {
 	}
 }
 
+async function onSaveComments(): Promise<void> {
+	commentBusy.value = true;
+	errorText.value = "";
+	notice.value = "";
+	try {
+		const next = await saveCommentConfig(commentConfig.value);
+		commentConfig.value = next;
+		commentSaved.value = { ...next };
+		notice.value = "评论设置已保存，下一次发言就按新规则走，不用发布。";
+	} catch (error) {
+		errorText.value = error instanceof Error ? error.message : "保存失败";
+	} finally {
+		commentBusy.value = false;
+	}
+}
+
 async function onTestMail(): Promise<void> {
 	mailTesting.value = true;
 	mailResult.value = null;
@@ -606,13 +661,24 @@ onMounted(() => void refresh());
 	<div>
 		<PageHeader
 			title="站点设置"
-			desc="改完先存草稿，确认无误再发布；发布约 90 秒后全站生效。"
+			:desc="
+				tab === 'comments'
+					? '评论开关存在数据库里，保存即生效，不需要发布，也不影响构建。'
+					: '改完先存草稿，确认无误再发布；发布约 90 秒后全站生效。'
+			"
 		>
 			<template #actions>
-				<button type="button" class="btn-ghost" :disabled="busy" @click="exportJson">
+				<button
+					v-if="tab !== 'comments'"
+					type="button"
+					class="btn-ghost"
+					:disabled="busy"
+					@click="exportJson"
+				>
 					导出 JSON
 				</button>
 				<button
+					v-if="tab !== 'comments'"
 					type="button"
 					class="btn-regular"
 					:disabled="busy || !unsaved"
@@ -621,6 +687,7 @@ onMounted(() => void refresh());
 					保存草稿
 				</button>
 				<button
+					v-if="tab !== 'comments'"
 					type="button"
 					class="btn-primary"
 					:disabled="busy || !pending.length"
@@ -641,13 +708,132 @@ onMounted(() => void refresh());
 				:key="item.key"
 				type="button"
 				:class="['tab', { on: tab === item.key }]"
-				@click="tab = item.key"
+				@click="switchTab(item.key)"
 			>
 				{{ item.label }}
 			</button>
 		</nav>
 
 		<div v-if="loading" class="state">读取中…</div>
+
+		<div v-else-if="tab === 'comments'" class="comments-pane">
+			<section>
+				<div class="card-base panel">
+					<h3>评论开关</h3>
+					<p class="hint">
+						这些存在数据库里，保存后下一次发言就按新规则走——不用发布，也不会触发构建。
+						审内容、删评论在「评论」页。
+					</p>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">开启评论</span>
+							<span class="hint">关掉后全站评论区隐藏，已有评论保留在库里</span>
+						</div>
+						<div class="control">
+							<div class="switch-wrap">
+								<button
+									type="button"
+									:class="['switch', { on: commentConfig.enabled }]"
+									@click="commentConfig.enabled = !commentConfig.enabled"
+								>
+									<span class="knob" />
+								</button>
+								<span class="switch-text">{{ commentConfig.enabled ? "开" : "关" }}</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">先审后发</span>
+							<span class="hint">
+								默认关闭：评论发出即显示。打开后新评论进待审，通过才显示。
+							</span>
+						</div>
+						<div class="control">
+							<div class="switch-wrap">
+								<button
+									type="button"
+									:class="['switch', { on: commentConfig.requireApproval }]"
+									@click="commentConfig.requireApproval = !commentConfig.requireApproval"
+								>
+									<span class="knob" />
+								</button>
+								<span class="switch-text">
+									{{ commentConfig.requireApproval ? "先审后发" : "先发后审" }}
+								</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">允许游客评论</span>
+							<span class="hint">
+								关掉后必须登录才能发言。游客只能填昵称和邮箱，删除权留在当时的浏览器。
+							</span>
+						</div>
+						<div class="control">
+							<div class="switch-wrap">
+								<button
+									type="button"
+									:class="['switch', { on: commentConfig.allowGuest }]"
+									@click="commentConfig.allowGuest = !commentConfig.allowGuest"
+								>
+									<span class="knob" />
+								</button>
+								<span class="switch-text">{{ commentConfig.allowGuest ? "开" : "关" }}</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">正文长度上限</span>
+							<span class="hint">按字数算，超了提交会被拒绝</span>
+						</div>
+						<div class="control">
+							<input
+								v-model.number="commentConfig.maxLength"
+								class="field narrow"
+								type="number"
+								min="1"
+								max="5000"
+							/>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">两次发言最小间隔</span>
+							<span class="hint">单位秒，按 IP 算，挡刷屏；0 表示不限制</span>
+						</div>
+						<div class="control">
+							<input
+								v-model.number="commentConfig.rateSeconds"
+								class="field narrow"
+								type="number"
+								min="0"
+								max="600"
+							/>
+						</div>
+					</div>
+
+					<div class="mail-actions">
+						<button
+							type="button"
+							class="btn-primary"
+							:disabled="commentBusy || !commentDirty"
+							@click="onSaveComments"
+						>
+							{{ commentBusy ? "保存中…" : "保存评论设置" }}
+						</button>
+						<span v-if="commentDirty" class="switch-text">有未保存的改动</span>
+					</div>
+				</div>
+			</section>
+		</div>
 
 		<div v-else-if="tab === 'integrations'" class="layout">
 			<section class="main">
@@ -1275,6 +1461,17 @@ onMounted(() => void refresh());
 
 .layout > .side .panel {
 	margin-bottom: 0;
+}
+
+/* 评论组没有侧栏，单卡片铺满内容区；标签列放宽一点，说明文字不至于竖着排 */
+.comments-pane .row {
+	grid-template-columns: 13rem minmax(0, 1fr);
+}
+
+@media (max-width: 820px) {
+	.comments-pane .row {
+		grid-template-columns: minmax(0, 1fr);
+	}
 }
 
 @media (max-width: 1100px) {

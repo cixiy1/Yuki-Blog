@@ -23,6 +23,8 @@ export interface Route {
 	id?: number;
 	/** post-edit 用：仓库文章的 slug（子目录用 %2F 编码，切分时不会被拆开） */
 	repoSlug?: string;
+	/** settings 用：页内分组，如 /settings/comments 直接落到「评论」 */
+	tab?: string;
 }
 
 const ROUTES: RouteName[] = [
@@ -68,6 +70,10 @@ function parse(hash: string): Route {
 	if (name === "post-edit") {
 		const id = Number(parts[1]);
 		return Number.isInteger(id) && id > 0 ? { name, id } : { name: "posts" };
+	}
+	// /settings/comments：从别处点「评论设置」直接落到那一组
+	if (name === "settings" && parts.length > 1 && parts[1]) {
+		return { name, tab: parts[1] };
 	}
 	return { name };
 }

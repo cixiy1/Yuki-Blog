@@ -116,3 +116,31 @@ export const saveMailConfig = async (
 
 export const testMail = (to?: string): Promise<MailTestResult> =>
 	api.post<MailTestResult>("/api/admin/mail-test", to ? { to } : {});
+
+/* ---------------- 评论开关（存 D1 settings，保存即生效，不进草稿/发布） ---------------- */
+
+export interface CommentSettings {
+	enabled: boolean;
+	/** 开 = 先审后发；默认关，评论发出即显示 */
+	requireApproval: boolean;
+	allowGuest: boolean;
+	maxLength: number;
+	rateSeconds: number;
+}
+
+export const loadCommentConfig = async (): Promise<CommentSettings> => {
+	const data = await api.get<{ config: CommentSettings }>(
+		"/api/admin/comments/config",
+	);
+	return data.config;
+};
+
+export const saveCommentConfig = async (
+	config: CommentSettings,
+): Promise<CommentSettings> => {
+	const data = await api.put<{ config: CommentSettings }>(
+		"/api/admin/comments/config",
+		{ ...config },
+	);
+	return data.config;
+};
