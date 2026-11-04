@@ -284,6 +284,32 @@ const reviewBodyOpen = ref(false);
 const reviewBodyEl = ref<HTMLElement | null>(null);
 const lastSaved = ref<string | null>(null);
 
+/* ---------- 正文里的批注高亮 ---------- */
+
+interface NoteHit {
+	note: ReviewNoteView;
+	index: number;
+	range: Range;
+}
+
+/** 下标与 reviewNotes 对齐：卡片里点第几条，就定位到哪一条高亮 */
+const noteHits: NoteHit[] = [];
+const notePopover = ref<{
+	index: number;
+	note: ReviewNoteView;
+	top: number;
+	left: number;
+} | null>(null);
+/** 真在正文里找到的高亮条数：一条都没找到时提示语要换个说法 */
+const noteMatchCount = ref(0);
+/** 还没扫过正文时不显示「找不到」的提示，免得闪一下 */
+const noteScanned = ref(false);
+const HIGHLIGHT_NAME = "yb-review-note";
+let highlightTimer: number | null = null;
+let renderObserver: MutationObserver | null = null;
+/** 卡片点一条会自己触发滚动，别让滚动监听把刚弹出来的批注关掉 */
+let ignoreScrollUntil = 0;
+
 /* ---------- 思维导图画布 ---------- */
 
 // 画布库有一百多 KB，只有点开时才下载，不拖慢编辑页本身
@@ -805,10 +831,6 @@ function scheduleSave(): void {
 	}, 1500);
 }
 
-function onFieldInput(): void {
-	scheduleSave();
-}
-
 /** 审核员改的那一版渲染出来给作者看，只读，不动自己的稿子 */
 async function openReviewBody(): Promise<void> {
 	reviewBodyOpen.value = true;
@@ -841,6 +863,10 @@ function applyReviewBody(): void {
 	vditor?.setValue(next);
 	reviewBody.value = null;
 	reviewBodyOpen.value = false;
+	scheduleSave();
+}
+
+function onFieldInput(): void {
 	scheduleSave();
 }
 
@@ -958,12 +984,235 @@ function createEditor(): void {
 		input: (value: string) => {
 			form.body = value;
 			scheduleSave();
+			scheduleHighlights();
 		},
 		after: () => {
 			ready.value = true;
 			if (!editable.value) vditor?.disabled();
+			watchEditorRender();
 		},
 	});
+}
+
+/* ---------- 正文批注：高亮 + 点开看内容 ---------- */
+
+type HighlightCtor = new (...ranges: Range[]) => unknown;
+interface HighlightRegistryLike {
+	set(name: string, highlight: unknown): void;
+	delete(name: string): void;
+}
+
+function highlightRegistry(): HighlightRegistryLike | null {
+	const registry = (CSS as unknown as { highlights?: HighlightRegistryLike })
+		.highlights;
+	return registry ?? null;
+}
+
+/**
+ * 正文 DOM 根：即时渲染模式是 pre，所见即所得模式是 div；源码模式没有文本节点，跳过。
+ * Vditor 把几种模式的容器都建在页面里（其余 display:none），querySelector 拿到的是
+ * 文档里第一个、往往是隐藏的那个空容器，所以要按可见性挑。
+ */
+function editorTextRoot(): HTMLElement | null {
+	const host = editorEl.value;
+	if (!host) return null;
+	const list = [
+		...host.querySelectorAll<HTMLElement>(
+			".vditor-ir .vditor-reset, .vditor-wysiwyg .vditor-reset",
+		),
+	];
+	const shown = list.find((el) => el.offsetParent !== null);
+	if (shown) return shown;
+	return list.find((el) => (el.textContent ?? "").trim().length > 0) ?? null;
+}
+
+/**
+ * 把批注引用的那段话映射回正文里的 Range。
+ * 引用可能跨多个文本节点（加粗、链接会把文字切断），所以按字符建索引再回查；
+ * 同时把空白折叠掉——正文里的换行在 DOM 里没有对应字符。
+ */
+function locateQuote(root: HTMLElement, quote: string): Range | null {
+	const wanted = quote.replace(/\s+/g, " ").trim();
+	if (!wanted) return null;
+
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const chars: { node: Text; offset: number }[] = [];
+	let flat = "";
+	while (walker.nextNode()) {
+		const node = walker.currentNode as Text;
+		const data = node.data;
+		for (let i = 0; i < data.length; i += 1) {
+			const ch = data[i];
+			if (/\s/.test(ch)) {
+				if (flat.endsWith(" ")) continue;
+				flat += " ";
+			} else {
+				flat += ch;
+			}
+			chars.push({ node, offset: i });
+		}
+	}
+
+	const at = flat.indexOf(wanted);
+	if (at < 0) return null;
+	const start = chars[at];
+	const end = chars[at + wanted.length - 1];
+	if (!start || !end) return null;
+
+	const range = document.createRange();
+	range.setStart(start.node, start.offset);
+	range.setEnd(end.node, end.offset + 1);
+	return range;
+}
+
+/**
+ * 用 CSS Custom Highlight API 上色，不往正文里插标签：
+ * 编辑器每次保存都读 DOM，插 <mark> 会被序列化进 Markdown 里。
+ */
+function applyNoteHighlights(): void {
+	const registry = highlightRegistry();
+	const Ctor = (window as Window & { Highlight?: HighlightCtor }).Highlight;
+	noteHits.length = 0;
+	noteMatchCount.value = 0;
+	registry?.delete(HIGHLIGHT_NAME);
+	if (!registry || !Ctor || reviewNotes.value.length === 0) return;
+
+	const root = editorTextRoot();
+	if (!root) return;
+
+	const ranges: Range[] = [];
+	reviewNotes.value.forEach((note, index) => {
+		const range = locateQuote(root, note.quote);
+		if (!range) return;
+		ranges.push(range);
+		noteHits.push({ note, index, range });
+	});
+	noteScanned.value = true;
+	if (ranges.length > 0) {
+		registry.set(HIGHLIGHT_NAME, new Ctor(...ranges));
+		noteMatchCount.value = ranges.length;
+	}
+}
+
+/** 正文一改，编辑器就会重排 DOM，原来的 Range 会失效，安静地补一次 */
+function scheduleHighlights(): void {
+	if (highlightTimer !== null) window.clearTimeout(highlightTimer);
+	highlightTimer = window.setTimeout(() => {
+		highlightTimer = null;
+		applyNoteHighlights();
+	}, 400);
+}
+
+/**
+ * after 回调跑的时候正文还没铺完（IR 模式要再渲染一拍），所以盯着正文容器：
+ * 第一次渲染、改字、重排都会触发，省得靠固定延时猜。
+ */
+function watchEditorRender(): void {
+	renderObserver?.disconnect();
+	renderObserver = null;
+	const host =
+		editorEl.value?.querySelector<HTMLElement>(".vditor-content") ??
+		editorTextRoot();
+	if (host) {
+		renderObserver = new MutationObserver(() => scheduleHighlights());
+		renderObserver.observe(host, {
+			childList: true,
+			subtree: true,
+			characterData: true,
+		});
+	}
+	applyWhenRendered();
+}
+
+/** 首屏那次如果还空着，就短间隔补几拍：观察器万一盯错了容器也能兜住 */
+function applyWhenRendered(attempt = 0): void {
+	const root = editorTextRoot();
+	if (root && (root.textContent ?? "").trim().length > 0) {
+		applyNoteHighlights();
+		return;
+	}
+	if (attempt < 40) {
+		window.setTimeout(() => applyWhenRendered(attempt + 1), 150);
+	}
+}
+
+function caretPoint(
+	x: number,
+	y: number,
+): { node: Node; offset: number } | null {
+	const doc = document as Document & {
+		caretRangeFromPoint?: (x: number, y: number) => Range | null;
+		caretPositionFromPoint?: (
+			x: number,
+			y: number,
+		) => { offsetNode: Node; offset: number } | null;
+	};
+	const range = doc.caretRangeFromPoint?.(x, y);
+	if (range) return { node: range.startContainer, offset: range.startOffset };
+	const pos = doc.caretPositionFromPoint?.(x, y);
+	return pos ? { node: pos.offsetNode, offset: pos.offset } : null;
+}
+
+function openNote(hit: NoteHit, rect: DOMRect): void {
+	const width = 300;
+	const left = Math.min(
+		Math.max(12, rect.left),
+		window.innerWidth - width - 16,
+	);
+	const top = Math.min(rect.bottom + 8, window.innerHeight - 170);
+	notePopover.value = { index: hit.index, note: hit.note, top, left };
+}
+
+/** 点在正文上：命中高亮就弹批注，点空白处收起 */
+function onEditorClick(event: MouseEvent): void {
+	if (noteHits.length === 0) return;
+	const caret = caretPoint(event.clientX, event.clientY);
+	if (!caret) return;
+	const hit = noteHits.find(({ range }) => {
+		try {
+			return range.isPointInRange(caret.node, caret.offset);
+		} catch {
+			return false;
+		}
+	});
+	if (!hit) {
+		notePopover.value = null;
+		return;
+	}
+	openNote(hit, hit.range.getBoundingClientRect());
+}
+
+/** 卡片里点第几条，就滚到正文里对应的高亮上，顺手把批注弹出来 */
+function focusNote(index: number): void {
+	applyNoteHighlights();
+	const hit = noteHits.find((row) => row.index === index);
+	if (!hit) return;
+	ignoreScrollUntil = Date.now() + 700;
+	hit.range.startContainer.parentElement?.scrollIntoView({ block: "center" });
+	window.setTimeout(() => {
+		const next = noteHits.find((row) => row.index === index);
+		if (next) openNote(next, next.range.getBoundingClientRect());
+	}, 60);
+}
+
+function closeNotePopover(): void {
+	notePopover.value = null;
+}
+
+function onPopoverScroll(): void {
+	if (Date.now() < ignoreScrollUntil) return;
+	notePopover.value = null;
+}
+
+function onPopoverKey(event: KeyboardEvent): void {
+	if (event.key === "Escape") notePopover.value = null;
+}
+
+function onDocumentClick(event: MouseEvent): void {
+	if (!notePopover.value) return;
+	const target = event.target as HTMLElement | null;
+	if (target?.closest(".note-pop") || target?.closest(".editor")) return;
+	notePopover.value = null;
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -1032,12 +1281,21 @@ onMounted(async () => {
 
 	window.addEventListener("keydown", onKeydown);
 	window.addEventListener("beforeunload", beforeUnload);
+	window.addEventListener("scroll", onPopoverScroll, true);
+	window.addEventListener("keydown", onPopoverKey);
+	document.addEventListener("click", onDocumentClick);
 });
 
 onBeforeUnmount(() => {
 	window.removeEventListener("keydown", onKeydown);
 	window.removeEventListener("beforeunload", beforeUnload);
+	window.removeEventListener("scroll", onPopoverScroll, true);
+	window.removeEventListener("keydown", onPopoverKey);
+	document.removeEventListener("click", onDocumentClick);
 	if (timer !== null) window.clearTimeout(timer);
+	if (highlightTimer !== null) window.clearTimeout(highlightTimer);
+	renderObserver?.disconnect();
+	highlightRegistry()?.delete(HIGHLIGHT_NAME);
 	vditor?.destroy();
 	vditor = null;
 });
@@ -1124,7 +1382,15 @@ watch(isDark, (dark) => {
 						</div>
 						<p v-if="reviewVerdict" class="review-verdict">{{ reviewVerdict }}</p>
 						<ul v-if="reviewNotes.length" class="review-notes">
-							<li v-for="(item, index) in reviewNotes" :key="item.id">
+							<li
+								v-for="(item, index) in reviewNotes"
+								:key="item.id"
+								:class="{ active: notePopover?.index === index }"
+								role="button"
+								tabindex="0"
+								@click="focusNote(index)"
+								@keydown.enter.prevent="focusNote(index)"
+							>
 								<p class="rn-quote">
 									<span class="rn-idx">{{ index + 1 }}</span>
 									{{ item.quote }}
@@ -1145,7 +1411,12 @@ watch(isDark, (dark) => {
 							</div>
 						</div>
 						<p class="rn-hint">
-							按条改完再提交审核；通过后这些批注会被清掉。
+							<template v-if="!noteScanned || noteMatchCount > 0">
+								正文里带底色的句子就是被划的重点，点一下能看批注；按条改完再提交审核。
+							</template>
+							<template v-else>
+								这几段原文在正文里已经找不到了（可能改过），照批注的意思改就行。
+							</template>
 						</p>
 					</section>
 
@@ -1178,7 +1449,7 @@ watch(isDark, (dark) => {
 								<span class="doc-sub-key">正文 <code class="fm-key">body</code></span>
 							</div>
 						</div>
-						<div ref="editorEl" class="editor" />
+						<div ref="editorEl" class="editor" @click="onEditorClick" />
 					</section>
 				</div>
 
@@ -1478,6 +1749,27 @@ watch(isDark, (dark) => {
 				</footer>
 			</div>
 		</div>
+
+		<div
+			v-if="notePopover"
+			class="note-pop card-base"
+			:style="{ top: `${notePopover.top}px`, left: `${notePopover.left}px` }"
+		>
+			<p class="note-pop-head">
+				<span class="rn-idx">{{ notePopover.index + 1 }}</span>
+				<span class="note-pop-by">{{ notePopover.note.reviewer }} 的批注</span>
+				<button
+					type="button"
+					class="note-pop-close"
+					aria-label="关闭批注"
+					@click="closeNotePopover"
+				>
+					✕
+				</button>
+			</p>
+			<p class="note-pop-text">{{ notePopover.note.note }}</p>
+			<p class="note-pop-quote">「{{ notePopover.note.quote }}」</p>
+		</div>
 	</div>
 </template>
 
@@ -1623,6 +1915,89 @@ watch(isDark, (dark) => {
 	border-radius: 0.55rem;
 	background: var(--card-bg);
 	border: 1px solid var(--line-divider);
+	cursor: pointer;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
+}
+
+.review-notes li:hover,
+.review-notes li:focus-visible {
+	border-color: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 45%,
+		var(--line-divider)
+	);
+	outline: none;
+}
+
+.review-notes li.active {
+	border-color: var(--admonitions-color-caution);
+	box-shadow: 0 0 0 2px
+		color-mix(in oklab, var(--admonitions-color-caution) 18%, transparent);
+}
+
+/* 点正文里的高亮弹出来的批注气泡 */
+.note-pop {
+	position: fixed;
+	z-index: 70;
+	width: 19rem;
+	padding: 0.6rem 0.7rem 0.65rem;
+	border-radius: 0.7rem;
+	border-color: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 45%,
+		var(--line-divider)
+	);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.note-pop-head {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin: 0 0 0.35rem;
+	font-size: 0.72rem;
+	color: var(--fg-50);
+}
+
+.note-pop-by {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.note-pop-close {
+	padding: 0 0.1rem;
+	border: none;
+	background: none;
+	color: var(--fg-50);
+	font-size: 0.75rem;
+	cursor: pointer;
+}
+
+.note-pop-close:hover {
+	color: var(--fg-90);
+}
+
+.note-pop-text {
+	margin: 0;
+	font-size: 0.82rem;
+	line-height: 1.7;
+	color: var(--fg-90);
+}
+
+.note-pop-quote {
+	margin: 0.35rem 0 0;
+	font-size: 0.72rem;
+	line-height: 1.6;
+	color: var(--fg-50);
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
 }
 
 .rn-quote {
@@ -2187,5 +2562,23 @@ watch(isDark, (dark) => {
 		height: min(75vh, 44rem);
 		min-height: 26rem;
 	}
+}
+</style>
+
+<style>
+/*
+ * 正文里被批注的原文：走 CSS Custom Highlight API 上色，不往 DOM 里插标签。
+ * 编辑器保存时读的是 DOM，插 <mark> 会被序列化进 Markdown，所以只能这么染。
+ * ::highlight() 不能带选择器，只能放在非 scoped 的样式块里。
+ */
+::highlight(yb-review-note) {
+	background-color: color-mix(
+		in oklab,
+		var(--admonitions-color-caution) 30%,
+		transparent
+	);
+	text-decoration: underline dashed
+		color-mix(in oklab, var(--admonitions-color-caution) 70%, transparent);
+	text-underline-offset: 0.18em;
 }
 </style>
