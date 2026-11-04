@@ -16,7 +16,8 @@
 			"!/api/allPostMeta.json",
 			"!/api/post-index.json",
 			"!/api/media-index.json",
-			"!/api/stats-config.json"
+			"!/api/stats-config.json",
+			"/assets/uploads/*"
 		]
 	},
 	"d1_databases": [

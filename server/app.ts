@@ -8,6 +8,7 @@ import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
 import { siteConfig } from "./routes/site-config";
+import { uploads } from "./routes/uploads";
 import type { AppEnv } from "./types";
 
 export const app: Hono<AppEnv> = new Hono<AppEnv>();
@@ -25,6 +26,8 @@ app.route("/api/comments", comments);
 app.route("/api", siteConfig);
 app.route("/api/admin", admin);
 app.route("/api/admin", commentsAdmin);
+// 上传目录的兜底：构建没跑完时回源 GitHub raw（wrangler.jsonc 里 run_worker_first）
+app.route("/", uploads);
 
 // API 未命中返回 JSON，不要落成 HTML 404。
 app.notFound((c) => {

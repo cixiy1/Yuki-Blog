@@ -1032,6 +1032,39 @@ function insertLibraryImage(ref: string): void {
 	onFieldInput();
 }
 
+/**
+ * Safari 从访达拖入或粘贴图片时，`dataTransfer` 里除了文件还会带一份
+ * `text/html`，内容是 `<img src="file:///Users/…">`。Vditor 看到 text/html
+ * 就直接按 HTML 插入，根本不走 upload.handler——正文里落下一行本地路径，
+ * 图永远裂着，也没有任何报错（Chrome 只给 files，所以只在这个浏览器翻车）。
+ * 在捕获阶段先拦下来自己上传。
+ */
+function editorFiles(event: DragEvent | ClipboardEvent): File[] {
+	const el = editorEl.value;
+	const target = event.target;
+	if (!el || !(target instanceof Node) || !el.contains(target)) return [];
+	const carrier =
+		event instanceof DragEvent ? event.dataTransfer : event.clipboardData;
+	return Array.from(carrier?.files ?? []);
+}
+
+function takeDroppedFiles(event: DragEvent | ClipboardEvent): void {
+	const files = editorFiles(event);
+	if (files.length === 0) return;
+	// 拦在这里：Vditor 的监听挂在编辑器元素上，dom 冒泡过不去就不会再插 file://
+	event.preventDefault();
+	event.stopPropagation();
+	void onUpload(files);
+}
+
+function onEditorDrop(event: DragEvent): void {
+	takeDroppedFiles(event);
+}
+
+function onEditorPaste(event: ClipboardEvent): void {
+	takeDroppedFiles(event);
+}
+
 function createEditor(): void {
 	if (!editorEl.value) return;
 	vditor = new Vditor(editorEl.value, {
@@ -1358,6 +1391,9 @@ onMounted(async () => {
 	window.addEventListener("scroll", onPopoverScroll, true);
 	window.addEventListener("keydown", onPopoverKey);
 	document.addEventListener("click", onDocumentClick);
+	// 捕获阶段先于 Vditor 自己的 drop/paste 处理，见 takeDroppedFiles
+	document.addEventListener("drop", onEditorDrop, true);
+	document.addEventListener("paste", onEditorPaste, true);
 });
 
 onBeforeUnmount(() => {
@@ -1366,6 +1402,8 @@ onBeforeUnmount(() => {
 	window.removeEventListener("scroll", onPopoverScroll, true);
 	window.removeEventListener("keydown", onPopoverKey);
 	document.removeEventListener("click", onDocumentClick);
+	document.removeEventListener("drop", onEditorDrop, true);
+	document.removeEventListener("paste", onEditorPaste, true);
 	if (timer !== null) window.clearTimeout(timer);
 	if (highlightTimer !== null) window.clearTimeout(highlightTimer);
 	if (coverTimer.value) window.clearTimeout(coverTimer.value);
