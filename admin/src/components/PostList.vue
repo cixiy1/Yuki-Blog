@@ -167,6 +167,19 @@ const tagLimit = computed(() =>
 	view.value === "grid" ? Math.max(1, props.maxTags - 1) : props.maxTags,
 );
 
+/**
+ * 状态徽章只标例外。我的文章「全部」页签里 23 篇都是已发布，每人一张灰牌子只是噪声，
+ * 真正要处理的草稿/待审反被冲淡。列表里状态统一时不挂徽章，混着不同状态才挂。
+ */
+const mixedStatus = computed(
+	() => new Set(props.items.map((post) => post.status)).size > 1,
+);
+
+function statusShown(post: PostSummary): boolean {
+	if (!props.showStatus) return false;
+	return post.status !== "published" || mixedStatus.value;
+}
+
 const rows = computed<Row[]>(() =>
 	props.items.map((post) => {
 		const raw =
@@ -307,8 +320,15 @@ const rows = computed<Row[]>(() =>
 						</span>
 					</span>
 
-					<div v-if="showStatus || row.post.source_link" class="badges">
-						<span v-if="showStatus" class="badge" :data-status="row.post.status">
+					<div
+						v-if="statusShown(row.post) || row.post.source_link"
+						class="badges"
+					>
+						<span
+							v-if="statusShown(row.post)"
+							class="badge"
+							:data-status="row.post.status"
+						>
 							{{ STATUS_LABEL[row.post.status] ?? row.post.status }}
 						</span>
 						<span v-if="row.post.source_link" class="badge repost">转载</span>
