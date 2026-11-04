@@ -16,6 +16,7 @@ import {
 	repoRawBase,
 	writeRepoFile,
 } from "../lib/repo-posts";
+import { notifyReviewers } from "../lib/review-notify";
 import { readSecret } from "../lib/site-config";
 import { isValidSlug, normalizeTags } from "../lib/validate";
 import { requireAuth } from "../middleware/auth";
@@ -36,6 +37,13 @@ const MAX_COVER = 300;
 
 /** 只有这两个状态能改能删；pending 要先撤回，published 一律锁定 */
 const EDITABLE = new Set(["draft", "rejected"]);
+
+/** 邮件里的链接要用对外地址，本地开发才退回请求自身的 origin */
+function originOf(c: Context<AppEnv>): string {
+	const configured = c.env.SITE_ORIGIN;
+	if (configured?.startsWith("http")) return configured.replace(/\/$/, "");
+	return new URL(c.req.url).origin;
+}
 
 /* ---------------------------- 我的资料 ---------------------------- */
 
@@ -194,6 +202,8 @@ export interface PostRow {
 	review_body?: string | null;
 	review_body_at?: string | null;
 	review_body_by?: number | null;
+	/** 上一次发出「待审提醒」的时间，用于节流 */
+	review_notified_at?: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -814,14 +824,36 @@ me.post("/posts/:id/submit", requireAuth, sameOriginGuard, async (c) => {
 		);
 	}
 
+	// 同一篇稿子 10 分钟内只提醒一次：作者撤回再提交不该反复刷管理员的邮箱。
+	// 判断放在 SQL 里，用返回值有没有变化来决定发不发，省一次查询。
 	const updated = await c.env.DB.prepare(
 		`UPDATE posts
-		    SET status = 'pending', submitted_at = datetime('now'), updated_at = datetime('now')
+		    SET status = 'pending', submitted_at = datetime('now'),
+		        review_notified_at = CASE
+		          WHEN review_notified_at IS NULL
+		            OR review_notified_at < datetime('now', '-10 minutes')
+		          THEN datetime('now')
+		          ELSE review_notified_at
+		        END,
+		        updated_at = datetime('now')
 		  WHERE id = ?1 AND uid = ?2
 		 RETURNING *`,
 	)
 		.bind(row.id, row.uid)
 		.first<PostRow>();
+
+	if (
+		updated &&
+		updated.review_notified_at !== (row.review_notified_at ?? null)
+	) {
+		// 发信可能走 SMTP 要一两秒，不该拖住作者的提交按钮
+		const task = notifyReviewers(c.env, updated, originOf(c));
+		try {
+			c.executionCtx.waitUntil(task);
+		} catch {
+			void task;
+		}
+	}
 
 	return c.json({
 		post: updated ? toDetail(updated) : null,

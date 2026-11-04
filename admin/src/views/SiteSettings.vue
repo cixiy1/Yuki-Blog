@@ -85,6 +85,7 @@ const tagInput = ref<Record<string, string>>({});
 const mailConfig = ref<MailConfig>({
 	mode: "off",
 	from: "Yuki Blog <mail@yiyu14.top>",
+	notifyTo: "",
 	smtp: { host: "", port: 465, security: "ssl", user: "" },
 });
 const mailSource = ref<"db" | "env">("db");
@@ -664,7 +665,7 @@ onMounted(() => void refresh());
 				<div class="card-base panel">
 					<h3>发信</h3>
 					<p class="hint">
-						注册验证与找回密码靠这条通道。一条都没配时不会真发信，只写日志。
+						注册验证、找回密码、新稿待审提醒都走这条通道。一条都没配时不会真发信，只写日志。
 						填完先点「发送测试邮件」，收得到再上生产。
 					</p>
 					<p v-if="mailSource === 'env' && mailConfig.mode !== 'off'" class="hint env-note">
@@ -696,6 +697,23 @@ onMounted(() => void refresh());
 								v-model="mailConfig.from"
 								class="field"
 								placeholder="Yuki Blog <mail@yiyu14.top>"
+							/>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="label">
+							<span class="name">待审通知</span>
+							<span class="hint">
+								有新稿待审时提醒此邮箱；多个地址用逗号隔开，留空则发给全部管理员与审核员账号。
+							</span>
+						</div>
+						<div class="control">
+							<input
+								v-model="mailConfig.notifyTo"
+								class="field"
+								autocomplete="off"
+								placeholder="me@example.com"
 							/>
 						</div>
 					</div>
@@ -751,7 +769,7 @@ onMounted(() => void refresh());
 							QQ / 163 这类邮箱要用「授权码」当密码；发件人地址和登录账号不一致时可能被拒信。
 						</template>
 						<template v-else>
-							选一个通道并保存后，会接管所有验证邮件与找回密码邮件。
+							选一个通道并保存后，验证邮件、找回密码与待审提醒都走它。
 						</template>
 					</p>
 

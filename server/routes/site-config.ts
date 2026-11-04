@@ -395,6 +395,7 @@ admin.put("/mail-config", sameOriginGuard, requireJsonBody, async (c) => {
 		{
 			mode: typeof raw.mode === "string" ? raw.mode : undefined,
 			from: typeof raw.from === "string" ? raw.from : undefined,
+			notifyTo: typeof raw.notifyTo === "string" ? raw.notifyTo : undefined,
 			smtp: {
 				host: typeof smtp.host === "string" ? smtp.host : undefined,
 				port: Number(smtp.port) || undefined,

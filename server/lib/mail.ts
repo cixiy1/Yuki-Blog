@@ -338,3 +338,70 @@ export async function sendAccountExistsMail(
 		html,
 	});
 }
+
+function escapeHtml(raw: string): string {
+	return raw
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+export interface ReviewNotifyMail {
+	to: string[];
+	title: string;
+	author: string;
+	category: string;
+	summary: string;
+	wordCount: number;
+	/** 审核页直达链接 */
+	link: string;
+}
+
+/**
+ * 有新稿提交审核时提醒管理员。
+ * 收件人逐个发：SMTP 一次塞多个收件人，被其中一个拒掉会连累其他人。
+ */
+export async function sendReviewNotifyMail(
+	env: Env,
+	payload: ReviewNotifyMail,
+): Promise<MailResult> {
+	const title = payload.title.trim() || "（未命名）";
+	const facts = [
+		payload.author ? `作者：${payload.author}` : "",
+		payload.category ? `分类：${payload.category}` : "",
+		`字数：${payload.wordCount}`,
+	].filter(Boolean);
+	const summary = payload.summary.trim();
+
+	const text = [
+		"有一篇新文章提交审核。",
+		"",
+		`《${title}》`,
+		facts.join(" · "),
+		"",
+		...(summary ? ["摘要：", summary, ""] : []),
+		`去审：${payload.link}`,
+		"",
+		"审核通过后会写到仓库并触发构建，约 1 分钟后线上可见。",
+	].join("\n");
+
+	const html = `<div style="${STYLE}">
+  <p>有一篇新文章提交审核。</p>
+  <p style="font-size:17px;font-weight:600;margin:12px 0 6px">《${escapeHtml(title)}》</p>
+  <p style="color:#59636e;font-size:13px;margin:0 0 14px">${escapeHtml(facts.join(" · "))}</p>
+  ${summary ? `<blockquote style="margin:0 0 4px;padding:10px 14px;border-left:3px solid #d5d9de;color:#3d444d;font-size:14px">${escapeHtml(summary)}</blockquote>` : ""}
+  ${buttonHtml(payload.link, "去审核")}
+  <p style="color:#59636e;font-size:13px">按钮打不开就复制这个地址：<br>${escapeHtml(payload.link)}</p>
+  <p style="color:#59636e;font-size:13px">通过后写进仓库并触发构建，约 1 分钟后线上可见。</p>
+</div>`;
+
+	const subject = `待审：《${title}》 · Yuki Blog`;
+
+	let last: MailResult = { ok: true, sent: false, mode: "off" };
+	for (const address of payload.to) {
+		last = await sendMail(env, { to: address, subject, text, html });
+		if (!last.ok) return last;
+	}
+	return last;
+}

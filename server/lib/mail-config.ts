@@ -18,6 +18,11 @@ export const DEFAULT_FROM = "Yuki Blog <mail@yiyu14.top>";
 export interface MailConfigStored {
 	mode: MailMode;
 	from: string;
+	/**
+	 * 有新稿待审时提醒谁，逗号分隔。
+	 * 留空则退化为「所有启用中的管理员与审核员账号的邮箱」。
+	 */
+	notifyTo: string;
 	smtp: {
 		host: string;
 		port: number;
@@ -37,6 +42,7 @@ export interface MailConfig extends MailConfigStored {
 export const MAIL_DEFAULTS: MailConfigStored = {
 	mode: "off",
 	from: DEFAULT_FROM,
+	notifyTo: "",
 	smtp: { host: "", port: 465, security: "ssl", user: "" },
 };
 
@@ -69,6 +75,7 @@ export async function readMailSettings(
 	return {
 		mode: normalizeMode(stored.mode) ?? "off",
 		from: (stored.from ?? "").trim() || DEFAULT_FROM,
+		notifyTo: (stored.notifyTo ?? "").trim(),
 		smtp: {
 			host: (stored.smtp?.host ?? "").trim(),
 			port: normalizePort(stored.smtp?.port, security),
@@ -82,6 +89,7 @@ export async function readMailSettings(
 export interface MailConfigPatch {
 	mode?: string;
 	from?: string;
+	notifyTo?: string;
 	smtp?: {
 		host?: string;
 		port?: number | string;
@@ -102,6 +110,7 @@ export async function writeMailSettings(
 	const next: MailConfigStored = {
 		mode: normalizeMode(patch.mode) ?? current.mode,
 		from: (patch.from ?? current.from).trim() || DEFAULT_FROM,
+		notifyTo: (patch.notifyTo ?? current.notifyTo).trim(),
 		smtp: {
 			host: (patch.smtp?.host ?? current.smtp.host).trim(),
 			port: normalizePort(patch.smtp?.port ?? current.smtp.port, security),
@@ -136,6 +145,8 @@ export async function mailSettingsView(env: Env): Promise<MailSettingsView> {
 		config: {
 			mode: runtime.mode,
 			from: runtime.from,
+			// env 里没有这一项，界面留空 = 走「所有管理员账号」的兜底
+			notifyTo: "",
 			smtp: {
 				host: runtime.smtp.host,
 				port: runtime.smtp.port,
@@ -195,6 +206,7 @@ export async function resolveMailConfig(env: Env): Promise<MailConfig> {
 	return {
 		mode,
 		from: (env.MAIL_FROM || DEFAULT_FROM).trim(),
+		notifyTo: "",
 		resendKey,
 		smtp: {
 			host: envHost,
