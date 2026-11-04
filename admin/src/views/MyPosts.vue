@@ -186,17 +186,19 @@ onMounted(refresh);
 		<p v-if="notice" class="notice">{{ notice }}</p>
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
-		<div v-if="!loading && visible.length" class="list-head">
-			<span class="list-count">{{ visible.length }} 篇</span>
-			<span class="list-sort">按最后改动时间排序</span>
-		</div>
-
 		<div v-if="loading" class="state">读取中…</div>
 		<div v-else-if="visible.length === 0" class="state card-base">
 			这里还没有文章。点上面的「新建文章」开始写。
 		</div>
 
-		<PostList v-else :items="visible" show-status @open="openPost">
+		<PostList
+			v-else
+			:items="visible"
+			show-status
+			:count-text="`${visible.length} 篇`"
+			sort-text="按最后改动时间排序"
+			@open="openPost"
+		>
 			<template #actions="{ post }">
 				<template v-if="post.origin === 'repo'">
 					<button type="button" class="btn-regular act" @click="goRepoEdit(post.slug)">
@@ -334,23 +336,6 @@ onMounted(refresh);
 	text-align: center;
 	font-size: 0.85rem;
 	color: var(--fg-50);
-}
-
-.list-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 0.75rem;
-	margin: 0 0 0.5rem;
-	padding: 0 0.15rem;
-	font-size: 0.72rem;
-	color: var(--fg-50);
-}
-
-.list-count {
-	color: var(--fg-75);
-	font-weight: 600;
-	font-variant-numeric: tabular-nums;
 }
 
 .act {

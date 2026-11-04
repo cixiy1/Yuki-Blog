@@ -73,17 +73,19 @@ onMounted(refresh);
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
-		<div class="list-head">
-			<span class="list-count">{{ summaryText }}</span>
-			<span class="list-sort">按发布时间倒序</span>
-		</div>
-
 		<div v-if="loading" class="state">读取中…</div>
 		<div v-else-if="visible.length === 0" class="state card-base">
 			{{ keyword ? "没有匹配的文章" : "站点上还没有已发布的文章" }}
 		</div>
 
-		<PostList v-else :items="visible" date-field="published_at" @open="open" />
+		<PostList
+			v-else
+			:items="visible"
+			date-field="published_at"
+			:count-text="summaryText"
+			sort-text="按发布时间倒序"
+			@open="open"
+		/>
 
 		<p class="footnote">
 			这里的每一篇都对应 <code>src/content/posts/</code> 下的一个文件。列表是构建时的
@@ -96,23 +98,6 @@ onMounted(refresh);
 .search {
 	width: 15rem;
 	height: 2.35rem;
-}
-
-.list-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 0.75rem;
-	margin: 0 0 0.5rem;
-	padding: 0 0.15rem;
-	font-size: 0.72rem;
-	color: var(--fg-50);
-}
-
-.list-count {
-	color: var(--fg-75);
-	font-weight: 600;
-	font-variant-numeric: tabular-nums;
 }
 
 .state {

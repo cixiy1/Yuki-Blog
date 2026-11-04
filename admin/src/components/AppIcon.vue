@@ -94,6 +94,29 @@ const PATHS: Record<string, string[]> = {
 		"M9 11.5h7",
 		"M9 15h4",
 	],
+	/** 列表视图：左侧短标记 + 右侧长条 */
+	"view-list": [
+		"M4 6.5h3.2",
+		"M10.4 6.5h9.6",
+		"M4 12h3.2",
+		"M10.4 12h9.6",
+		"M4 17.5h3.2",
+		"M10.4 17.5h9.6",
+	],
+	/** 网格视图：四块等大方格 */
+	"view-grid": [
+		"M4 4h6.6v6.6H4z",
+		"M13.4 4H20v6.6h-6.6z",
+		"M4 13.4h6.6V20H4z",
+		"M13.4 13.4H20V20h-6.6z",
+	],
+	/** 瀑布视图：左右两列错落，右边比左边短一截 */
+	"view-masonry": [
+		"M4 4h6.6v8.6H4z",
+		"M4 15.2h6.6V20H4z",
+		"M13.4 4H20v4.8h-6.6z",
+		"M13.4 11.4H20V20h-6.6z",
+	],
 };
 
 const props = defineProps<{ name: string; size?: number }>();
