@@ -1,0 +1,41 @@
+---
+import "@/styles/comments.css";
+
+/**
+ * 站内评论区容器。
+ *
+ * 这里只输出一个空壳：评论在 D1，构建期拿不到任何数据。
+ * 数据、渲染、交互都在 src/lib/comment-section.ts 里，按导航重建。
+ */
+interface Props {
+	/** 评论归属：文章 slug / guestbook / dynamic:<id> */
+	target: string;
+	/**
+	 * 从当前页查询串里取一个参数拼进 target。
+	 * 说说评论是嵌在 iframe 里的同一个页面，构建期拿不到每条说说的地址，
+	 * 只能约定用 ?path=<说说地址> 把它传给运行时。
+	 */
+	targetFromQuery?: string;
+}
+
+const { target, targetFromQuery } = Astro.props;
+---
+
+<div
+	class="yb-c"
+	data-yb-comments
+	data-target={target}
+	data-target-query={targetFromQuery}
+>
+	<div class="yb-c-loading">正在加载评论…</div>
+</div>
+
+<script>
+	import { initCommentSections } from "@/lib/comment-section";
+
+	// astro:page-load 覆盖首屏，swup:contentReplaced 覆盖站内跳转；
+	// 两个都挂不会重复挂载——容器上的 data-ready 会挡掉第二次
+	document.addEventListener("astro:page-load", initCommentSections);
+	document.addEventListener("swup:contentReplaced", initCommentSections);
+	if (document.readyState !== "loading") initCommentSections();
+</script>

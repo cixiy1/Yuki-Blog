@@ -45,7 +45,11 @@ export type AuditAction =
 	| "review.reject"
 	| "review.withdraw"
 	| "media.upload"
-	| "media.delete";
+	| "media.delete"
+	| "comment.create"
+	| "comment.delete"
+	| "comment.review"
+	| "admin.comments.config";
 
 const DETAIL_KEYS = new Set([
 	"from",
@@ -73,6 +77,14 @@ const DETAIL_KEYS = new Set([
 	// 媒体库：动了哪个文件、一次几张
 	"path",
 	"count",
+	// 评论：哪条、是不是游客发的、是不是管理员动的手
+	"comment_id",
+	"guest",
+	"by_admin",
+	// 游客凭本地令牌自删，actor_uid 为空，光看日志分不清是"自己删的"还是"系统删的"
+	"by_guest_token",
+	"requireApproval",
+	"enabled",
 ]);
 
 export interface AuditInput {

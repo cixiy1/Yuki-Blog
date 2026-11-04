@@ -1,9 +1,19 @@
 export type CommentConfig = {
 	/**
 	 * 当前启用的评论系统类型
-	 * "none" | "twikoo" | "waline" | "giscus" | "disqus" | 'artalk'
+	 * "none" | "twikoo" | "waline" | "giscus" | "disqus" | 'artalk' | 'self-hosted'
+	 *
+	 * self-hosted 是站内评论：数据在 D1，前端运行时拉取，
+	 * 内容与开关走管理端 `#/comments`，不需要重新构建（只有改组件代码才需要部署）。
 	 */
-	type: "none" | "twikoo" | "waline" | "giscus" | "disqus" | "artalk";
+	type:
+		| "none"
+		| "twikoo"
+		| "waline"
+		| "giscus"
+		| "disqus"
+		| "artalk"
+		| "self-hosted";
 	twikoo?: {
 		envId: string;
 		region?: string;

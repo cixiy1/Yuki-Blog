@@ -1,0 +1,374 @@
+/**
+ * 站内评论区样式。
+ *
+ * 只用站点已有的 CSS 变量，深浅色自动跟随，不写死颜色。
+ * 所有选择器都带 .yb-c 前缀——这是全局引入的。
+ */
+
+.yb-c {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+	color: var(--btn-content);
+	font-size: 0.9rem;
+}
+
+.yb-c[hidden] {
+	display: none;
+}
+
+.yb-c-loading,
+.yb-c-error {
+	padding: 1.5rem 0;
+	text-align: center;
+	color: var(--content-meta);
+	font-size: 0.85rem;
+}
+
+.yb-c-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid var(--line-divider);
+}
+
+.yb-c-title {
+	font-weight: 600;
+	font-size: 1rem;
+}
+
+.yb-c-hint {
+	color: var(--content-meta);
+	font-size: 0.78rem;
+}
+
+/* ---------- 表单 ---------- */
+
+.yb-c-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+}
+
+.yb-c-replybar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.4rem 0.7rem;
+	border-radius: 0.5rem;
+	background: var(--btn-regular-bg);
+	color: var(--content-meta);
+	font-size: 0.8rem;
+}
+
+.yb-c-identity {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	flex-wrap: wrap;
+}
+
+.yb-c-identity-text {
+	display: flex;
+	flex-direction: column;
+	line-height: 1.3;
+}
+
+.yb-c-identity-text strong {
+	font-size: 0.85rem;
+}
+
+.yb-c-input {
+	flex: 1 1 8rem;
+	min-width: 0;
+	padding: 0.45rem 0.7rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.5rem;
+	background: var(--btn-regular-bg);
+	color: var(--btn-content);
+	font-size: 0.85rem;
+}
+
+.yb-c-input::placeholder,
+.yb-c-textarea::placeholder {
+	color: var(--content-meta);
+}
+
+/* 游客凭证提示：小一号、弱化，不抢输入区的视觉重心 */
+.yb-c-guest-note {
+	margin: -0.15rem 0 0;
+	line-height: 1.5;
+}
+
+.yb-c-textarea {
+	width: 100%;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.6rem;
+	background: var(--btn-regular-bg);
+	color: var(--btn-content);
+	font-size: 0.88rem;
+	line-height: 1.6;
+	resize: vertical;
+	min-height: 6rem;
+	font-family: inherit;
+}
+
+.yb-c-input:focus,
+.yb-c-textarea:focus {
+	outline: none;
+	border-color: var(--primary);
+}
+
+.yb-c-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+.yb-c-counter {
+	color: var(--content-meta);
+	font-size: 0.75rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.yb-c-submit {
+	padding: 0.42rem 1.1rem;
+	border: none;
+	border-radius: 0.5rem;
+	background: var(--primary);
+	color: #fff;
+	font-size: 0.85rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition: opacity 0.15s ease;
+}
+
+.yb-c-submit:hover:not(:disabled) {
+	opacity: 0.88;
+}
+
+.yb-c-submit:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.yb-c-status {
+	margin: 0;
+	font-size: 0.8rem;
+	color: var(--content-meta);
+}
+
+.yb-c-status[data-tone="error"] {
+	color: #e5484d;
+}
+
+/* ---------- 列表 ---------- */
+
+.yb-c-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.yb-c-list .yb-c-list {
+	margin-top: 0.9rem;
+	padding-left: 1.4rem;
+	border-left: 2px solid var(--line-divider);
+}
+
+.yb-c-children {
+	list-style: none;
+}
+
+/* 第三层往后不再缩进，手机上会被挤成一条线 */
+.yb-c-children[data-depth="3"] > .yb-c-list,
+.yb-c-children[data-depth="4"] > .yb-c-list {
+	padding-left: 0;
+	border-left: none;
+}
+
+.yb-c-item-head {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.yb-c-avatar {
+	width: 1.85rem;
+	height: 1.85rem;
+	border-radius: 999px;
+	object-fit: cover;
+	flex-shrink: 0;
+}
+
+.yb-c-avatar-text {
+	display: grid;
+	place-items: center;
+	color: #fff;
+	font-size: 0.8rem;
+	font-weight: 600;
+	user-select: none;
+}
+
+.yb-c-item-meta {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+.yb-c-name-row {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.yb-c-name {
+	font-weight: 600;
+	font-size: 0.85rem;
+}
+
+.yb-c-badge {
+	padding: 0.05rem 0.35rem;
+	border-radius: 0.3rem;
+	background: var(--primary);
+	color: #fff;
+	font-size: 0.68rem;
+	line-height: 1.4;
+}
+
+.yb-c-badge-guest {
+	background: var(--btn-regular-bg);
+	color: var(--content-meta);
+}
+
+.yb-c-time {
+	color: var(--content-meta);
+	font-size: 0.75rem;
+}
+
+.yb-c-body {
+	margin-top: 0.45rem;
+	margin-left: 2.45rem;
+	line-height: 1.7;
+	font-size: 0.88rem;
+	word-break: break-word;
+}
+
+.yb-c-body > :first-child {
+	margin-top: 0;
+}
+
+.yb-c-body > :last-child {
+	margin-bottom: 0;
+}
+
+.yb-c-body p {
+	margin: 0.5rem 0;
+}
+
+.yb-c-body a {
+	color: var(--primary);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.yb-c-body code {
+	padding: 0.1rem 0.3rem;
+	border-radius: 0.3rem;
+	background: var(--btn-regular-bg);
+	font-size: 0.82rem;
+}
+
+.yb-c-body pre {
+	margin: 0.6rem 0;
+	padding: 0.7rem 0.85rem;
+	border-radius: 0.5rem;
+	background: var(--btn-regular-bg);
+	overflow-x: auto;
+}
+
+.yb-c-body pre code {
+	padding: 0;
+	background: none;
+}
+
+.yb-c-body blockquote {
+	margin: 0.6rem 0;
+	padding-left: 0.8rem;
+	border-left: 2px solid var(--line-divider);
+	color: var(--content-meta);
+}
+
+.yb-c-body ul,
+.yb-c-body ol {
+	margin: 0.5rem 0;
+	padding-left: 1.4rem;
+}
+
+/* 站点 prose 样式把列表符号去掉了，评论里要显式拿回来 */
+.yb-c-body ul {
+	list-style: disc;
+}
+
+.yb-c-body ol {
+	list-style: decimal;
+}
+
+.yb-c-body li {
+	margin: 0.15rem 0;
+}
+
+.yb-c-actions {
+	display: flex;
+	gap: 0.9rem;
+	margin-top: 0.35rem;
+	margin-left: 2.45rem;
+}
+
+.yb-c-link {
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--content-meta);
+	font-size: 0.75rem;
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	font-family: inherit;
+}
+
+.yb-c-link:hover {
+	color: var(--primary);
+}
+
+.yb-c-danger:hover {
+	color: #e5484d;
+}
+
+.yb-c-empty {
+	padding: 1.5rem 0;
+	text-align: center;
+	color: var(--content-meta);
+	font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+	.yb-c-body,
+	.yb-c-actions {
+		margin-left: 0;
+	}
+
+	.yb-c-list .yb-c-list {
+		padding-left: 0.7rem;
+	}
+}

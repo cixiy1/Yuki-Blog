@@ -1,7 +1,9 @@
 import type { CommentConfig } from "../types/commentConfig";
 
 export const commentConfig: CommentConfig = {
-	type: "giscus",
+	// 站内评论：数据在 D1，前端运行时拉取；审核与开关在管理端 #/comments。
+	// 想换回第三方评论，把这里改成 "giscus" / "twikoo" 等即可（要重新构建）。
+	type: "self-hosted",
 	twikoo: {
 		envId: "https://twikoo.vercel.app",
 		lang: "zh-CN",

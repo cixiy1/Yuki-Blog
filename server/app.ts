@@ -3,6 +3,7 @@ import { loadSession } from "./middleware/auth";
 import { noStore } from "./middleware/guard";
 import { admin } from "./routes/admin";
 import { auth } from "./routes/auth";
+import { comments, commentsAdmin } from "./routes/comments";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
@@ -19,9 +20,11 @@ app.route("/api", health);
 app.route("/api/auth", auth);
 app.route("/api/me", me);
 app.route("/api/media", media);
+app.route("/api/comments", comments);
 // 站点配置：公开的热字段 + 管理端草稿/发布/密钥，路径自己带 /admin 前缀
 app.route("/api", siteConfig);
 app.route("/api/admin", admin);
+app.route("/api/admin", commentsAdmin);
 
 // API 未命中返回 JSON，不要落成 HTML 404。
 app.notFound((c) => {
