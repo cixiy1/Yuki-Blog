@@ -184,7 +184,8 @@
       `GET /api/comments/count?targets=`、`POST /api/comments`、`DELETE /api/comments/:id`；
       管理端 `GET/POST/DELETE /api/admin/comments*` 挂在 reviewer 权限下
 - [x] 审核开关：`enabled` / `requireApproval` / `allowGuest` / `maxLength` / `rateSeconds`
-      存 `settings` 的 `comments.config`，管理端改完下一次请求即生效（不走站点配置的发布通道）
+      存 `settings` 的 `comments.config`，管理端改完下一次请求即生效（不走站点配置的发布通道）。
+      **入口在「站点设置 → 评论」**，`#/settings/comments` 可直接落到那一组
 - [x] 默认先发后审（发出即显示）；站长与审核员发言同样直接 approved。
       「先审后发」是可选开关，管理端打开后新评论才进 pending
 - [x] 反刷：同一 IP 最小间隔（默认 20 秒）+ 每小时 20 条，复用 `rate_limits`；IP 只存 HMAC
@@ -194,7 +195,8 @@
 - [x] 文章页、留言板、说说三处接入：`Comment/index.astro` 加 `self-hosted` 分支；
       说说 iframe 用 `?path=` 拼成 `dynamic:<路径>`
 - [x] `commentConfig.type` 已切到 `"self-hosted"`；想换回 giscus/twikoo 改这一行即可（要重新构建）
-- [x] 管理端 `#/comments`：待审/已通过/已拒绝/全部、按 target 筛选、通过/拒绝/删除、设置弹窗
+- [x] 管理端 `#/comments`：待审/已通过/已拒绝/全部、按 target 筛选、通过/拒绝/删除；
+      开关不在这里，按钮直接跳到「站点设置 → 评论」，同一个开关不留两处入口
 - [x] 游客凭证：游客没有 uid，评论发出去原本谁都删不掉（连他自己）。发表时服务端返回一次
       32 字节令牌，摘要存 `comments.guest_token_hash`（`0012`），原文由浏览器 localStorage 保管，
       删除时走 `x-comment-token` header 比对。
