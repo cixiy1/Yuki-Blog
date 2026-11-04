@@ -10,6 +10,7 @@ tags:
   - macOS
   - 教程
 category: 软件教程
+image: /assets/uploads/2026/11/2026-11-04-19-21-03-79ffb1e5.png
 ---
 
 > 事先说明：
