@@ -18,7 +18,7 @@ const entries = [
 		key: "posts",
 		icon: "posts",
 		title: "我的文章",
-		desc: "写草稿、改稿、提交审核。",
+		desc: "写稿、改稿、提交审核",
 		path: "/posts",
 		show: true,
 	},
@@ -26,7 +26,7 @@ const entries = [
 		key: "all-posts",
 		icon: "globe",
 		title: "全站文章",
-		desc: "站点上已发布的全部文章。",
+		desc: "已发布的全部文章",
 		path: "/all-posts",
 		show: canReview.value,
 	},
@@ -34,7 +34,7 @@ const entries = [
 		key: "components",
 		icon: "components",
 		title: "我的组件",
-		desc: "文章里可 import 的自定义组件。",
+		desc: "文章里的自定义组件",
 		path: "/components",
 		show: true,
 	},
@@ -42,7 +42,7 @@ const entries = [
 		key: "review",
 		icon: "review",
 		title: "审核队列",
-		desc: "审待发布的投稿，通过后进构建。",
+		desc: "审待发布的投稿",
 		path: "/review",
 		show: canReview.value,
 	},
@@ -50,7 +50,7 @@ const entries = [
 		key: "settings",
 		icon: "admin",
 		title: "站点设置",
-		desc: "标题、外观、页面开关与密钥。",
+		desc: "标题、外观与密钥",
 		path: "/settings",
 		show: isAdmin.value,
 	},
@@ -131,14 +131,14 @@ onMounted(async () => {
 				:href="`#${entry.path}`"
 				@click.prevent="go(entry.path)"
 			>
-				<span class="entry-icon">
-					<AppIcon :name="entry.icon" :size="20" />
-				</span>
-				<span class="entry-text">
+				<span class="entry-head">
+					<span class="entry-icon">
+						<AppIcon :name="entry.icon" :size="18" />
+					</span>
 					<span class="entry-title">{{ entry.title }}</span>
-					<span class="entry-desc">{{ entry.desc }}</span>
+					<AppIcon name="chevron" :size="14" class="entry-go" />
 				</span>
-				<AppIcon name="chevron" :size="14" class="entry-go" />
+				<span class="entry-desc">{{ entry.desc }}</span>
 			</a>
 		</div>
 
@@ -239,12 +239,18 @@ onMounted(async () => {
 
 .entry {
 	display: flex;
-	align-items: center;
-	gap: 0.6rem;
-	padding: 0.8rem 0.85rem;
+	flex-direction: column;
+	gap: 0.3rem;
+	padding: 0.7rem 0.8rem;
 	transition:
 		transform 0.18s ease,
 		border-color 0.18s ease;
+}
+
+.entry-head {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
 }
 
 .entry:hover {
@@ -256,35 +262,33 @@ onMounted(async () => {
 	display: inline-grid;
 	place-items: center;
 	flex: none;
-	width: 2rem;
-	height: 2rem;
-	border-radius: 0.6rem;
+	width: 1.85rem;
+	height: 1.85rem;
+	border-radius: 0.55rem;
 	background: var(--btn-regular-bg);
 	color: var(--fg-90);
-}
-
-.entry-text {
-	display: flex;
-	flex-direction: column;
-	gap: 0.1rem;
-	min-width: 0;
 }
 
 .entry-title {
 	font-size: 0.88rem;
 	font-weight: 600;
 	color: var(--fg-90);
+	white-space: nowrap;
 }
 
-/* 说明只留一行：五张卡并排时两行说明会把卡撑高，底下数字条就往下坠 */
+/* 说明铺满卡宽、最多两行：以前挤在图标右边，一行只放得下六七个字，
+   五张卡的说明全被截成「…」 */
 .entry-desc {
 	font-size: 0.72rem;
 	line-height: 1.5;
 	color: var(--fg-50);
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
 	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
+
+/* 最后一行留白，五张卡不等高时说明不会跳位 */
 
 .entry-go {
 	flex: none;

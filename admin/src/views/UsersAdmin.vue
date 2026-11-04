@@ -16,6 +16,12 @@ import {
 	STATUS_LABEL,
 } from "../lib/users";
 
+/** 行首圆牌上的字：昵称首字，没有昵称就看登录名 */
+function initialOf(row: AdminUser): string {
+	const name = row.display_name?.trim() || row.account || "?";
+	return name.slice(0, 1).toUpperCase();
+}
+
 const rows = ref<AdminUser[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -198,11 +204,18 @@ onMounted(() => void refresh());
 				<tbody>
 					<tr v-for="row in rows" :key="row.uid">
 						<td>
-							<p class="name">
-								{{ row.display_name }}
-								<span v-if="isSelf(row)" class="self-tag">你</span>
-							</p>
-							<p class="sub">@{{ row.account }} · uid {{ row.uid }}</p>
+							<div class="user-cell">
+								<span class="avatar" :class="{ gone: isDeleted(row) }">
+									{{ initialOf(row) }}
+								</span>
+								<div>
+									<p class="name">
+										{{ row.display_name }}
+										<span v-if="isSelf(row)" class="self-tag">你</span>
+									</p>
+									<p class="sub">@{{ row.account }} · uid {{ row.uid }}</p>
+								</div>
+							</div>
 						</td>
 						<td class="mono">
 							{{ row.email }}
@@ -386,6 +399,31 @@ onMounted(() => void refresh());
 
 .table tr:last-child td {
 	border-bottom: none;
+}
+
+.user-cell {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+/* 圆牌用主题色淡淡铺一层：整列都是「已注销用户」时，靠它才能一行一行扫下去 */
+.avatar {
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	width: 1.9rem;
+	height: 1.9rem;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--primary) 13%, var(--btn-regular-bg));
+	color: var(--accent-text);
+	font-size: 0.78rem;
+	font-weight: 700;
+}
+
+.avatar.gone {
+	background: var(--btn-regular-bg);
+	color: var(--fg-50);
 }
 
 .name {
