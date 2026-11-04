@@ -19,6 +19,11 @@ export interface MediaFile {
 	bytes: number;
 	ext: string;
 	at: number;
+	/**
+	 * 刚提交进仓库、站点还没重新构建：直出地址此刻是 404。
+	 * 只在本次会话内为真，刷新页面后就是普通文件了。
+	 */
+	pending?: boolean;
 }
 
 export interface MediaIndex {
@@ -68,7 +73,8 @@ export async function uploadMediaFiles(files: File[]): Promise<{
 		files: prepared,
 	});
 	return {
-		created: data.created ?? [],
+		// 新提交的文件要等这次构建完才能打开，标出来让网格显示「构建中」而不是「读不到」
+		created: (data.created ?? []).map((file) => ({ ...file, pending: true })),
 		reused: data.reused ?? [],
 		commit: data.commit ?? null,
 	};

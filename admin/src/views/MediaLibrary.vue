@@ -40,6 +40,8 @@ const dragging = ref(false);
 const detail = ref<MediaFile | null>(null);
 const confirmDelete = ref(false);
 const copied = ref("");
+/** 详情里的大图打不开：刚上传的图要等构建，这个状态是正常的 */
+const previewBroken = ref(false);
 
 const visible = computed(() => {
 	const term = query.value.trim().toLowerCase();
@@ -116,6 +118,7 @@ function detailed(file: MediaFile | null): void {
 	detail.value = file;
 	confirmDelete.value = false;
 	copied.value = "";
+	previewBroken.value = false;
 }
 
 async function copy(text: string, label: string): Promise<void> {
@@ -267,7 +270,10 @@ onBeforeUnmount(() => {
 
 				<div class="dt-body">
 					<div class="dt-preview">
-						<img :src="detail.url" :alt="detail.name" />
+						<img :src="detail.url" :alt="detail.name" @error="previewBroken = true" />
+						<span v-if="previewBroken && detail.pending" class="dt-pending">
+							刚提交进仓库，构建完成后才能打开（约 1–2 分钟）
+						</span>
 					</div>
 					<dl class="dt-fields">
 						<dt>路径</dt>
@@ -477,12 +483,25 @@ onBeforeUnmount(() => {
 }
 
 .dt-preview {
+	position: relative;
 	display: grid;
 	place-items: center;
 	max-height: 18rem;
 	overflow: hidden;
 	border: 1px solid var(--line-divider);
 	border-radius: 0.6rem;
+}
+
+.dt-pending {
+	position: absolute;
+	inset: auto 0.6rem 0.6rem;
+	padding: 0.4rem 0.55rem;
+	border-radius: 0.4rem;
+	background: var(--card-bg);
+	border: 1px solid var(--line-divider);
+	color: var(--fg-50);
+	font-size: 0.7rem;
+	line-height: 1.5;
 }
 
 .dt-preview img {

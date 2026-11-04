@@ -1,5 +1,6 @@
 /**
  * 上传前先在浏览器里压一道：长边超过 1800px 或体积超标的图重新编码成 webp。
+ * 浏览器不支持 webp 编码时（Safari 的 canvas）退回 PNG，mime 跟着实际字节走。
  * 服务端单张上限 900KB（D1 单行 1MB），手机截图直接传基本都会超。
  */
 const MAX_EDGE = 1800;
@@ -27,11 +28,27 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 function canvasToBlob(
 	canvas: HTMLCanvasElement,
+	mime: string,
 	quality: number,
 ): Promise<Blob | null> {
 	return new Promise((resolve) => {
-		canvas.toBlob((blob) => resolve(blob), "image/webp", quality);
+		canvas.toBlob((blob) => resolve(blob), mime, quality);
 	});
+}
+
+/**
+ * 编码结果按 blob 自报的类型算，不能写死 webp。
+ * Safari 的 canvas 不支持 webp 编码，`toBlob(…, "image/webp")` 会静默退回 PNG，
+ * 写死 mime 就会把 PNG 的字节存成 `.webp` 的名字，浏览器按 webp 解不出来。
+ */
+function blobMime(blob: Blob): string {
+	const type = (blob.type || "").toLowerCase();
+	return type.startsWith("image/") ? type : "image/webp";
+}
+
+/** PNG 是无损的，quality 参数不起作用，降质循环对它只是白跑几遍 */
+function isLossy(mime: string): boolean {
+	return mime !== "image/png";
 }
 
 async function reencode(
@@ -53,11 +70,22 @@ async function reencode(
 	bitmap.close();
 
 	let qualityNow = quality;
-	let blob = await canvasToBlob(canvas, qualityNow);
+	let blob = await canvasToBlob(canvas, "image/webp", qualityNow);
+	// 编不出 webp 的浏览器会给 PNG，而 PNG 不认 quality——超过目标只能换 JPEG，
+	// 否则大截图永远压不下来，只剩「请手动缩小后再传」一条路。
+	if (blob && blobMime(blob) === "image/png" && blob.size > TARGET_BYTES) {
+		const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.82);
+		if (jpeg && jpeg.size < blob.size) blob = jpeg;
+	}
 	// 逐级降质，直到进 820KB；再不行就缩边
-	while (blob && blob.size > TARGET_BYTES && qualityNow > 0.55) {
+	while (
+		blob &&
+		isLossy(blobMime(blob)) &&
+		blob.size > TARGET_BYTES &&
+		qualityNow > 0.55
+	) {
 		qualityNow -= 0.1;
-		blob = await canvasToBlob(canvas, qualityNow);
+		blob = await canvasToBlob(canvas, blobMime(blob), qualityNow);
 	}
 	return blob;
 }
@@ -87,14 +115,14 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
 		}
 		return {
 			data: await blobToBase64(smaller),
-			mime: "image/webp",
+			mime: blobMime(smaller),
 			bytes: smaller.size,
 		};
 	}
 
 	return {
 		data: await blobToBase64(blob),
-		mime: "image/webp",
+		mime: blobMime(blob),
 		bytes: blob.size,
 	};
 }

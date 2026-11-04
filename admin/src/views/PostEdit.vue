@@ -595,12 +595,31 @@ const postDir = computed(() => {
 
 /** 封面可能是不带前导 ./ 的相对路径，管理端下解析不到，转到仓库 raw 上预览 */
 const coverBroken = ref(false);
+/** 刚上传的封面在站内地址上是 404，构建完才有——重试几次，别一失败就留白 */
+const coverTry = ref(0);
+const coverTimer = ref(0);
 const coverPreview = computed(() => {
 	const src = textOf("image").trim();
 	if (!src || coverBroken.value) return "";
-	if (/^(?:https?:|data:|\/)/i.test(src)) return src;
+	const bust =
+		coverTry.value > 0
+			? `${src}${src.includes("?") ? "&" : "?"}yb_retry=${coverTry.value}`
+			: src;
+	if (/^(?:https?:|data:)/i.test(src)) return bust;
+	if (src.startsWith("/")) return bust;
 	return rawBase.value ? `${rawBase.value}${src.replace(/^\.\//, "")}` : "";
 });
+
+function onCoverError(): void {
+	if (coverTry.value >= 20) {
+		coverBroken.value = true;
+		return;
+	}
+	if (coverTimer.value) window.clearTimeout(coverTimer.value);
+	coverTimer.value = window.setTimeout(() => {
+		coverTry.value += 1;
+	}, 6000);
+}
 
 function applyProvenance(raw: FieldValue | undefined): void {
 	if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
@@ -1349,6 +1368,7 @@ onBeforeUnmount(() => {
 	document.removeEventListener("click", onDocumentClick);
 	if (timer !== null) window.clearTimeout(timer);
 	if (highlightTimer !== null) window.clearTimeout(highlightTimer);
+	if (coverTimer.value) window.clearTimeout(coverTimer.value);
 	renderObserver?.disconnect();
 	highlightRegistry()?.delete(HIGHLIGHT_NAME);
 	vditor?.destroy();
@@ -1637,7 +1657,7 @@ watch(isDark, (dark) => {
 										class="cover-thumb"
 										:src="coverPreview"
 										alt=""
-										@error="coverBroken = true"
+										@error="onCoverError"
 									/>
 									<input
 										:id="`f-${def.key}`"
@@ -1647,6 +1667,7 @@ watch(isDark, (dark) => {
 										:placeholder="def.placeholder"
 										@input="
 											coverBroken = false;
+											coverTry = 0;
 											onFieldInput();
 										"
 									/>
@@ -1766,6 +1787,7 @@ watch(isDark, (dark) => {
 				(value) => {
 					vals.image = value;
 					coverBroken = false;
+					coverTry = 0;
 					onFieldInput();
 				}
 			"

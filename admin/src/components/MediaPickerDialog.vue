@@ -110,7 +110,10 @@ async function doUpload(list: FileList | File[]): Promise<void> {
 		if (result.created.length) parts.push(`新传 ${result.created.length} 张`);
 		if (result.reused.length)
 			parts.push(`${result.reused.length} 张已存在，直接复用`);
-		uploadNote.value = parts.join("，") || "没有变化";
+		const head = parts.join("，") || "没有变化";
+		uploadNote.value = result.created.length
+			? `${head}。构建约 1–2 分钟后站点上才能打开，缩略图会自己刷新。`
+			: head;
 	} catch (error) {
 		uploadError.value = error instanceof Error ? error.message : "上传失败";
 		uploadNote.value = "";

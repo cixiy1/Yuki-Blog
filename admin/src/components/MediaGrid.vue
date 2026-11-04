@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { formatBytes, type MediaFile } from "../lib/media";
 
 /** 媒体库与选择器共用的一套网格：卡片只有一像素描边，不铺灰底 */
@@ -14,16 +14,81 @@ const emit = defineEmits<{ pick: [file: MediaFile] }>();
 
 /** 加载失败的图（raw 地址被墙、文件被删）标记一下，别留个破图标 */
 const broken = ref<Set<string>>(new Set());
+/** 已经成功解码的图，用来撤掉「构建中」角标 */
+const loaded = ref<Set<string>>(new Set());
+/** 第几次重试，读写它就能让 img 换 src 重新请求 */
+const attempts = ref<Record<string, number>>({});
+/** 重试次数用完仍是 404 的，改成一句确定的话 */
+const waiting = ref<Set<string>>(new Set());
+
+/**
+ * 刚上传的图在构建完成前必然 404，这时报「读不到」是误报。
+ * 构建 1–2 分钟，按 6 秒一次重试 20 次把这段时间盖住。
+ */
+const RETRY_MS = 6000;
+const MAX_RETRY = 20;
+const timers = new Map<string, number>();
 
 watch(
 	() => props.files,
 	() => {
 		broken.value = new Set();
+		loaded.value = new Set();
+		waiting.value = new Set();
+		attempts.value = {};
+		for (const timer of timers.values()) window.clearTimeout(timer);
+		timers.clear();
 	},
 );
 
+onBeforeUnmount(() => {
+	for (const timer of timers.values()) window.clearTimeout(timer);
+	timers.clear();
+});
+
 function disabled(file: MediaFile, disableContent?: boolean): boolean {
 	return Boolean(disableContent && file.origin === "content");
+}
+
+function thumbSrc(file: MediaFile): string {
+	const n = attempts.value[file.path] ?? 0;
+	if (n === 0) return file.url;
+	// 带上次数当缓存键，绕过 404 的缓存直接再打一次源站
+	const glue = file.url.includes("?") ? "&" : "?";
+	return `${file.url}${glue}yb_retry=${n}`;
+}
+
+function onThumbLoad(file: MediaFile): void {
+	const timer = timers.get(file.path);
+	if (timer !== undefined) {
+		window.clearTimeout(timer);
+		timers.delete(file.path);
+	}
+	loaded.value = new Set([...loaded.value, file.path]);
+}
+
+function onThumbError(file: MediaFile): void {
+	const n = attempts.value[file.path] ?? 0;
+	if (file.pending) {
+		if (n >= MAX_RETRY) {
+			waiting.value = new Set([...waiting.value, file.path]);
+			return;
+		}
+		const timer = window.setTimeout(() => {
+			timers.delete(file.path);
+			attempts.value = { ...attempts.value, [file.path]: n + 1 };
+		}, RETRY_MS);
+		timers.set(file.path, timer);
+		return;
+	}
+	broken.value = new Set([...broken.value, file.path]);
+}
+
+function badge(file: MediaFile): string {
+	if (!file.pending) return "";
+	if (loaded.value.has(file.path)) return "";
+	if (waiting.value.has(file.path)) return "构建完成后可见";
+	return "构建中…";
 }
 </script>
 
@@ -42,13 +107,15 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 			<span class="mg-thumb">
 				<img
 					v-if="!broken.has(file.path)"
-					:src="file.url"
+					:src="thumbSrc(file)"
 					:alt="file.name"
 					loading="lazy"
 					decoding="async"
-					@error="broken.add(file.path)"
+					@load="onThumbLoad(file)"
+					@error="onThumbError(file)"
 				/>
 				<span v-else class="mg-broken">{{ file.ext.toUpperCase() }} 读不到</span>
+				<span v-if="badge(file)" class="mg-badge">{{ badge(file) }}</span>
 			</span>
 			<span class="mg-name">{{ file.name }}</span>
 			<span class="mg-meta">
@@ -98,6 +165,7 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 }
 
 .mg-thumb {
+	position: relative;
 	display: grid;
 	place-items: center;
 	aspect-ratio: 4 / 3;
@@ -120,6 +188,21 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 .mg-broken {
 	font-size: 0.68rem;
 	color: var(--fg-50);
+}
+
+/* 角标压在缩略图左下角：图还没出来时也不能挡住整块区域 */
+.mg-badge {
+	position: absolute;
+	left: 0.35rem;
+	bottom: 0.35rem;
+	padding: 0.1rem 0.34rem;
+	border-radius: 4px;
+	background: color-mix(in oklab, var(--card-bg) 82%, transparent);
+	border: 1px solid var(--line-divider);
+	color: var(--fg-50);
+	font-size: 0.6rem;
+	line-height: 1.4;
+	font-variant-numeric: tabular-nums;
 }
 
 .mg-name {

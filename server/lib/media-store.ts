@@ -36,7 +36,7 @@ export const MEDIA_ROOTS = [
 	"src/content/posts/images/",
 ] as const;
 
-export const MEDIA_EXT = new Set([
+export const MEDIA_EXT: Set<string> = new Set([
 	"png",
 	"jpg",
 	"jpeg",
@@ -166,12 +166,63 @@ const MIME_EXT: Record<string, string> = {
 	"image/svg+xml": "svg",
 };
 
-export const MAX_UPLOAD_FILES = 20;
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_UPLOAD_FILES: number = 20;
+export const MAX_UPLOAD_BYTES: number = 5 * 1024 * 1024;
 
 /** 扩展名只认 mime，不信客户端给的文件名 */
 export function extForMime(mime: string): string | null {
 	return MIME_EXT[mime.toLowerCase()] ?? null;
+}
+
+function headAscii(bytes: Uint8Array, start: number, end: number): string {
+	let out = "";
+	for (let i = start; i < Math.min(end, bytes.byteLength); i += 1) {
+		out += String.fromCharCode(bytes[i] as number);
+	}
+	return out;
+}
+
+/**
+ * 按魔数认图片格式。
+ *
+ * 客户端的 mime 会说谎：Safari 的 canvas 编不出 webp，`toBlob(…, "image/webp")`
+ * 直接退回 PNG，前端拿到的 blob 类型也照旧写着 webp。按 mime 取扩展名就会写出
+ * 一个 `.webp` 的 PNG——手机相册、图片优化、部分浏览器都按声明格式解，解不出来。
+ * 所以以实际字节为准，mime 只做兜底。
+ */
+export function sniffImageMime(bytes: Uint8Array): string | null {
+	if (
+		bytes.byteLength >= 8 &&
+		bytes[0] === 0x89 &&
+		headAscii(bytes, 1, 4) === "PNG"
+	) {
+		return "image/png";
+	}
+	if (
+		bytes.byteLength >= 3 &&
+		bytes[0] === 0xff &&
+		bytes[1] === 0xd8 &&
+		bytes[2] === 0xff
+	) {
+		return "image/jpeg";
+	}
+	if (bytes.byteLength >= 4 && headAscii(bytes, 0, 4) === "GIF8")
+		return "image/gif";
+	if (
+		bytes.byteLength >= 12 &&
+		headAscii(bytes, 0, 4) === "RIFF" &&
+		headAscii(bytes, 8, 12) === "WEBP"
+	) {
+		return "image/webp";
+	}
+	if (bytes.byteLength >= 12 && headAscii(bytes, 4, 8) === "ftyp") {
+		const brand = headAscii(bytes, 8, 12);
+		if (brand === "avif" || brand === "avis") return "image/avif";
+	}
+	// SVG 是文本，没有魔数：跳过空白后以 `<` 开头、前 512 字节里出现 `<svg` 就算
+	const probe = headAscii(bytes, 0, 512).trimStart();
+	if (probe.startsWith("<") && probe.includes("<svg")) return "image/svg+xml";
+	return null;
 }
 
 /**
@@ -238,12 +289,14 @@ export async function uploadMedia(input: {
 	const dir = uploadDir(new Date());
 	const planned: Array<{ entry: MediaEntry; bytes: Uint8Array }> = [];
 	for (const file of files) {
-		const ext = extForMime(file.mime);
+		// 实际字节优先，客户端声明的 mime 只当兜底
+		const mime = sniffImageMime(file.bytes) ?? file.mime;
+		const ext = extForMime(mime);
 		if (!ext) {
 			return {
 				ok: false,
 				status: 415,
-				message: `不支持的图片格式：${file.mime || "未知"}`,
+				message: `不支持的图片格式：${mime || "未知"}`,
 				created: [],
 				reused: [],
 			};
