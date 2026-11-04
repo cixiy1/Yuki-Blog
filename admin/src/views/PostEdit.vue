@@ -469,6 +469,9 @@ const statusLabel = computed(() => {
 
 /** 页头说明：固定文案，不随保存状态抖动 */
 const pageDesc = computed(() => {
+	if (status.value === "pending") {
+		return "当前状态：待审，不可编辑。想改点右上角「撤回审核」，改完再提交。";
+	}
 	if (!editable.value) return `当前状态：${statusLabel.value}，不可编辑`;
 	if (isRepo.value) return "改的是仓库里的文件，保存即提交并触发构建。";
 	return "草稿存在 D1，停手 1.5 秒自动保存。";
@@ -892,7 +895,11 @@ async function onSubmit(): Promise<void> {
 	if (!editable.value) return;
 	const saved = await save();
 	if (!saved) return;
-	if (!window.confirm("提交审核后就不能改，要等审核通过或退回。确定提交？")) {
+	if (
+		!window.confirm(
+			"提交审核后正文会锁定，想改可以随时撤回。确定提交？",
+		)
+	) {
 		return;
 	}
 	try {
@@ -905,6 +912,13 @@ async function onSubmit(): Promise<void> {
 }
 
 async function onWithdraw(): Promise<void> {
+	if (
+		!window.confirm(
+			"撤回后回到草稿，可以继续修改。审核人会收到一封撤回提醒。确定撤回？",
+		)
+	) {
+		return;
+	}
 	try {
 		await withdrawPost(postId.value);
 		location.reload();

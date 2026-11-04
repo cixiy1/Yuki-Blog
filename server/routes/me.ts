@@ -16,7 +16,7 @@ import {
 	repoRawBase,
 	writeRepoFile,
 } from "../lib/repo-posts";
-import { notifyReviewers } from "../lib/review-notify";
+import { notifyReviewers, notifyWithdrawn } from "../lib/review-notify";
 import { readSecret } from "../lib/site-config";
 import { isValidSlug, normalizeTags } from "../lib/validate";
 import { requireAuth } from "../middleware/auth";
@@ -879,14 +879,38 @@ me.post("/posts/:id/withdraw", requireAuth, sameOriginGuard, async (c) => {
 
 	const updated = await c.env.DB.prepare(
 		`UPDATE posts
-		    SET status = 'draft', submitted_at = NULL, updated_at = datetime('now')
-		  WHERE id = ?1 AND uid = ?2
+		    SET status = 'draft', submitted_at = NULL, review_notified_at = NULL,
+		        updated_at = datetime('now')
+		  WHERE id = ?1 AND uid = ?2 AND status = 'pending'
 		 RETURNING *`,
 	)
 		.bind(row.id, row.uid)
 		.first<PostRow>();
 
-	return c.json({ post: updated ? toDetail(updated) : null });
+	if (!updated) {
+		return c.json(
+			{ error: "not_pending", message: "只有待审的文章可以撤回" },
+			409,
+		);
+	}
+
+	await writeAudit(c.env.DB, {
+		actorUid: row.uid,
+		action: "review.withdraw",
+		target: `post:${row.id}`,
+		detail: { slug: row.slug, from: "pending", to: "draft" },
+	});
+
+	// 撤回了就清掉提醒时间戳：改完重新提交必须让审核人收到新提醒，
+	// 否则 10 分钟节流会把「撤回后又提交」的这条悄悄吞掉。
+	const task = notifyWithdrawn(c.env, updated, originOf(c));
+	try {
+		c.executionCtx.waitUntil(task);
+	} catch {
+		void task;
+	}
+
+	return c.json({ post: toDetail(updated) });
 });
 
 /* ---------- 仓库文章：直接读写 src/content/posts 下的文件 ---------- */

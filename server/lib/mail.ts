@@ -339,12 +339,97 @@ export async function sendAccountExistsMail(
 	});
 }
 
+/**
+ * 换邮箱确认信：发到**新**地址。点链接前，账号上还是旧邮箱。
+ */
+export async function sendEmailChangeMail(
+	env: Env,
+	to: string,
+	link: string,
+	account: string,
+	currentEmail: string,
+): Promise<MailResult> {
+	const text = [
+		`你好 ${account}，有人请求把 Yuki Blog 账号的邮箱改成这个地址。`,
+		"",
+		`当前邮箱：${currentEmail}`,
+		"",
+		"点击下面的链接确认更换（24 小时内有效）：",
+		link,
+		"",
+		"如果这不是你本人操作，忽略这封邮件即可，邮箱不会变。",
+	].join("\n");
+
+	const html = `<div style="${STYLE}">
+  <p>你好 <strong>${escapeHtml(account)}</strong>，有人请求把 Yuki Blog 账号的邮箱改成这个地址。</p>
+  <p>当前邮箱：<code>${escapeHtml(currentEmail)}</code></p>
+  <p>点击下面的按钮确认更换，链接 24 小时内有效：</p>
+  ${buttonHtml(link, "确认更换邮箱")}
+  <p style="color:#59636e;font-size:13px">按钮打不开就复制这个地址：<br>${link}</p>
+  <p style="color:#59636e;font-size:13px">如果这不是你本人操作，忽略这封邮件即可，邮箱不会变。</p>
+</div>`;
+
+	return await sendMail(env, {
+		to,
+		subject: "确认更换邮箱 · Yuki Blog",
+		text,
+		html,
+	});
+}
+
+/** 换成功之后给旧地址的告知信：账号可能被人接管时，这是最后一道线索。 */
+export async function sendEmailChangedNoticeMail(
+	env: Env,
+	to: string,
+	account: string,
+	newEmail: string,
+	resetUrl: string,
+): Promise<MailResult> {
+	const text = [
+		`Yuki Blog 账号 ${account} 的邮箱已经改成了 ${newEmail}。`,
+		"",
+		"如果这是你本人操作，忽略这封邮件。",
+		`如果不是，立刻用这个地址找回密码，然后到账号设置里改回去并更换密码：${resetUrl}`,
+	].join("\n");
+
+	const html = `<div style="${STYLE}">
+  <p>Yuki Blog 账号 <strong>${escapeHtml(account)}</strong> 的邮箱已经改成了 <code>${escapeHtml(newEmail)}</code>。</p>
+  <p style="color:#59636e;font-size:13px">如果这是你本人操作，忽略这封邮件。</p>
+  <p style="color:#b45309;font-size:13px">如果不是你操作，立刻用这个地址找回密码，然后到账号设置里把邮箱改回来并更换密码：</p>
+  ${buttonHtml(resetUrl, "找回密码")}
+</div>`;
+
+	return await sendMail(env, {
+		to,
+		subject: "账号邮箱已更换 · Yuki Blog",
+		text,
+		html,
+	});
+}
+
 function escapeHtml(raw: string): string {
 	return raw
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;");
+}
+
+/**
+ * 逐个地址发送：SMTP 一次塞多个收件人，被其中一个拒掉会连累其他人。
+ * 遇到第一个失败就返回，调用方据此决定日志。
+ */
+async function sendToEach(
+	env: Env,
+	to: string[],
+	mail: { subject: string; text: string; html: string },
+): Promise<MailResult> {
+	let last: MailResult = { ok: true, sent: false, mode: "off" };
+	for (const address of to) {
+		last = await sendMail(env, { to: address, ...mail });
+		if (!last.ok) return last;
+	}
+	return last;
 }
 
 export interface ReviewNotifyMail {
@@ -360,7 +445,6 @@ export interface ReviewNotifyMail {
 
 /**
  * 有新稿提交审核时提醒管理员。
- * 收件人逐个发：SMTP 一次塞多个收件人，被其中一个拒掉会连累其他人。
  */
 export async function sendReviewNotifyMail(
 	env: Env,
@@ -397,11 +481,44 @@ export async function sendReviewNotifyMail(
 </div>`;
 
 	const subject = `待审：《${title}》 · Yuki Blog`;
+	return await sendToEach(env, payload.to, { subject, text, html });
+}
 
-	let last: MailResult = { ok: true, sent: false, mode: "off" };
-	for (const address of payload.to) {
-		last = await sendMail(env, { to: address, subject, text, html });
-		if (!last.ok) return last;
-	}
-	return last;
+export interface ReviewWithdrawMail {
+	to: string[];
+	title: string;
+	author: string;
+	/** 审核队列地址，方便顺手确认它确实不在了 */
+	link: string;
+}
+
+/**
+ * 作者撤回待审稿时提醒审核人。
+ * 目的只有一个：别让人点开一封待审邮件，却发现队列里没有这篇。
+ */
+export async function sendReviewWithdrawMail(
+	env: Env,
+	payload: ReviewWithdrawMail,
+): Promise<MailResult> {
+	const title = payload.title.trim() || "（未命名）";
+	const author = payload.author.trim();
+
+	const text = [
+		`《${title}》已被作者撤回，不用再审。`,
+		"",
+		...(author ? [`作者：${author}`, ""] : []),
+		"这篇回到草稿状态继续修改，改完重新提交会再发一封提醒。",
+		`审核队列：${payload.link}`,
+	].join("\n");
+
+	const html = `<div style="${STYLE}">
+  <p>下面这篇已被作者撤回，不用再审。</p>
+  <p style="font-size:17px;font-weight:600;margin:12px 0 6px">《${escapeHtml(title)}》</p>
+  ${author ? `<p style="color:#59636e;font-size:13px;margin:0 0 14px">作者：${escapeHtml(author)}</p>` : ""}
+  <p style="color:#59636e;font-size:13px">这篇回到草稿状态继续修改，改完重新提交会再发一封提醒。</p>
+  ${buttonHtml(payload.link, "打开审核队列")}
+</div>`;
+
+	const subject = `已撤回：《${title}》 · Yuki Blog`;
+	return await sendToEach(env, payload.to, { subject, text, html });
 }

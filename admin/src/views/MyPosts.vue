@@ -107,11 +107,18 @@ async function onSubmit(post: PostSummary): Promise<void> {
 }
 
 async function onWithdraw(post: PostSummary): Promise<void> {
+	if (
+		!window.confirm(
+			`撤回《${post.title}》？撤回后回到草稿可以继续改，审核人会收到提醒。`,
+		)
+	) {
+		return;
+	}
 	busyId.value = post.id;
 	errorText.value = "";
 	try {
 		await withdrawPost(post.id);
-		notice.value = `《${post.title}》已撤回为草稿`;
+		notice.value = `《${post.title}》已撤回为草稿，可以继续修改`;
 		await refresh();
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "撤回失败";

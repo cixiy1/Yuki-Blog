@@ -15,6 +15,8 @@ export type AuditAction =
 	| "auth.password_reset"
 	| "auth.password_change"
 	| "user.profile.update"
+	| "user.email.request"
+	| "user.email.change"
 	| "admin.user.create"
 	| "admin.user.delete"
 	| "admin.user.status"
@@ -40,7 +42,8 @@ export type AuditAction =
 	| "review.approve"
 	| "review.note"
 	| "review.body"
-	| "review.reject";
+	| "review.reject"
+	| "review.withdraw";
 
 const DETAIL_KEYS = new Set([
 	"from",

@@ -1,4 +1,4 @@
-import { sendReviewNotifyMail } from "./mail";
+import { sendReviewNotifyMail, sendReviewWithdrawMail } from "./mail";
 import { readMailSettings } from "./mail-config";
 
 /**
@@ -123,6 +123,53 @@ export async function notifyReviewers(
 	} catch (error) {
 		console.error(
 			"[review] 待审提醒异常:",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+}
+
+/**
+ * 作者主动撤回时告诉审核人「别看了」。
+ * 待审邮件已经发出去过，撤回不发信，人家会白打开一次。
+ */
+export async function notifyWithdrawn(
+	env: Env,
+	post: ReviewNotifyPost,
+	origin: string,
+): Promise<void> {
+	try {
+		const to = await resolveRecipients(env);
+		if (to.length === 0) {
+			console.log("[review] 没有可通知的收件人，跳过撤回提醒");
+			return;
+		}
+
+		const author = await env.DB.prepare(
+			"SELECT display_name FROM users WHERE uid = ?1",
+		)
+			.bind(post.uid)
+			.first<{ display_name: string }>();
+
+		const result = await sendReviewWithdrawMail(env, {
+			to,
+			title: post.title,
+			author: author?.display_name ?? "",
+			link: `${origin}/admin/#/review`,
+		});
+
+		if (!result.ok) {
+			console.error(
+				"[review] 撤回提醒没发出去:",
+				result.hint ?? result.providerMessage ?? "未知原因",
+			);
+			return;
+		}
+		console.log(
+			`[review] 撤回提醒已发送（${result.mode}${result.sent ? "" : "，未配置通道只记日志"}）→ ${to.join(", ")}`,
+		);
+	} catch (error) {
+		console.error(
+			"[review] 撤回提醒异常:",
 			error instanceof Error ? error.message : String(error),
 		);
 	}
