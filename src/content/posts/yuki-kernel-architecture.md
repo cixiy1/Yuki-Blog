@@ -12,9 +12,14 @@ slug: yuki-kernel-architecture
 comment: true
 series: 编码经验
 seriesOrder: 2
+image: /assets/uploads/2026/11/yuki-zone-arch-9a59d608.png
 ---
 
 `yuki_kernel` 是一个可灵活嵌入与软件层的独立内核，以模块形式引入，不与任何模块耦合。
+
+## Yuki Kernel架构总览
+
+![yuki-zone-arch](/assets/uploads/2026/11/yuki-zone-arch-9a59d608.png)
 
 ## 分层
 
