@@ -40,14 +40,17 @@ function directionOf(value: Layout): 0 | 1 | 2 | 3 {
 	return SIDE;
 }
 
-function toNodeObj(node: MindNode, root = false): NodeObj {
+function toNodeObj(node: MindNode, isRoot = false): NodeObj {
 	seq += 1;
-	return {
+	// root 是 mind-elixir 认的运行时标记，但没写进 NodeObj 的类型里，
+	// 只能挂个交叉类型，别为了过类型检查把它删掉
+	const obj: NodeObj & { root: boolean } = {
 		id: `n${seq}`,
 		topic: node.topic,
-		root,
+		root: isRoot,
 		children: node.children.map((child) => toNodeObj(child)),
 	};
+	return obj;
 }
 
 function toMindNode(obj: NodeObj): MindNode {

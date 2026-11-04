@@ -288,7 +288,7 @@ const reviewVerdict = ref("");
 /** 审核员改过的那一版正文（存在 D1，不碰仓库） */
 const reviewBody = ref<string | null>(null);
 const reviewBodyOpen = ref(false);
-const reviewBodyEl = ref<HTMLElement | null>(null);
+const reviewBodyEl = ref<HTMLDivElement | null>(null);
 const lastSaved = ref<string | null>(null);
 
 /* ---------- 正文里的批注高亮 ---------- */
@@ -978,7 +978,7 @@ function removeCustom(index: number): void {
  * Vditor 的自定义上传：返回字符串表示错误，返回 null 表示成功。
  * 成功时自己把 Markdown 插进正文，Vditor 不会代劳。
  */
-async function onUpload(files: File[]): Promise<string | null> {
+async function onUpload(files: File[]): Promise<string> {
 	if (!vditor) return "编辑器还没就绪";
 	errorText.value = "";
 	const snippets: string[] = [];
@@ -996,7 +996,8 @@ async function onUpload(files: File[]): Promise<string | null> {
 	}
 	vditor.insertValue(`${snippets.join("\n")}\n`);
 	scheduleSave();
-	return null;
+	// Vditor 约定「出错才返回错误信息」，成功要回空串
+	return "";
 }
 
 /** 从媒体库挑一张插进正文：插在光标处，编辑器没就绪就追加到末尾 */

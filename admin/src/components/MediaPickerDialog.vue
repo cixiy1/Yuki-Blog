@@ -146,6 +146,8 @@ function onKeydown(event: KeyboardEvent): void {
 onMounted(() => {
 	void load();
 	window.addEventListener("keydown", onKeydown);
+	// 打开就能直接打字筛选，不用先点一下搜索框
+	searchEl.value?.focus();
 });
 
 onBeforeUnmount(() => {
