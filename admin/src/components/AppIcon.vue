@@ -122,6 +122,11 @@ const PATHS: Record<string, string[]> = {
 		"M11 4.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6z",
 		"m15.9 15.9 4.1 4.1",
 	],
+	// 空态：一个收件盘，两道侧壁 + 中间凹口
+	inbox: [
+		"M4 13.5 6.2 5.4h11.6L20 13.5",
+		"M4 13.5h4.1l1.2 2.4h5.4l1.2-2.4H20V19H4z",
+	],
 };
 
 const props = defineProps<{ name: string; size?: number }>();

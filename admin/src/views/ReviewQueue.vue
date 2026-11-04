@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview } from "../lib/auth";
@@ -136,11 +137,19 @@ onMounted(() => {
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 		<p v-else-if="notice" class="notice">{{ notice }}</p>
 
-		<p v-if="!canReview" class="state">审核队列只对审核员与管理员开放。</p>
+		<EmptyState
+			v-if="!canReview"
+			icon="admin"
+			title="这块只对审核员开放"
+			desc="需要审核员或管理员权限，找站长开通。"
+		/>
 		<LoadingState v-else-if="loading" :rows="3" />
-		<p v-else-if="count === 0" class="state">
-			没有待审的稿子。有人提交后会出现在这里。
-		</p>
+		<EmptyState
+			v-else-if="count === 0"
+			icon="review"
+			title="队列是空的"
+			desc="有人提交审核后会排到这里。通过即写进仓库并触发一次构建，退回要写清理由。"
+		/>
 
 		<ul v-else class="queue card-base">
 			<li v-for="item in items" :key="item.id" class="row">
@@ -251,13 +260,6 @@ onMounted(() => {
 	background: color-mix(in oklab, var(--admonitions-color-tip) 14%, transparent);
 	color: var(--admonitions-color-tip);
 	font-size: 0.8rem;
-}
-
-.state {
-	padding: 2rem 1rem;
-	text-align: center;
-	font-size: 0.85rem;
-	color: var(--fg-50);
 }
 
 .queue {

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
+import SegTabs from "../components/SegTabs.vue";
 import WallpaperModePicker from "../components/WallpaperModePicker.vue";
 import {
 	applyHot,
@@ -703,17 +704,13 @@ onMounted(() => void refresh());
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 		<p v-else-if="notice" class="notice">{{ notice }}</p>
 
-		<nav class="tabs">
-			<button
-				v-for="item in tabs"
-				:key="item.key"
-				type="button"
-				:class="['tab', { on: tab === item.key }]"
-				@click="switchTab(item.key)"
-			>
-				{{ item.label }}
-			</button>
-		</nav>
+		<SegTabs
+			class="tabs"
+			scrollable
+			:model-value="tab"
+			:options="tabs"
+			@update:model-value="switchTab"
+		/>
 
 		<LoadingState v-if="loading" variant="form" :rows="5" />
 
@@ -1395,46 +1392,9 @@ onMounted(() => void refresh());
 </template>
 
 <style scoped>
+/* 页签本体在 SegTabs 里，这里只管它跟下面内容的间距 */
 .tabs {
-	display: flex;
-	gap: 0.2rem;
-	overflow-x: auto;
 	margin-bottom: 1.1rem;
-	padding-bottom: 0.1rem;
-	scrollbar-width: none;
-}
-
-.tabs::-webkit-scrollbar {
-	display: none;
-}
-
-.tab {
-	flex: 0 0 auto;
-	border: none;
-	background: transparent;
-	padding: 0.42rem 0.75rem;
-	border-radius: 999px;
-	font-size: 0.82rem;
-	color: var(--fg-50);
-	cursor: pointer;
-	white-space: nowrap;
-	display: flex;
-	align-items: center;
-	gap: 0.3rem;
-	transition:
-		background-color 0.15s ease,
-		color 0.15s ease;
-}
-
-.tab:hover {
-	background: var(--btn-plain-bg-hover);
-	color: var(--fg-90);
-}
-
-.tab.on {
-	background: var(--tab-on-bg);
-	color: var(--accent-text);
-	font-weight: 600;
 }
 
 .group-desc {

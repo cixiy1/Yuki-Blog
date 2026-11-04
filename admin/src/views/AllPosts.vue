@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import PostList from "../components/PostList.vue";
@@ -74,9 +75,16 @@ onMounted(refresh);
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
 		<LoadingState v-if="loading" :rows="5" />
-		<div v-else-if="visible.length === 0" class="state card-base">
-			{{ keyword ? "没有匹配的文章" : "站点上还没有已发布的文章" }}
-		</div>
+		<EmptyState
+			v-else-if="visible.length === 0"
+			:icon="keyword ? 'search' : 'posts'"
+			:title="keyword ? '没有匹配的文章' : '站点上还没有已发布的文章'"
+			:desc="
+				keyword
+					? '换个关键词，或者清空搜索看全部。'
+					: '发布过的文章都会出现在这里，列表按发布时间倒序。'
+			"
+		/>
 
 		<PostList
 			v-else
@@ -129,13 +137,6 @@ onMounted(refresh);
 }
 
 .search-input::placeholder {
-	color: var(--fg-50);
-}
-
-.state {
-	padding: 2rem 1rem;
-	text-align: center;
-	font-size: 0.85rem;
 	color: var(--fg-50);
 }
 

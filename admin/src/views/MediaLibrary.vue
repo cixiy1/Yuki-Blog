@@ -8,6 +8,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import MediaGrid from "../components/MediaGrid.vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -41,13 +42,13 @@ const confirmDelete = ref(false);
 const copied = ref("");
 
 const visible = computed(() => {
-	const keyword = query.value.trim().toLowerCase();
+	const term = query.value.trim().toLowerCase();
 	return files.value.filter((file) => {
 		if (origin.value !== "all" && file.origin !== origin.value) return false;
-		if (!keyword) return true;
+		if (!term) return true;
 		return (
-			file.name.toLowerCase().includes(keyword) ||
-			file.path.toLowerCase().includes(keyword)
+			file.name.toLowerCase().includes(term) ||
+			file.path.toLowerCase().includes(term)
 		);
 	});
 });
@@ -241,9 +242,12 @@ onBeforeUnmount(() => {
 		>
 			<LoadingState v-if="loading" variant="grid" :rows="12" />
 			<p v-else-if="error" class="empty err">{{ error }}</p>
-			<p v-else-if="!visible.length" class="empty">
-				这里还没有图。把图片拖进来，或点右上角「上传图片」。
-			</p>
+			<EmptyState
+				v-else-if="!visible.length"
+				icon="image"
+				:title="query ? '没有匹配的图片' : '这里还没有图'"
+				desc="把图片拖进这块区域，或点右上角「上传图片」。上传落在 public/assets/uploads/，按内容寻址去重。"
+			/>
 			<MediaGrid v-else :files="visible" :selected="detail?.path" @pick="detailed" />
 		</div>
 

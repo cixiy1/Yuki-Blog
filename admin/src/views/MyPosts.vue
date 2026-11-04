@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import PostList from "../components/PostList.vue";
+import SegTabs from "../components/SegTabs.vue";
 import { ApiError } from "../lib/api";
 import { canReview, isAdmin } from "../lib/auth";
 import {
@@ -48,6 +50,17 @@ const counts = computed(() => {
 	}
 	return map;
 });
+
+/** 页签上的数字：加载完才有，读取过程中不显示，免得先闪一排 0 */
+const tabOptions = computed(() =>
+	FILTERS.map((filter) => ({
+		key: filter.key,
+		label: filter.label,
+		count: loading.value
+			? undefined
+			: (counts.value[filter.status ?? "all"] ?? 0),
+	})),
+);
 
 async function refresh(): Promise<void> {
 	loading.value = true;
@@ -170,27 +183,32 @@ onMounted(refresh);
 			</template>
 		</PageHeader>
 
-		<div class="tabs">
-			<button
-				v-for="filter in FILTERS"
-				:key="filter.key"
-				type="button"
-				class="tab"
-				:class="{ active: activeFilter === filter.key }"
-				@click="activeFilter = filter.key"
-			>
-				{{ filter.label }}
-				<span v-if="!loading" class="count">{{ counts[filter.status ?? 'all'] ?? 0 }}</span>
-			</button>
-		</div>
+		<SegTabs v-model="activeFilter" :options="tabOptions" class="tabs" />
 
 		<p v-if="notice" class="notice">{{ notice }}</p>
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
 		<LoadingState v-if="loading" :rows="4" />
-		<div v-else-if="visible.length === 0" class="state card-base">
-			这里还没有文章。点上面的「新建文章」开始写。
-		</div>
+		<EmptyState
+			v-else-if="visible.length === 0"
+			icon="posts"
+			:title="activeFilter === 'all' ? '还没有文章' : '这一类里没有文章'"
+			:desc="
+				activeFilter === 'all'
+					? '草稿存在站内，自动保存不产生 git 提交；写完点「发布」才会上线。'
+					: '切到别的页签看看，或者直接写一篇新的。'
+			"
+		>
+			<button
+				type="button"
+				class="btn-primary empty-act"
+				:disabled="busyId === -1"
+				@click="onCreate"
+			>
+				<AppIcon name="plus" :size="16" />
+				新建文章
+			</button>
+		</EmptyState>
 
 		<PostList
 			v-else
@@ -279,39 +297,7 @@ onMounted(refresh);
 
 <style scoped>
 .tabs {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.35rem;
 	margin-bottom: 0.85rem;
-}
-
-.tab {
-	border: none;
-	background: transparent;
-	padding: 0.32rem 0.65rem;
-	border-radius: 0.6rem;
-	font-size: 0.8rem;
-	color: var(--fg-50);
-	transition:
-		background-color 0.15s ease,
-		color 0.15s ease;
-}
-
-.tab:hover {
-	background: var(--btn-plain-bg-hover);
-	color: var(--fg-90);
-}
-
-.tab.active {
-	background: var(--tab-on-bg);
-	color: var(--accent-text);
-	font-weight: 600;
-}
-
-.count {
-	margin-left: 0.2rem;
-	font-size: 0.72rem;
-	opacity: 0.7;
 }
 
 .notice {
@@ -332,11 +318,8 @@ onMounted(refresh);
 	font-size: 0.8rem;
 }
 
-.state {
-	padding: 2rem 1rem;
-	text-align: center;
-	font-size: 0.85rem;
-	color: var(--fg-50);
+.empty-act {
+	margin-top: 0.6rem;
 }
 
 .act {

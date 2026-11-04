@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import UserEditor from "../components/UserEditor.vue";
@@ -174,7 +175,12 @@ onMounted(() => void refresh());
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
 		<LoadingState v-if="loading" variant="table" :rows="6" />
-		<div v-else-if="rows.length === 0" class="state">没有匹配的用户。</div>
+		<EmptyState
+			v-else-if="rows.length === 0"
+			icon="users"
+			:title="query ? '没有匹配的用户' : '还没有其他账号'"
+			desc="可以按登录名、邮箱或昵称搜，也可以直接新建一个账号。"
+		/>
 
 		<div v-else class="card-base table-wrap">
 			<table class="table">
@@ -329,13 +335,6 @@ onMounted(() => void refresh());
 	background: color-mix(in oklab, var(--admonitions-color-caution) 14%, transparent);
 	color: var(--admonitions-color-caution);
 	font-size: 0.8rem;
-}
-
-.state {
-	padding: 2rem 1rem;
-	text-align: center;
-	font-size: 0.85rem;
-	color: var(--fg-50);
 }
 
 .table-wrap {

@@ -52,7 +52,8 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 			</span>
 			<span class="mg-name">{{ file.name }}</span>
 			<span class="mg-meta">
-				{{ file.ext }} · {{ formatBytes(file.bytes) }}
+				<span class="mg-ext">{{ file.ext }}</span>
+				<span class="mg-size">{{ formatBytes(file.bytes) }}</span>
 				<span v-if="file.origin === 'content'" class="mg-tag">文章内嵌</span>
 			</span>
 		</button>
@@ -62,28 +63,29 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 <style scoped>
 .mg-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
 	gap: 0.7rem;
 }
 
 .mg-card {
 	display: flex;
 	flex-direction: column;
-	gap: 0.35rem;
-	padding: 0.45rem;
+	gap: 0.3rem;
+	padding: 0.45rem 0.45rem 0.5rem;
 	border: 1px solid var(--line-divider);
-	border-radius: 0.6rem;
-	background: transparent;
+	border-radius: 10px;
+	background: var(--card-bg);
 	color: var(--fg-90);
 	text-align: left;
 	overflow: hidden;
 	transition:
 		border-color 0.15s ease,
-		background-color 0.15s ease;
+		transform 0.15s ease;
 }
 
 .mg-card:hover:not(.off) {
-	background: var(--btn-plain-bg-hover);
+	transform: translateY(-2px);
+	border-color: color-mix(in oklab, var(--primary) 34%, var(--line-divider));
 }
 
 .mg-card.on {
@@ -99,16 +101,19 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 	display: grid;
 	place-items: center;
 	aspect-ratio: 4 / 3;
-	border-radius: 0.45rem;
+	padding: 0.3rem;
+	border-radius: 7px;
 	overflow: hidden;
 	background: var(--btn-regular-bg);
 }
 
+/* 站内图多是网页截图和架构图，cover 会把顶部排版切掉，认不出是哪张 → 整张塞进去。
+   contain 留出的边正好让素材有呼吸，缩略图也不至于糊成一片 */
 .mg-thumb img {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
-	/* 透明底（svg / png）叠在浅色卡上，不要留白块错觉 */
+	object-fit: contain;
+	display: block;
 	background: transparent;
 }
 
@@ -118,9 +123,11 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 }
 
 .mg-name {
-	font-size: 0.74rem;
+	font-size: 0.73rem;
+	font-weight: 600;
 	line-height: 1.35;
 	color: var(--fg-90);
+	letter-spacing: -0.01em;
 	/* 文件名常常很长，留一行、中间省略 */
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -131,8 +138,26 @@ function disabled(file: MediaFile, disableContent?: boolean): boolean {
 	display: flex;
 	align-items: center;
 	gap: 0.3rem;
-	font-size: 0.66rem;
+	font-size: 0.64rem;
 	color: var(--fg-50);
+}
+
+/* 扩展名是分类信息，做成固定宽的小块，列对齐时不会跳 */
+.mg-ext {
+	flex: none;
+	width: 2.1rem;
+	padding: 0 0.2rem;
+	border-radius: 4px;
+	background: var(--btn-regular-bg);
+	color: var(--fg-75);
+	font-size: 0.6rem;
+	font-weight: 600;
+	text-align: center;
+	text-transform: uppercase;
+}
+
+.mg-size {
+	font-variant-numeric: tabular-nums;
 }
 
 .mg-tag {

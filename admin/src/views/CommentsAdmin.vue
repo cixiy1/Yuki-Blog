@@ -8,8 +8,10 @@
  */
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
+import SegTabs from "../components/SegTabs.vue";
 import { api } from "../lib/api";
 import { isAdmin } from "../lib/auth";
 import { go } from "../router";
@@ -165,18 +167,7 @@ onMounted(() => void load());
 		</PageHeader>
 
 		<div class="filters">
-			<div class="tabs">
-				<button
-					v-for="tab in TABS"
-					:key="tab.key"
-					type="button"
-					class="tab"
-					:class="{ on: status === tab.key }"
-					@click="switchTab(tab.key)"
-				>
-					{{ tab.label }}
-				</button>
-			</div>
+			<SegTabs :model-value="status" :options="TABS" @update:model-value="switchTab" />
 			<input
 				v-model="targetQuery"
 				class="field search"
@@ -188,7 +179,16 @@ onMounted(() => void load());
 		<p v-if="note" class="note">{{ note }}</p>
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 		<LoadingState v-if="loading" :rows="4" />
-		<div v-else-if="rows.length === 0" class="state">这一类里没有评论。</div>
+		<EmptyState
+			v-else-if="rows.length === 0"
+			icon="comment"
+			:title="targetQuery ? '没有匹配的评论' : '这一类里没有评论'"
+			:desc="
+				targetQuery
+					? '换个关键词，或清空搜索看全部。'
+					: '先发后审模式下，访客发完立刻出现在前台，需要处理时再来这里。'
+			"
+		/>
 
 		<ul v-else class="list">
 			<li v-for="row in rows" :key="row.id" class="row">
@@ -320,13 +320,6 @@ onMounted(() => void load());
 	margin: 0 0 0.8rem;
 	font-size: 0.78rem;
 	color: var(--admonitions-color-caution);
-}
-
-.state {
-	padding: 2.5rem 0;
-	text-align: center;
-	font-size: 0.82rem;
-	color: var(--fg-50);
 }
 
 .list {
