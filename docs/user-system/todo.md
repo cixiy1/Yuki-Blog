@@ -173,16 +173,36 @@
 - [ ] 构建状态展示（最近一次 commit 与部署结果）
 - [ ] 验收：提交到线上可访问，1–3 分钟内完成
 
-## P5 评论
+## P5 评论（第一版已完成）
 
-- [ ] 评论表与接口（发表、列表、嵌套、删除）
-- [ ] 审核开关（先审后发 / 先发后审）
-- [ ] XSS 过滤（白名单）
-- [ ] 文章页接入
-- [ ] 留言板接入
-- [ ] 说说接入
-- [ ] `commentConfig` 加 `self-hosted` 类型，可切回 giscus
-- [ ] 验收：三处都能发能显示，切换开关生效
+**运行方式先说清楚**：评论只在 D1，**不进构建**。前端每次进文章页现拉，审核与开关改完立即生效；
+只有改评论组件代码才需要重新部署。`config/site.json` 里没有评论相关配置，别往里加。
+
+- [x] 评论表 `0011_comments.sql`：`target`（文章 slug / `guestbook` / `dynamic:<路径>`）+ `parent_id`
+      一层嵌套 + 游客昵称与邮箱摘要；`0001` 里那张占位表是空的，直接 DROP 重建
+- [x] 接口 `server/routes/comments.ts`：`GET /api/comments?target=`（列表 + 运行配置 + 当前访客）、
+      `GET /api/comments/count?targets=`、`POST /api/comments`、`DELETE /api/comments/:id`；
+      管理端 `GET/POST/DELETE /api/admin/comments*` 挂在 reviewer 权限下
+- [x] 审核开关：`enabled` / `requireApproval` / `allowGuest` / `maxLength` / `rateSeconds`
+      存 `settings` 的 `comments.config`，管理端改完下一次请求即生效（不走站点配置的发布通道）
+- [x] 默认先发后审（发出即显示）；站长与审核员发言同样直接 approved。
+      「先审后发」是可选开关，管理端打开后新评论才进 pending
+- [x] 反刷：同一 IP 最小间隔（默认 20 秒）+ 每小时 20 条，复用 `rate_limits`；IP 只存 HMAC
+- [x] XSS：正文存 Markdown，客户端 `marked` 解析后**按白名单重建 DOM**（不用 innerHTML，
+      也不用 sanitize-html 那种 Node 向的包）。`script/img/iframe` 整棵丢弃，`href` 只放行
+      `http(s)/mailto/站内路径`——`javascript:` 链接会被剥成纯文本
+- [x] 文章页、留言板、说说三处接入：`Comment/index.astro` 加 `self-hosted` 分支；
+      说说 iframe 用 `?path=` 拼成 `dynamic:<路径>`
+- [x] `commentConfig.type` 已切到 `"self-hosted"`；想换回 giscus/twikoo 改这一行即可（要重新构建）
+- [x] 管理端 `#/comments`：待审/已通过/已拒绝/全部、按 target 筛选、通过/拒绝/删除、设置弹窗
+- [x] 游客凭证：游客没有 uid，评论发出去原本谁都删不掉（连他自己）。发表时服务端返回一次
+      32 字节令牌，摘要存 `comments.guest_token_hash`（`0012`），原文由浏览器 localStorage 保管，
+      删除时走 `x-comment-token` header 比对。
+      **不用邮箱做认领**——邮箱从没核验过，填别人的地址就能接管别人的评论。
+      已知限制：换设备/清缓存即失效，这是没有账号的必然代价，不做补救。
+- [ ] 说说评论只跑通了代码路径，**没有真机验收**（iframe + `?path=` 那条）
+- [ ] 「有人回复你」的邮件通知：游客邮箱只存摘要，发不了信；要做只能对登录用户发
+- [ ] 游客评论不能编辑（只能删）；待审的那条在审核通过前自己也看不见
 
 ## P6 管理端其余模块
 
