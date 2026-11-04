@@ -18,6 +18,7 @@ import {
 	watch,
 } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview } from "../lib/auth";
 import { formatTime } from "../lib/posts";
@@ -520,7 +521,7 @@ onBeforeUnmount(() => {
 		<p v-else-if="notice" class="notice">{{ notice }}</p>
 
 		<p v-if="!canReview" class="state">审核只对审核员与管理员开放。</p>
-		<p v-else-if="loading" class="state">读取中…</p>
+		<LoadingState v-else-if="loading" variant="doc" :rows="7" />
 
 		<div v-else-if="post" class="review">
 			<article class="card-base doc">

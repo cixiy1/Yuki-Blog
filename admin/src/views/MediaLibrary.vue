@@ -8,6 +8,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import MediaGrid from "../components/MediaGrid.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { isAdmin } from "../lib/auth";
@@ -220,7 +221,7 @@ onBeforeUnmount(() => {
 				<option value="public">站点静态</option>
 				<option value="content">文章内嵌</option>
 			</select>
-			<span class="count">
+			<span v-if="!loading" class="count">
 				{{ visible.length }} / {{ files.length }} 个文件 · {{ formatBytes(totalBytes) }}
 				<span v-if="generatedText">
 					· {{ live ? "现拉" : "快照" }} {{ generatedText }}
@@ -238,7 +239,7 @@ onBeforeUnmount(() => {
 			@dragleave="dragging = false"
 			@drop="onDrop"
 		>
-			<p v-if="loading" class="empty">读取媒体库…</p>
+			<LoadingState v-if="loading" variant="grid" :rows="12" />
 			<p v-else-if="error" class="empty err">{{ error }}</p>
 			<p v-else-if="!visible.length" class="empty">
 				这里还没有图。把图片拖进来，或点右上角「上传图片」。

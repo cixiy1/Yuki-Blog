@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import PostList from "../components/PostList.vue";
 import { listAllPosts, type PostSummary } from "../lib/posts";
@@ -73,7 +74,7 @@ onMounted(refresh);
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
-		<div v-if="loading" class="state">读取中…</div>
+		<LoadingState v-if="loading" :rows="5" />
 		<div v-else-if="visible.length === 0" class="state card-base">
 			{{ keyword ? "没有匹配的文章" : "站点上还没有已发布的文章" }}
 		</div>

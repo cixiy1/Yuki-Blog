@@ -8,6 +8,7 @@
  */
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { api } from "../lib/api";
 import { isAdmin } from "../lib/auth";
@@ -186,7 +187,7 @@ onMounted(() => void load());
 
 		<p v-if="note" class="note">{{ note }}</p>
 		<p v-if="errorText" class="error">{{ errorText }}</p>
-		<div v-if="loading" class="state">读取中…</div>
+		<LoadingState v-if="loading" :rows="4" />
 		<div v-else-if="rows.length === 0" class="state">这一类里没有评论。</div>
 
 		<ul v-else class="list">
@@ -241,7 +242,7 @@ onMounted(() => void load());
 			</li>
 		</ul>
 
-		<div class="pager">
+		<div v-if="!loading" class="pager">
 			<span>共 {{ total }} 条 · 第 {{ page }} / {{ pages }} 页</span>
 			<div class="pager-actions">
 				<button

@@ -12,6 +12,7 @@ import {
 	watch,
 } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import MediaPickerDialog from "../components/MediaPickerDialog.vue";
 import PageHeader from "../components/PageHeader.vue";
 import SeriesPickerDialog from "../components/SeriesPickerDialog.vue";
@@ -1419,7 +1420,7 @@ watch(isDark, (dark) => {
 		</PageHeader>
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
-		<div v-if="loading" class="state">读取中…</div>
+		<LoadingState v-if="loading" variant="doc" :rows="5" />
 
 		<template v-else>
 			<div class="edit-layout">

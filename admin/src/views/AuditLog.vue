@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import {
 	ACTION_LABEL,
@@ -95,7 +96,7 @@ onMounted(() => void refresh());
 		</div>
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
-		<div v-if="loading" class="state">读取中…</div>
+		<LoadingState v-if="loading" :rows="5" />
 		<div v-else-if="rows.length === 0" class="state">还没有记录。</div>
 
 		<ul v-else class="list">

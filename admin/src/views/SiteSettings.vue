@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import WallpaperModePicker from "../components/WallpaperModePicker.vue";
 import {
@@ -714,7 +715,7 @@ onMounted(() => void refresh());
 			</button>
 		</nav>
 
-		<div v-if="loading" class="state">读取中…</div>
+		<LoadingState v-if="loading" variant="form" :rows="5" />
 
 		<div v-else-if="tab === 'comments'" class="comments-pane">
 			<section>

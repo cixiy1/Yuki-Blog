@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import { canReview } from "../lib/auth";
 import { splitDate } from "../lib/posts";
@@ -136,7 +137,7 @@ onMounted(() => {
 		<p v-else-if="notice" class="notice">{{ notice }}</p>
 
 		<p v-if="!canReview" class="state">审核队列只对审核员与管理员开放。</p>
-		<p v-else-if="loading" class="state">读取中…</p>
+		<LoadingState v-else-if="loading" :rows="3" />
 		<p v-else-if="count === 0" class="state">
 			没有待审的稿子。有人提交后会出现在这里。
 		</p>

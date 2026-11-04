@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import UserEditor from "../components/UserEditor.vue";
 import { ApiError } from "../lib/api";
@@ -172,7 +173,7 @@ onMounted(() => void refresh());
 		<p v-if="notice" class="notice">{{ notice }}</p>
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 
-		<div v-if="loading" class="state">读取中…</div>
+		<LoadingState v-if="loading" variant="table" :rows="6" />
 		<div v-else-if="rows.length === 0" class="state">没有匹配的用户。</div>
 
 		<div v-else class="card-base table-wrap">
@@ -254,7 +255,7 @@ onMounted(() => void refresh());
 			</table>
 		</div>
 
-		<div class="pager">
+		<div v-if="!loading" class="pager">
 			<span>共 {{ total }} 个用户 · 第 {{ page }} / {{ pages }} 页</span>
 			<div class="pager-actions">
 				<button
