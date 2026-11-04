@@ -33,11 +33,12 @@ interface CommentSettings {
 	rateSeconds: number;
 }
 
+// 「全部」放最前：它是默认页签，排在末尾像是补上去的
 const TABS: Array<{ key: string; label: string }> = [
+	{ key: "all", label: "全部" },
 	{ key: "pending", label: "待审" },
 	{ key: "approved", label: "已通过" },
 	{ key: "rejected", label: "已拒绝" },
-	{ key: "all", label: "全部" },
 ];
 
 const STATUS_LABEL: Record<string, string> = {
