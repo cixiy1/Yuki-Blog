@@ -14,7 +14,7 @@ series: 编码经验
 seriesOrder: 2
 ---
 
-`yuki_kernel` 2972 行，84 个测试，5.9 秒跑完。
+`yuki_kernel` 
 
 它不携带身份，不读环境变量，不绑定厂商。给它一个 Provider、一组工具、一份 Settings，它就能跑一次完整对话回合；剩下的 UI、人格、进程生命周期归外壳。
 
@@ -92,10 +92,11 @@ for tag in THINK_TAGS:
 
 两个方法，都是必须实现的：
 
-| 方法 | 职责 |
-|---|---|
-| `chat()` | 异步生成器，把厂商流翻译成 `ChatChunk` |
-| `build_tool_messages()` | 把「工具调用 + 结果」翻回厂商消息格式 |
+
+| 方法                    | 职责                                   |
+| ----------------------- | -------------------------------------- |
+| `chat()`                | 异步生成器，把厂商流翻译成 `ChatChunk` |
+| `build_tool_messages()` | 把「工具调用 + 结果」翻回厂商消息格式  |
 
 `ChatChunk` 只有四个字段：`thinking`、`content`、`tool_calls`、`done`。HTTP、WebSocket、写死的字符串都能填进来，所以假 Provider 能完整测内核，测试不用联网。
 
@@ -140,10 +141,11 @@ payload = json.dumps(arguments, ensure_ascii=False)
 
 `Environment` 一个对象承载两面：
 
-| 面 | 内容 |
-|---|---|
-| 隔离面 `run()` | 在什么 OS 隔离下跑（降权、资源阀、命令白名单），委托 `Sandbox` |
-| 运行面 `python_path` / `base_env` | 用哪个解释器、基础环境变量（venv 的 PATH / PYTHONPATH） |
+
+| 面                                | 内容                                                           |
+| --------------------------------- | -------------------------------------------------------------- |
+| 隔离面 `run()`                    | 在什么 OS 隔离下跑（降权、资源阀、命令白名单），委托 `Sandbox` |
+| 运行面 `python_path` / `base_env` | 用哪个解释器、基础环境变量（venv 的 PATH / PYTHONPATH）        |
 
 内置工具和外置包工具走同一个环境，但喂进去的东西不同：
 
@@ -175,12 +177,13 @@ resource.setrlimit(resource.RLIMIT_FSIZE, (10MB,))  # 单文件写入
 
 审批结果是四个语义：
 
-| 回答 | 效果 |
-|---|---|
-| `y` | 本次放行 |
-| `ya` | 本会话放行 |
-| `y 5` | 本会话放行 5 分钟 |
-| 其它 | 拒绝，模型收到「用户拒绝执行」 |
+
+| 回答  | 效果                           |
+| ----- | ------------------------------ |
+| `y`   | 本次放行                       |
+| `ya`  | 本会话放行                     |
+| `y 5` | 本会话放行 5 分钟              |
+| 其它  | 拒绝，模型收到「用户拒绝执行」 |
 
 放行记录存在 `Session.approved_tools`，值是过期时间戳，`ya` 存 `float("inf")`。会话一换就没了，不跨会话记住授权。
 
@@ -268,4 +271,4 @@ print((await agent.turn("你好")).content)
 
 真实使用时换成 `App`，它会扫描包目录、预加载指定包、把 `MemoryStore.search_text` 接到 `search_memory` 工具上，并支持 `reload(new_settings)` 热换配置（重建 registry 和 agent、保留当前会话、关掉旧 Provider）。
 
-仓库：<https://github.com/cixiy1/Yuki>，内核在 `kernel/`，`example/` 是一个完整外壳。
+仓库：[https://github.com/cixiy1/Yuki](https://github.com/cixiy1/Yuki)，内核在 `kernel/`，`example/` 是一个完整外壳。
