@@ -6,7 +6,6 @@ import {
 	deleteCommentTree,
 	findCommentById,
 	findReplyTarget,
-	hashGuestEmail,
 	hashGuestToken,
 	insertComment,
 	isValidTarget,
@@ -19,7 +18,6 @@ import {
 } from "../lib/comments";
 import { hmacSha256Hex, randomToken } from "../lib/crypto";
 import { consumeRate } from "../lib/ratelimit";
-import { normalizeEmail } from "../lib/validate";
 import { requireRole } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
 import type { AppEnv } from "../types";
@@ -148,7 +146,6 @@ comments.post("/", requireJsonBody, sameOriginGuard, async (c) => {
 	}
 
 	let guestName: string | null = null;
-	let guestEmailHash: string | null = null;
 	// 游客没有 uid，也没有可信身份：邮箱是自填的、没人核验，不能拿来认人。
 	// 改成发一个一次性令牌，摘要入库，原文只在这里返回一次，由浏览器保管。
 	let guestToken: string | null = null;
@@ -162,12 +159,6 @@ comments.post("/", requireJsonBody, sameOriginGuard, async (c) => {
 			);
 		}
 		guestName = name;
-
-		const email = normalizeEmail(payload.email);
-		if (!email) {
-			return c.json({ error: "invalid_email", message: "邮箱格式不对" }, 400);
-		}
-		guestEmailHash = await hashGuestEmail(email);
 
 		guestToken = randomToken(32);
 		guestTokenHash = await hashGuestToken(guestToken);
@@ -236,7 +227,8 @@ comments.post("/", requireJsonBody, sameOriginGuard, async (c) => {
 		bodyMd: body,
 		uid: user?.uid ?? null,
 		guestName,
-		guestEmailHash,
+		// 不收邮箱：没人核验，存下来也认不了人，老数据那列留空
+		guestEmailHash: null,
 		guestTokenHash,
 		isAdmin: isAdmin === true,
 		ipHash,

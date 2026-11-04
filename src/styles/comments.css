@@ -64,6 +64,20 @@
 	font-size: 0.8rem;
 }
 
+/* 仅登录模式：只有一句提示，不摆一个点了会报错的输入框 */
+.yb-c-gate {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.75rem 0.95rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.75rem;
+	background: var(--btn-regular-bg);
+	color: var(--content-meta);
+	font-size: 0.88rem;
+}
+
 /* 收起态：整块就是一张假输入框，点哪儿都展开 */
 .yb-c-composer {
 	border: 1px solid var(--line-divider);
@@ -86,11 +100,6 @@
 	font-size: 0.88rem;
 	text-align: left;
 	cursor: text;
-}
-
-/* 作者样式里的 display:flex 会盖掉 hidden 的 UA 规则，必须自己兜一句 */
-.yb-c-trigger[hidden] {
-	display: none;
 }
 
 .yb-c-trigger-go {
@@ -151,6 +160,11 @@
 .yb-c-input::placeholder,
 .yb-c-textarea::placeholder {
 	color: var(--content-meta);
+}
+
+/* 游客只剩昵称一栏，别让它拉满整行，看着像要填正经表单 */
+.yb-c-identity .yb-c-input:only-child {
+	flex: 0 1 12rem;
 }
 
 /* 游客凭证提示：小一号、弱化，不抢输入区的视觉重心 */

@@ -18,9 +18,9 @@
 - [x] `server/index.ts`（Hono 入口）+ `app.ts`：`/api/*` 由 Worker 接，未命中的 API 返回 JSON 404，非 API 路径回落 `env.ASSETS.fetch`
 - [x] `wrangler.jsonc` 加 `main`、`assets.binding`、`run_worker_first`、`not_found_handling: 404-page`
 - [x] 建 D1 库 `yuki-blog`（`b1a82660-fba5-4586-9799-a73ce5b04ab7`），迁移在 `server/db/migrations/`
-- [ ] 建 R2 桶，绑 `media.yiyu14.top`（账号未开通 R2，报 code 10042，P3 做媒体前再开）
+- [x] ~~建 R2 桶，绑 `media.yiyu14.top`~~ —— 媒体改走仓库静态文件（见 P6.1），R2 不再是前提
 - [x] `GET /api/health`（探 D1，不通返回 503）
-- [ ] 本地三进程开发脚本（等 P3 有 Vite admin 再补，现在 `astro dev` + `wrangler dev` 够用）
+- [x] ~~本地三进程开发脚本~~ —— 实际只需要 `astro dev` + `wrangler dev` 两个进程，不做
 - [x] 验收：`wrangler dev` 下 health 200、两个静态 JSON 内容与 dist 一致、首页与文章页字节一致、未知路径返回站点 404 页；`deploy --dry-run` 打包 81 KiB
 
 ## P2 认证
@@ -35,7 +35,8 @@
 - [x] 限流（用 `email_codes` 自身计数，一条 SQL 出五个额度）
 - [x] 登录页：Worker 直出 `GET /login`，不进 Astro 构建；P3 admin SPA 上线后删
 - [x] 验收：注册、登录、刷新保持、退出；401 / 403 分支正确；限流 429；开放重定向兜底
-- [ ] 线上可用：等 Resend 域名验证与 GitHub OAuth App 配置（代码侧已就绪）
+- [x] 线上发信可用：Resend 实测 `sent:true`（`POST /api/admin/mail-test`）
+- [ ] 线上 GitHub 登录未验：OAuth App 是否已配未知
 
 ## P3 用户中心与编辑器
 
@@ -123,7 +124,7 @@
 - [x] 热通道：`src/utils/hot-config.ts` 运行时改 `--hue` 与 `data-wallpaper-mode`，`hueAuto` / `wallpaperModeAuto` 区分「热配置」与「访客自选」，`yb-hot-hue` 同步设置面板；管理端保存后自动 apply 热字段
 - [x] 移除占位的「站点管理」页
 - [x] 验收：六分区覆盖均进构建产物；接口 13 项（六分区保存、未知分区/字段、类型、越界、枚举、列表项、列表上限、立即应用、无令牌 412、公开接口只吐热字段）；浏览器 16 步（含列表增删移动、保存不丢、热色相跨刷新保持、访客自选不被覆盖）
-- [ ] 发布链路需要 fine-grained PAT，未跑通真实写入；无令牌时只能「导出 JSON」手动提交
+- [x] 发布链路需要 fine-grained PAT —— 线上 `site.secrets.github_token` 已可写，审核通过能直接提交
 - [ ] 导航项/侧栏组件/书签导航/追番类未纳入（结构性配置，JSON 表达不清）
 
 ## P3.8 个人中心与交互补完（一部分已完成）
@@ -139,21 +140,22 @@
       「修改密码」卡已删，入口只留一处；GitHub 登录、从没设过密码的，当前密码可留空。
       - ⚠️ 同一容器里放两个 form 时，submit 监听要绑在具体 form 上。绑在容器上会把密码表单的
         提交一起收走，改密与保存资料并发，后者带着旧 epoch 换回 401「请先登录」。
-- [ ] 改邮箱：`email_verified_at` 清空 + 发确认信给新地址，确认前按未验证处理（登录仍可用账号名）。
-      目前资料页只展示邮箱并说明「换邮箱要先验证新地址」。
-- [ ] 头像上传（等媒体库 P6.1）；现在只能填链接。
-- [ ] 管理端右侧抽屉改成居中弹窗：`admin/src/components/UserEditor.vue` 现在是 `position: fixed` 贴右边的面板，
-      改为遮罩 + 居中卡片（宽 `min(32rem, 92vw)`，高 `max-height: 90vh` 内部滚动），Esc 与点遮罩关闭，
-      关闭后焦点回到触发按钮。新建与编辑共用同一个弹窗，别做成两套。
+- [x] 改邮箱（`fc029dde`）：`POST /api/auth/change-email` 复验当前密码 → 发确认信到**新**地址，
+      点确认后换绑并同步 `email_verified_at`；旧地址另发一封「邮箱已更换」告知信。
+      换邮箱分支不改会话、不动 `session_epoch`。资料页「更换邮箱」区块（无密码账号隐藏）。
+- [ ] 头像上传：媒体库已就绪，`/me/profile` 还没接选择器（Astro 页面要单独挂一份客户端逻辑）。
+- [x] 管理端右侧抽屉改成居中弹窗（`fc029dde`）：遮罩 + 居中卡片（`min(32rem, 92vw)`，
+      `max-height: 90vh` 内部滚动），Esc 与点遮罩关闭，关闭后焦点回触发按钮；新建与编辑共用一套。
 
 ## P4 审核与发布
 
-- [ ] `inbox/` 目录约定与写入逻辑
+- [x] ~~`inbox/` 目录约定~~ —— 没采用。通过时直接写 `src/content/posts/<slug>.md`，一次 commit；
+      旧数据的 `repo_path` 可能是 `inbox/...`，读取时兼容即可
 - [ ] 用户级组件管理（`src/components/user/<uid>/`，import 白名单：只允许 `./`、`../` 与自己的目录）
 - [ ] 页面型文章的实时预览 iframe（HTML + JS + 数据拼装，注入主题 CSS）
 - [x] 审核队列 UI：列表只给标题/摘要/字数，点标题或「看正文」进 `#/review/<id>` 读全文
       （`GET /api/admin/review/:id` 返回正文与 meta，正文用 Vditor 静态预览渲染，深浅主题跟着切）
-- [ ] 通过：读 `inbox/` → 写 `src/content/posts/u/<uid>/<slug>/` → 删 `inbox/` 原件 → 一次 commit
+- [x] 通过：写 `src/content/posts/<slug>.md` → 一次 commit（`putRepoFile`），不经过 `inbox/`
 - [x] 退回：写理由、作者可见
 - [x] 划词批注（`post_notes`）：审核员选中正文任意一段写建议，正文高亮并标序号，
       作者在编辑页顶部「审核意见」卡里按条看到引用与建议；通过时清空批注
@@ -179,13 +181,16 @@
 只有改评论组件代码才需要重新部署。`config/site.json` 里没有评论相关配置，别往里加。
 
 - [x] 评论表 `0011_comments.sql`：`target`（文章 slug / `guestbook` / `dynamic:<路径>`）+ `parent_id`
-      一层嵌套 + 游客昵称与邮箱摘要；`0001` 里那张占位表是空的，直接 DROP 重建
+      一层嵌套 + 游客昵称；`0001` 里那张占位表是空的，直接 DROP 重建。
+      `guest_email_hash` 列留着兼容老数据，但**现在不收邮箱**（没人核验，存了也认不了人）
 - [x] 接口 `server/routes/comments.ts`：`GET /api/comments?target=`（列表 + 运行配置 + 当前访客）、
       `GET /api/comments/count?targets=`、`POST /api/comments`、`DELETE /api/comments/:id`；
       管理端 `GET/POST/DELETE /api/admin/comments*` 挂在 reviewer 权限下
 - [x] 审核开关：`enabled` / `requireApproval` / `allowGuest` / `maxLength` / `rateSeconds`
       存 `settings` 的 `comments.config`，管理端改完下一次请求即生效（不走站点配置的发布通道）。
-      **入口在「站点设置 → 评论」**，`#/settings/comments` 可直接落到那一组
+      **入口在「站点设置 → 评论」**，`#/settings/comments` 可直接落到那一组。
+      `allowGuest` 在界面上是二选一：「游客身份发送」/「仅登录」，后者游客只看得到
+      一句提示和登录入口，不给编辑器
 - [x] 默认先发后审（发出即显示）；站长与审核员发言同样直接 approved。
       「先审后发」是可选开关，管理端打开后新评论才进 pending
 - [x] 反刷：同一 IP 最小间隔（默认 20 秒）+ 每小时 20 条，复用 `rate_limits`；IP 只存 HMAC
@@ -203,8 +208,11 @@
       **不用邮箱做认领**——邮箱从没核验过，填别人的地址就能接管别人的评论。
       已知限制：换设备/清缓存即失效，这是没有账号的必然代价，不做补救。
 - [ ] 说说评论只跑通了代码路径，**没有真机验收**（iframe + `?path=` 那条）
-- [ ] 「有人回复你」的邮件通知：游客邮箱只存摘要，发不了信；要做只能对登录用户发
+- [ ] 「有人回复你」的邮件通知：游客不留邮箱（表单里也没有这一栏），只能对登录用户发
 - [ ] 游客评论不能编辑（只能删）；待审的那条在审核通过前自己也看不见
+- [ ] 文章卡片显示评论数：计数接口有了，卡片还没接（接了会有「0 → 真实值」跳动）
+- [ ] 管理端侧栏待审红点：`pendingCount()` 已导出，还没接
+- [x] 迁移远端 D1：`0011_comments`、`0012_comment_guest_token` 已 apply
 
 ## P6 管理端其余模块
 
@@ -213,9 +221,9 @@
 - [ ] 说说管理
 - [ ] 项目管理
 - [ ] 友链管理
-- [ ] 媒体库（文件管理系统，见 P6.1）
-- [ ] 站点配置编辑（含密钥写入，只写不回显）
-- [ ] 审计日志
+- [x] 媒体库（文件管理系统，见 P6.1）
+- [x] 站点配置编辑（含密钥写入，只写不回显）—— P3.7
+- [x] 审计日志 —— P3.6，管理端 `#/audit`
 - [ ] 验收：每块读写正常，写操作都有审计记录
 
 ### P6.1 文件管理系统（媒体库，同 WordPress 的「媒体 → 媒体库」）

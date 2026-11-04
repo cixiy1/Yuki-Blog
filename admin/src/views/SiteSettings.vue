@@ -121,6 +121,11 @@ const commentConfig = ref<CommentSettings>({
 });
 /** 上次从服务端读回来的值，用来判断「有没有改过」 */
 const commentSaved = ref<CommentSettings>({ ...commentConfig.value });
+/** 谁可以发言：库里只有一个 allowGuest 布尔，界面按两种身份呈现 */
+const guestOptions: Array<{ key: string; label: string }> = [
+	{ key: "guest", label: "游客身份发送" },
+	{ key: "login", label: "仅登录" },
+];
 const commentBusy = ref(false);
 const commentDirty = computed(
 	() =>
@@ -767,22 +772,20 @@ onMounted(() => void refresh());
 
 					<div class="row">
 						<div class="label">
-							<span class="name">允许游客评论</span>
+							<span class="name">谁可以评论</span>
 							<span class="hint">
-								关掉后必须登录才能发言。游客只能填昵称和邮箱，删除权留在当时的浏览器。
+								游客身份发送：不登录也能发，只填一个昵称，不收邮箱。
+								仅登录：未登录的访客只能看。
 							</span>
 						</div>
 						<div class="control">
-							<div class="switch-wrap">
-								<button
-									type="button"
-									:class="['switch', { on: commentConfig.allowGuest }]"
-									@click="commentConfig.allowGuest = !commentConfig.allowGuest"
-								>
-									<span class="knob" />
-								</button>
-								<span class="switch-text">{{ commentConfig.allowGuest ? "开" : "关" }}</span>
-							</div>
+							<SegTabs
+								:options="guestOptions"
+								:model-value="commentConfig.allowGuest ? 'guest' : 'login'"
+								@update:model-value="
+									commentConfig.allowGuest = $event === 'guest'
+								"
+							/>
 						</div>
 					</div>
 

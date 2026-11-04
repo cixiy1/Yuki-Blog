@@ -307,6 +307,10 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 	const title = el("span", "yb-c-title", `${payload.total} 条评论`);
 	head.appendChild(title);
 
+	// 站点设成「仅登录」时，游客连输入框都不该看到——放个编辑器再让人提交报错更糟
+	const locked = !state.viewer && !state.config.allowGuest;
+	const loginHref = `/login/?next=${encodeURIComponent(location.pathname)}`;
+
 	const form = el("form", "yb-c-form");
 	form.noValidate = true;
 
@@ -352,19 +356,9 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 		nameInput.maxLength = 20;
 		nameInput.required = true;
 
-		const emailInput = el("input", "yb-c-input");
-		emailInput.name = "email";
-		emailInput.type = "email";
-		emailInput.placeholder = "邮箱（不会公开）";
-		emailInput.required = true;
-
-		identity.append(nameInput, emailInput);
-	} else {
-		const tip = el("div", "yb-c-hint", "请先登录后评论");
-		const link = el("a", "yb-c-link", "去登录");
-		link.href = `/login/?next=${encodeURIComponent(location.pathname)}`;
-		tip.appendChild(link);
-		identity.appendChild(tip);
+		// 不收邮箱：没人核验，存下来也不能用来认人或找回，
+		// 只是让人多填一栏、还以为能靠它取回评论。
+		identity.append(nameInput);
 	}
 
 	// 加载提示不能放进 editorHost：Vditor 会把这个元素的 innerHTML 当成初始正文，
@@ -395,7 +389,17 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 	if (guestNote) pane.appendChild(guestNote);
 	composer.appendChild(pane);
 
-	form.append(replyBar, composer);
+	if (locked) {
+		// 只给一句提示和登录入口，不留任何能点开却发不出去的控件
+		const gate = el("div", "yb-c-gate");
+		gate.appendChild(el("span", "yb-c-gate-text", "登录后才能评论"));
+		const link = el("a", "yb-c-link", "去登录");
+		link.href = loginHref;
+		gate.appendChild(link);
+		form.append(replyBar, gate);
+	} else {
+		form.append(replyBar, composer);
+	}
 
 	const list = el("ol", "yb-c-list");
 
@@ -454,6 +458,10 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 	};
 
 	const focusComposer = (): void => {
+		if (locked) {
+			location.href = loginHref;
+			return;
+		}
 		pane.hidden = false;
 		trigger.hidden = true;
 		void ensureEditor().then(() => {
@@ -512,14 +520,13 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 
 		const fd = new FormData(form);
 		const name = String(fd.get("name") ?? "").trim();
-		const email = String(fd.get("email") ?? "").trim();
 		if (!state.viewer) {
 			if (!state.config.allowGuest) {
 				say("请先登录", "error");
 				return;
 			}
-			if (name.length === 0 || email.length === 0) {
-				say("昵称和邮箱都要填", "error");
+			if (name.length === 0) {
+				say("先起个昵称", "error");
 				return;
 			}
 		}
@@ -537,7 +544,6 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 						target,
 						body,
 						name: state.viewer ? undefined : name,
-						email: state.viewer ? undefined : email,
 						parentId: state.replyTo?.id ?? null,
 					}),
 				});
