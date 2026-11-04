@@ -64,6 +64,62 @@
 	font-size: 0.8rem;
 }
 
+/* 收起态：整块就是一张假输入框，点哪儿都展开 */
+.yb-c-composer {
+	border: 1px solid var(--line-divider);
+	border-radius: 0.75rem;
+	background: var(--btn-regular-bg);
+	overflow: hidden;
+}
+
+.yb-c-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	width: 100%;
+	padding: 0.75rem 0.95rem;
+	border: none;
+	background: none;
+	color: var(--content-meta);
+	font-family: inherit;
+	font-size: 0.88rem;
+	text-align: left;
+	cursor: text;
+}
+
+/* 作者样式里的 display:flex 会盖掉 hidden 的 UA 规则，必须自己兜一句 */
+.yb-c-trigger[hidden] {
+	display: none;
+}
+
+.yb-c-trigger-go {
+	flex: none;
+	padding: 0.25rem 0.7rem;
+	border-radius: 0.45rem;
+	background: var(--primary);
+	color: #fff;
+	font-size: 0.78rem;
+	line-height: 1.5;
+}
+
+/* 展开态 */
+.yb-c-pane {
+	display: flex;
+	flex-direction: column;
+	gap: 0.6rem;
+	padding: 0.85rem 0.95rem 0.9rem;
+}
+
+.yb-c-pane[hidden] {
+	display: none;
+}
+
+/* 展开后换成白底：编辑器自带底色，外面再垫一层浅色就成了两层卡片 */
+.yb-c-composer:has(.yb-c-pane:not([hidden])) {
+	background: var(--card-bg);
+}
+
 .yb-c-identity {
 	display: flex;
 	align-items: center;
@@ -87,7 +143,7 @@
 	padding: 0.45rem 0.7rem;
 	border: 1px solid var(--line-divider);
 	border-radius: 0.5rem;
-	background: var(--btn-regular-bg);
+	background: var(--card-bg);
 	color: var(--btn-content);
 	font-size: 0.85rem;
 }
@@ -99,16 +155,25 @@
 
 /* 游客凭证提示：小一号、弱化，不抢输入区的视觉重心 */
 .yb-c-guest-note {
-	margin: -0.15rem 0 0;
+	margin: 0;
 	line-height: 1.5;
 }
 
+.yb-c-editor-loading {
+	display: grid;
+	place-items: center;
+	height: 8rem;
+	color: var(--content-meta);
+	font-size: 0.82rem;
+}
+
+/* 编辑器拉不下来时的退路 */
 .yb-c-textarea {
 	width: 100%;
 	padding: 0.7rem 0.85rem;
 	border: 1px solid var(--line-divider);
 	border-radius: 0.6rem;
-	background: var(--btn-regular-bg);
+	background: var(--card-bg);
 	color: var(--btn-content);
 	font-size: 0.88rem;
 	line-height: 1.6;
@@ -123,6 +188,23 @@
 	border-color: var(--primary);
 }
 
+/* Vditor 自带一套描边与间距，这里压到和评论卡片一致。
+   注意 Vditor 把 vditor 类加在宿主元素本身，不是里面一层 */
+.yb-c-editor.vditor {
+	border: 1px solid var(--line-divider);
+	border-radius: 0.6rem;
+}
+
+.yb-c-editor .vditor-toolbar {
+	padding: 0 0.4rem;
+	border-bottom: 1px solid var(--line-divider);
+}
+
+.yb-c-editor .vditor-reset {
+	font-size: 0.88rem;
+	line-height: 1.6;
+}
+
 .yb-c-foot {
 	display: flex;
 	align-items: center;
@@ -134,6 +216,10 @@
 	color: var(--content-meta);
 	font-size: 0.75rem;
 	font-variant-numeric: tabular-nums;
+}
+
+.yb-c-counter[data-over="1"] {
+	color: #e5484d;
 }
 
 .yb-c-submit {
@@ -370,5 +456,16 @@
 
 	.yb-c-list .yb-c-list {
 		padding-left: 0.7rem;
+	}
+
+	/* Vditor 的按钮是 34px 见方，手机上要折三行；压到 28px 只剩两行 */
+	.yb-c-editor .vditor-toolbar__item button {
+		width: 1.75rem;
+		height: 1.75rem;
+	}
+
+	.yb-c-editor .vditor-toolbar__item svg {
+		width: 0.95rem;
+		height: 0.95rem;
 	}
 }

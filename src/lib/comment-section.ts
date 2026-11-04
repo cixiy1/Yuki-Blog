@@ -1,3 +1,8 @@
+import {
+	type CommentEditor,
+	createCommentEditor,
+	loadVditor,
+} from "./comment-editor";
 import { renderCommentMarkdown } from "./comment-markdown";
 
 /**
@@ -41,6 +46,13 @@ interface CommentPayload {
 }
 
 const API = "/api/comments";
+
+/**
+ * 当前挂着的编辑器。
+ * 站内跳转会把评论容器整个换掉，旧实例的 DOM 没了，但它挂在 document 上
+ * 的主题监听还在——下次挂载前先清掉。
+ */
+let activeEditor: CommentEditor | null = null;
 
 /**
  * 游客凭证。
@@ -294,7 +306,6 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 	const head = el("div", "yb-c-head");
 	const title = el("span", "yb-c-title", `${payload.total} 条评论`);
 	head.appendChild(title);
-	head.appendChild(el("span", "yb-c-hint", "支持 Markdown"));
 
 	const form = el("form", "yb-c-form");
 	form.noValidate = true;
@@ -305,6 +316,19 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 	const replyCancel = el("button", "yb-c-link", "取消");
 	replyCancel.type = "button";
 	replyBar.append(replyText, replyCancel);
+
+	// 收起态只有一行：整块评论区默认不占竖向空间，点开才出现编辑器与身份字段
+	const composer = el("div", "yb-c-composer");
+	const trigger = el("button", "yb-c-trigger");
+	trigger.type = "button";
+	trigger.append(
+		el("span", "yb-c-trigger-text", "说点什么…"),
+		el("span", "yb-c-trigger-go", "写评论"),
+	);
+	composer.appendChild(trigger);
+
+	const pane = el("div", "yb-c-pane");
+	pane.hidden = true;
 
 	const identity = el("div", "yb-c-identity");
 	if (state.viewer) {
@@ -343,11 +367,10 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 		identity.appendChild(tip);
 	}
 
-	const textarea = el("textarea", "yb-c-textarea");
-	textarea.rows = 4;
-	textarea.maxLength = state.config.maxLength;
-	textarea.placeholder = "说点什么…（支持 Markdown）";
-	textarea.required = true;
+	// 加载提示不能放进 editorHost：Vditor 会把这个元素的 innerHTML 当成初始正文，
+	// 结果「编辑器加载中…」变成了评论内容。所以放成前面一个兄弟节点。
+	const editorHost = el("div", "yb-c-editor");
+	const editorLoading = el("div", "yb-c-editor-loading", "编辑器加载中…");
 
 	const foot = el("div", "yb-c-foot");
 	const counter = el("span", "yb-c-counter", `0 / ${state.config.maxLength}`);
@@ -364,12 +387,15 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 		: el(
 				"p",
 				"yb-c-hint yb-c-guest-note",
-				"游客评论发表后不能修改；删除权只留在当前浏览器，换设备或清缓存就找不回来了。",
+				"游客评论发出后不可修改；删除权只留在这台浏览器，换设备或清缓存就找不回来了。",
 			);
 
-	form.append(replyBar, identity);
-	if (guestNote) form.append(guestNote);
-	form.append(textarea, foot, status);
+	pane.appendChild(identity);
+	pane.append(editorLoading, editorHost, foot, status);
+	if (guestNote) pane.appendChild(guestNote);
+	composer.appendChild(pane);
+
+	form.append(replyBar, composer);
 
 	const list = el("ol", "yb-c-list");
 
@@ -384,6 +410,65 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 	};
 
 	paintList(payload.items);
+
+	/**
+	 * 输入区：收起只占一行，展开才挂编辑器。
+	 * Vditor 的脚本加 Markdown 内核接近 4 MB，只看不评的访客不该替他们先拉。
+	 */
+	let editor: CommentEditor | null = null;
+	let fallback: HTMLTextAreaElement | null = null;
+	let opening: Promise<void> | null = null;
+
+	const bodyValue = (): string =>
+		editor ? editor.read() : (fallback?.value ?? "");
+
+	const setCount = (value: string): void => {
+		const used = [...value].length;
+		counter.textContent = `${used} / ${state.config.maxLength}`;
+		counter.dataset.over = used > state.config.maxLength ? "1" : "0";
+	};
+
+	/** 编辑器拉不下来时的退路：纯文本框，能发就行，只是没有工具栏 */
+	const useFallback = (): void => {
+		fallback = el("textarea", "yb-c-textarea");
+		fallback.rows = 5;
+		fallback.placeholder = "说点什么…（支持 Markdown）";
+		fallback.addEventListener("input", () => setCount(fallback?.value ?? ""));
+		editorLoading.remove();
+		editorHost.appendChild(fallback);
+		fallback.focus();
+	};
+
+	const ensureEditor = (): Promise<void> => {
+		if (editor || fallback) return Promise.resolve();
+		if (!opening) {
+			opening = createCommentEditor(editorHost, { onInput: setCount })
+				.then((instance) => {
+					editor = instance;
+					activeEditor = instance;
+					editorLoading.remove();
+				})
+				.catch(() => useFallback());
+		}
+		return opening;
+	};
+
+	const focusComposer = (): void => {
+		pane.hidden = false;
+		trigger.hidden = true;
+		void ensureEditor().then(() => {
+			if (editor) editor.focus();
+			else fallback?.focus();
+		});
+	};
+
+	trigger.addEventListener("click", focusComposer);
+	// 指针移到输入条上就先拉资源：真点下去时内核多半已经就位，不用盯着「加载中」
+	trigger.addEventListener(
+		"pointerenter",
+		() => void loadVditor().catch(() => undefined),
+		{ once: true },
+	);
 
 	const reload = async (): Promise<void> => {
 		const response = await fetch(
@@ -401,7 +486,7 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 		if (value) {
 			replyText.textContent = `正在回复 @${value.name}`;
 			replyBar.hidden = false;
-			textarea.focus();
+			focusComposer();
 		} else {
 			replyBar.hidden = true;
 		}
@@ -413,17 +498,13 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 		status.dataset.tone = tone;
 	};
 
-	textarea.addEventListener("input", () => {
-		counter.textContent = `${[...textarea.value].length} / ${state.config.maxLength}`;
-	});
-
 	replyCancel.addEventListener("click", () => setReply(null));
 
 	form.addEventListener("submit", (event) => {
 		event.preventDefault();
 		if (state.busy) return;
 
-		const body = textarea.value.trim();
+		const body = bodyValue().trim();
 		if (body.length === 0) {
 			say("先写点内容吧", "error");
 			return;
@@ -476,8 +557,9 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
 					rememberGuestToken(data.id, data.guest_token);
 				}
 
-				textarea.value = "";
-				counter.textContent = `0 / ${state.config.maxLength}`;
+				if (editor) editor.clear();
+				else if (fallback) fallback.value = "";
+				setCount("");
 				setReply(null);
 				if (data.status === "approved") {
 					say("", "info");
@@ -540,6 +622,11 @@ export async function mountCommentSection(root: HTMLElement): Promise<void> {
  * 每次导航后调用：容器是新的（没有 data-ready），旧的已被 swup 丢弃。
  */
 export function initCommentSections(): void {
+	if (activeEditor && !activeEditor.alive()) {
+		activeEditor.destroy();
+		activeEditor = null;
+	}
+
 	const nodes = document.querySelectorAll<HTMLElement>("[data-yb-comments]");
 	for (const node of nodes) {
 		if (node.dataset.ready === "1") continue;
