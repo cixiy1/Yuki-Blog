@@ -63,6 +63,10 @@ export const AUDIT_ACTIONS: string[] = [
 	"review.withdraw",
 	"media.upload",
 	"media.delete",
+	"comment.create",
+	"comment.delete",
+	"comment.review",
+	"admin.comments.config",
 ];
 
 export const ACTION_LABEL: Record<string, string> = {
@@ -107,6 +111,10 @@ export const ACTION_LABEL: Record<string, string> = {
 	"review.withdraw": "撤回审核",
 	"media.upload": "上传图片",
 	"media.delete": "删除图片",
+	"comment.create": "发表评论",
+	"comment.delete": "删除评论",
+	"comment.review": "审核评论",
+	"admin.comments.config": "评论设置",
 };
 
 export async function listAudit(

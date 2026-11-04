@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import EmptyState from "../components/EmptyState.vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import {
@@ -90,14 +91,22 @@ onMounted(() => void refresh());
 			<select v-model="action" class="field" @change="refresh(true)">
 				<option value="">全部动作</option>
 				<option v-for="item in AUDIT_ACTIONS" :key="item" :value="item">
-					{{ ACTION_LABEL[item] ?? item }}（{{ item }}）
+					{{ ACTION_LABEL[item] ?? item }}
 				</option>
 			</select>
+			<span class="filter-note">
+				{{ loading ? "读取中" : `共 ${total} 条记录` }}
+			</span>
 		</div>
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 		<LoadingState v-if="loading" :rows="5" />
-		<div v-else-if="rows.length === 0" class="state">还没有记录。</div>
+		<EmptyState
+			v-else-if="rows.length === 0"
+			icon="audit"
+			title="还没有操作记录"
+			desc="登录、改配置、审核、发信这类动作都会落到这里，从最近的开始往上排。"
+		/>
 
 		<ul v-else class="list">
 			<li v-for="item in viewRows" :key="item.row.id" class="row">
@@ -111,7 +120,11 @@ onMounted(() => void refresh());
 						<span class="t-day">{{ item.day }}</span>
 						<span class="t-clock">{{ item.clock }}</span>
 					</span>
-					<span class="badge" :data-kind="kindOf(item.row.action)">
+					<span
+						class="badge"
+						:data-kind="kindOf(item.row.action)"
+						:title="`${ACTION_LABEL[item.row.action] ?? item.row.action}（${item.row.action}）`"
+					>
 						{{ ACTION_LABEL[item.row.action] ?? item.row.action }}
 					</span>
 					<span class="target">{{ item.row.target ?? "—" }}</span>
@@ -158,10 +171,17 @@ onMounted(() => void refresh());
 }
 
 .filters .field {
-	width: auto;
-	flex: 1 1 14rem;
-	max-width: 22rem;
+	width: 15rem;
+	flex: none;
 	height: 2.35rem;
+}
+
+.filter-note {
+	margin-left: auto;
+	align-self: center;
+	font-size: 0.72rem;
+	color: var(--fg-50);
+	font-variant-numeric: tabular-nums;
 }
 
 .error {
@@ -171,13 +191,6 @@ onMounted(() => void refresh());
 	background: color-mix(in oklab, var(--admonitions-color-caution) 14%, transparent);
 	color: var(--admonitions-color-caution);
 	font-size: 0.8rem;
-}
-
-.state {
-	padding: 2rem 1rem;
-	text-align: center;
-	font-size: 0.85rem;
-	color: var(--fg-50);
 }
 
 .list {
@@ -241,8 +254,9 @@ onMounted(() => void refresh());
 
 .badge {
 	flex: none;
-	/* 固定宽度而不是最小宽度：标签长短不一，一列起点不齐看着像没对齐 */
-	width: 5.8rem;
+	/* 固定宽度而不是最小宽度：标签长短不一，一列起点不齐看着像没对齐。
+	   6.4rem 按最长的中文标签（6 个字）留的，再窄就把「发送测试邮件」截了 */
+	width: 6.4rem;
 	text-align: center;
 	padding: 0.08rem 0.45rem;
 	border-radius: 999px;
