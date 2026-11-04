@@ -41,6 +41,17 @@ export async function findByUid(
 		.first<UserRow>();
 }
 
+/** 按主键查：邮件 token 里存的是自增 id，不是 uid */
+export async function findByRowId(
+	db: D1Database,
+	id: number,
+): Promise<UserRow | null> {
+	return await db
+		.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?1`)
+		.bind(id)
+		.first<UserRow>();
+}
+
 export async function findByEmail(
 	db: D1Database,
 	email: string,
@@ -96,6 +107,8 @@ export interface SessionUser {
 	avatar_url: string | null;
 	/** 个人简介，资料页要回显原值 */
 	bio: string | null;
+	/** 有没有本地密码：纯 GitHub 登录的账号换邮箱时不要求填密码 */
+	has_password: number;
 	session_epoch: number;
 }
 
@@ -110,6 +123,7 @@ export function toSessionUser(row: UserRow): SessionUser {
 		display_name: row.display_name,
 		avatar_url: row.avatar_url,
 		bio: row.bio,
+		has_password: row.password_enc ? 1 : 0,
 		session_epoch: row.session_epoch,
 	};
 }
