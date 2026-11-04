@@ -96,25 +96,31 @@ onMounted(async () => {
 		</div>
 
 		<section v-if="counts" class="stats card-base">
-			<div class="stat">
+			<a class="stat" href="#/posts" @click.prevent="go('/posts')">
 				<span class="num">{{ counts.draft }}</span>
 				<span class="label">我的草稿</span>
-			</div>
-			<div class="stat">
+			</a>
+			<a
+				class="stat"
+				:class="{ alert: counts.pending > 0 }"
+				href="#/review"
+				@click.prevent="go('/review')"
+			>
 				<span class="num">{{ counts.pending }}</span>
-				<span class="label">待审</span>
-			</div>
-			<div class="stat">
+				<span class="label">待审稿</span>
+			</a>
+			<a class="stat" href="#/posts" @click.prevent="go('/posts')">
 				<span class="num">{{ counts.published }}</span>
 				<span class="label">我发布的</span>
-			</div>
-			<div v-if="canReview" class="stat">
+			</a>
+			<a
+				v-if="canReview"
+				class="stat"
+				href="#/all-posts"
+				@click.prevent="go('/all-posts')"
+			>
 				<span class="num">{{ counts.site }}</span>
 				<span class="label">全站文章</span>
-			</div>
-			<a class="stat-go" href="#/posts" @click.prevent="go('/posts')">
-				去看文章
-				<AppIcon name="external" :size="14" />
 			</a>
 		</section>
 
@@ -180,25 +186,38 @@ onMounted(async () => {
 }
 
 .stats {
-	display: flex;
-	align-items: center;
-	gap: 2.25rem;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
 	margin-top: 1rem;
-	padding: 0.9rem 1.2rem;
+	padding: 0;
+	overflow: hidden;
 }
 
+/* 数字之间用竖线分格：靠 gap 拉开时每格都浮在中间，看不出是一组 */
 .stat {
 	display: flex;
 	flex-direction: column;
 	gap: 0.1rem;
+	padding: 0.85rem 1.2rem;
+	border-left: 1px solid var(--line-divider);
+	transition: background-color 0.15s ease;
+}
+
+.stat:first-child {
+	border-left: none;
+}
+
+.stat:hover {
+	background: var(--btn-plain-bg-hover);
 }
 
 .stat .num {
-	font-size: 1.35rem;
+	font-size: 1.6rem;
 	font-weight: 700;
-	line-height: 1.2;
+	line-height: 1.15;
 	color: var(--fg-90);
 	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.02em;
 }
 
 .stat .label {
@@ -206,31 +225,22 @@ onMounted(async () => {
 	color: var(--fg-50);
 }
 
-.stat-go {
-	margin-left: auto;
-	display: inline-flex;
-	align-items: center;
-	gap: 0.3rem;
-	padding: 0.4rem 0.75rem;
-	border-radius: 999px;
-	background: var(--btn-regular-bg);
-	color: var(--fg-90);
-	font-size: 0.78rem;
-	font-weight: 600;
-}
-
-.stat-go:hover {
-	background: var(--btn-regular-bg-hover);
+/* 有待审的稿子才亮，0 的时候跟其它数字一样安静 */
+.stat.alert .num {
+	color: var(--admonitions-color-warning);
 }
 
 @media (max-width: 560px) {
 	.stats {
-		gap: 1.4rem;
-		padding: 0.8rem 1rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.stat {
+		padding: 0.7rem 1rem;
 	}
 
 	.stat .num {
-		font-size: 1.15rem;
+		font-size: 1.3rem;
 	}
 }
 
@@ -244,9 +254,19 @@ onMounted(async () => {
 .note ul {
 	margin: 0;
 	padding-left: 1.1rem;
+	/* 四条规则排一列会把卡片拉得很长，固定两列；auto-fit 在宽屏会排成 3 列，最后一条孤零零落单 */
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.1rem 1.75rem;
 	font-size: 0.78rem;
 	color: var(--fg-50);
 	line-height: 1.9;
+}
+
+@media (max-width: 720px) {
+	.note ul {
+		grid-template-columns: minmax(0, 1fr);
+	}
 }
 
 /* 手机上一个卡片占满整屏太浪费，改成两列紧凑卡 */
