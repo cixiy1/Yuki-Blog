@@ -834,7 +834,8 @@ function initClassSchedule() {
         } else if (!cell.active && !cell.cancelled) {
           flag = '<u class="tt-flag f-off">非本周</u>';
         }
-        var tt = (cell.selfStudy && cell.endTime) ? (cell.startTime + "–" + cell.endTime) : (st.time || "");
+        /* 临时新增条目（ov.time）自带实际时段，优先于整行时间——例如只占第三节的 40 分钟活动 */
+        var tt = cell.time || ((cell.selfStudy && cell.endTime) ? (cell.startTime + "–" + cell.endTime) : (st.time || ""));
         var tip = cell.name + (cell.teacher ? " · " + cell.teacher : "") +
           (cell.room ? " · " + cell.room : "") + " · " + DAYS[d - 1] + " " + (st.label || sk) + " " + tt;
         var timeBadge = (tt && tt !== st.time) ? '<span class="tt-time">' + esc(tt) + "</span>" : "";
