@@ -926,7 +926,14 @@ function initClassSchedule() {
       if (!n.weeks) return true;
       return parseWeeks(n.weeks).indexOf(realWeek) >= 0;
     });
-    if (!arr.length) { box.innerHTML = '<div class="tt-nt tt-nt-none">无</div>'; return; }
+    /* 本周没有通知就隐藏整块，别留一个只有「无」的空面板 */
+    var panel = box.parentNode;
+    if (!arr.length) {
+      box.innerHTML = "";
+      if (panel) panel.style.display = "none";
+      return;
+    }
+    if (panel) panel.style.display = "";
     box.innerHTML = arr.map(function (n) {
       var date = n.date ? '<span class="tt-nt-date">' + esc(n.date) + "</span>" : "";
       var title = n.title ? '<span class="tt-nt-title">' + hlLog(n.title) + "</span>" : "";
