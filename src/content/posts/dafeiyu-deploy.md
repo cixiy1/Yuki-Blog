@@ -11,6 +11,7 @@ tags:
 category: 技术
 slug: dafeiyu-deploy
 comment: true
+image: /assets/uploads/2026/11/deepseek-o-jing-jing-0e6f7d3d.jpg
 ---
 
 这份清单写给想自己搭一只群聊机器人的人。目标不是「能回话」，而是一只接得住上下文、记得住人、会自己开口、还挡得住群友撬的机器人。
