@@ -120,11 +120,16 @@ export function setSessionCookie(
 	ttlSeconds: number,
 	persist: boolean,
 ): void {
+	const secure = isHttpsUrl(url);
 	setCookie(c, sessionCookieName(url), token, {
 		path: "/",
 		httpOnly: true,
-		secure: isHttpsUrl(url),
-		sameSite: "Lax",
+		secure,
+		// 知流工作台把管理端嵌在 iframe 里，顶层是 http://127.0.0.1:<port>，
+		// 从那儿发起的请求对本站是跨站。Lax 的票在跨站 iframe 里既不写入也不发送，
+		// 表现是「登录成功、下一次请求又回登录页」。https 下给 None 才能跨站携带；
+		// None 强制要求 Secure，本地 http 开发给不了，那儿仍旧 Lax。
+		sameSite: secure ? "None" : "Lax",
 		// 不勾记住我时不下发 Max-Age，浏览器关闭即失效
 		...(persist ? { maxAge: ttlSeconds } : {}),
 	});

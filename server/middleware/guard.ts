@@ -37,24 +37,51 @@ export const requireJsonBody: MiddlewareHandler = async (c, next) => {
  * 浏览器发起的跨站 POST 一定会带 Origin，curl / 服务端调用不带，
  * 这样既挡住跨站表单与 fetch，又不影响命令行验收。
  */
+/**
+ * 本地工作台（知流）的源。
+ *
+ * 工作台把管理端嵌在 iframe 里，顶层是 http://127.0.0.1:<port> / http://localhost:<port>，
+ * 从那儿发起的请求对本站是跨站：`Sec-Fetch-Site: cross-site`，`Origin` 是回环地址。
+ * 不认这个源，登录接口自己就先被这张守门规则挡成 403 —— 改 cookie 也没用。
+ *
+ * 只认回环地址：外部站点伪造不出这个 Origin（Origin 由浏览器写死，页面脚本改不了）；
+ * 能在用户自己机器上跑起页面的人，权限已经高过 CSRF 能拿到的东西。
+ */
+function isLocalWorkbench(origin: string | undefined): boolean {
+	if (!origin) return false;
+	try {
+		const url = new URL(origin);
+		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+		return (
+			url.hostname === "127.0.0.1" ||
+			url.hostname === "localhost" ||
+			url.hostname === "[::1]"
+		);
+	} catch {
+		return false;
+	}
+}
+
 export const sameOriginGuard: MiddlewareHandler = async (c, next) => {
-	// 现代浏览器会给跨站请求带上这个头，比 Origin 更难伪造（页面脚本改不了）
-	if (c.req.header("sec-fetch-site") === "cross-site") {
+	const origin = c.req.header("origin");
+	const self = new URL(c.req.url).origin;
+	const trusted =
+		origin !== undefined && (origin === self || isLocalWorkbench(origin));
+
+	// 现代浏览器会给跨站请求带上这个头，比 Origin 更难伪造（页面脚本改不了）。
+	// 本地工作台是唯一例外：它嵌 iframe，天生就是 cross-site
+	if (!trusted && c.req.header("sec-fetch-site") === "cross-site") {
 		return c.json(
 			{ error: "cross_origin_blocked", message: "跨站请求被拒绝" },
 			403,
 		);
 	}
 
-	const origin = c.req.header("origin");
-	if (origin !== undefined) {
-		const self = new URL(c.req.url).origin;
-		if (origin !== self) {
-			return c.json(
-				{ error: "cross_origin_blocked", message: "跨站请求被拒绝" },
-				403,
-			);
-		}
+	if (origin !== undefined && !trusted) {
+		return c.json(
+			{ error: "cross_origin_blocked", message: "跨站请求被拒绝" },
+			403,
+		);
 	}
 	await next();
 };
