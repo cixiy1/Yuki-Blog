@@ -378,7 +378,7 @@ async function refresh(): Promise<void> {
 	}
 }
 
-async function onSave(): Promise<void> {
+async function onSave(): Promise<boolean> {
 	busy.value = true;
 	notice.value = "";
 	errorText.value = "";
@@ -394,16 +394,19 @@ async function onSave(): Promise<void> {
 				await applyHot();
 				await refresh();
 				notice.value =
-					"已保存。热字段已对访客生效，其余改动要点「发布」才写进仓库。";
+					"已保存。热字段已对访客生效，其余改动要点「保存并发布」才写进仓库。";
 			} catch {
 				notice.value =
-					"草稿已保存。热字段可以点「立即应用」跳过构建，其余需要发布。";
+					"草稿已保存，还没上线。热字段可以点「立即应用」跳过构建，其余要点「保存并发布」。";
 			}
 		} else {
-			notice.value = "草稿已保存。带绿点的字段可用「立即应用」，其余需要发布。";
+			notice.value =
+				"草稿已保存，还没上线。带绿点的字段可用「立即应用」，其余要点「保存并发布」。";
 		}
+		return true;
 	} catch (error) {
 		errorText.value = error instanceof Error ? error.message : "保存失败";
+		return false;
 	} finally {
 		busy.value = false;
 	}
@@ -443,10 +446,10 @@ async function onApplyHot(): Promise<void> {
 	}
 }
 
-async function onPublish(): Promise<void> {
+async function onPublish(): Promise<boolean> {
 	if (unsaved.value) {
 		notice.value = "还有未保存的改动，先保存草稿再发布。";
-		return;
+		return false;
 	}
 	busy.value = true;
 	errorText.value = "";
@@ -454,14 +457,25 @@ async function onPublish(): Promise<void> {
 		const result = await publishDraft("chore(site): 更新站点配置");
 		notice.value = result.message ?? "已提交";
 		await refresh();
+		return true;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "发布失败";
 		errorText.value = message.includes("GitHub 令牌")
 			? `${message}（在「集成」页填好后重试）`
 			: message;
+		return false;
 	} finally {
 		busy.value = false;
 	}
+}
+
+/**
+ * 一步到位：有改动就先落草稿，接着立刻发布，不用点两次。
+ * 草稿是发布的前置（服务端只认 D1 里那份），所以顺序不能反。
+ */
+async function onSaveAndPublish(): Promise<void> {
+	if (unsaved.value && !(await onSave())) return;
+	await onPublish();
 }
 
 async function onRollback(version: ConfigVersion): Promise<void> {
@@ -671,7 +685,7 @@ onMounted(() => void refresh());
 			:desc="
 				tab === 'comments'
 					? '评论开关存在数据库里，保存即生效，不需要发布，也不影响构建。'
-					: '改完先存草稿，确认无误再发布；发布约 90 秒后全站生效。'
+					: '改完点「保存并发布」，约 90 秒后全站生效；只想先存着不上线就点「只存草稿」。'
 			"
 		>
 			<template #actions>
@@ -691,16 +705,16 @@ onMounted(() => void refresh());
 					:disabled="busy || !unsaved"
 					@click="onSave"
 				>
-					保存草稿
+					只存草稿
 				</button>
 				<button
 					v-if="tab !== 'comments'"
 					type="button"
 					class="btn-primary"
-					:disabled="busy || !pending.length"
-					@click="onPublish"
+					:disabled="busy || (!unsaved && !pending.length)"
+					@click="onSaveAndPublish"
 				>
-					发布
+					保存并发布
 					<span v-if="pending.length" class="pill">{{ pending.length }}</span>
 				</button>
 			</template>
