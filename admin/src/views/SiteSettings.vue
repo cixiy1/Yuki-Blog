@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import LoadingState from "../components/LoadingState.vue";
 import PageHeader from "../components/PageHeader.vue";
 import SegTabs from "../components/SegTabs.vue";
@@ -628,6 +628,40 @@ function secretActionLabel(name: string): string {
 	return isConfigured(name) ? "清除" : "保存";
 }
 
+/**
+ * 密钥就地反馈：全局提示条在页头，滚到集成区根本看不见，点完保存像没反应。
+ * saving/saved 会自己消失，error 留着让人看见原因。
+ */
+const secretState = ref<Record<string, "saving" | "saved" | "error">>({});
+const secretNote = ref<Record<string, string>>({});
+const secretTimers = new Map<string, number>();
+
+function setSecretNote(
+	name: string,
+	state: "saving" | "saved" | "error",
+	note: string,
+): void {
+	secretState.value = { ...secretState.value, [name]: state };
+	secretNote.value = { ...secretNote.value, [name]: note };
+	const timer = secretTimers.get(name);
+	if (timer) window.clearTimeout(timer);
+	secretTimers.delete(name);
+	if (state !== "error") {
+		secretTimers.set(
+			name,
+			window.setTimeout(() => {
+				secretTimers.delete(name);
+				const nextState = { ...secretState.value };
+				const nextNote = { ...secretNote.value };
+				delete nextState[name];
+				delete nextNote[name];
+				secretState.value = nextState;
+				secretNote.value = nextNote;
+			}, 3000),
+		);
+	}
+}
+
 function canSaveSecret(name: string): boolean {
 	return Boolean((secretInput.value[name] ?? "").trim()) || isConfigured(name);
 }
@@ -649,12 +683,16 @@ function onSecretClick(name: string): void {
 async function onSaveSecret(name: string): Promise<void> {
 	const value = (secretInput.value[name] ?? "").trim();
 	busy.value = true;
+	setSecretNote(name, "saving", "保存中…");
 	try {
 		secrets.value = await saveSecret(name, value);
 		secretInput.value[name] = "";
 		notice.value = value ? "已加密保存。" : "已清除该密钥。";
+		setSecretNote(name, "saved", value ? "已保存" : "已清除");
 	} catch (error) {
-		errorText.value = error instanceof Error ? error.message : "保存失败";
+		const message = error instanceof Error ? error.message : "保存失败";
+		errorText.value = message;
+		setSecretNote(name, "error", message);
 	} finally {
 		busy.value = false;
 	}
@@ -674,6 +712,26 @@ function rowDirty(section: SettingSection, field: SettingField): boolean {
 		JSON.stringify(readField(draft0.value, section.namespace, field.path))
 	);
 }
+
+/**
+ * 提示原来钉在页头下方，页面滚到「集成」「发信」时看不见，点保存像没反应。
+ * 改成浮在右下角的短提示：错误留 6 秒，普通提示 4 秒，也能手动关。
+ */
+const toastText = computed(() => errorText.value || notice.value);
+const toastIsError = computed(() => Boolean(errorText.value));
+let toastTimer = 0;
+
+function dismissToast(): void {
+	window.clearTimeout(toastTimer);
+	notice.value = "";
+	errorText.value = "";
+}
+
+watch(toastText, (text) => {
+	if (!text) return;
+	window.clearTimeout(toastTimer);
+	toastTimer = window.setTimeout(dismissToast, errorText.value ? 6000 : 4000);
+});
 
 onMounted(() => void refresh());
 </script>
@@ -720,8 +778,6 @@ onMounted(() => void refresh());
 			</template>
 		</PageHeader>
 
-		<p v-if="errorText" class="error">{{ errorText }}</p>
-		<p v-else-if="notice" class="notice">{{ notice }}</p>
 
 		<SegTabs
 			class="tabs"
@@ -888,11 +944,19 @@ onMounted(() => void refresh());
 							<button
 								type="button"
 								class="btn-regular"
-								:disabled="busy || !canSaveSecret(name)"
+								:disabled="
+									busy ||
+									secretState[name] === 'saving' ||
+									!canSaveSecret(name)
+								"
 								@click="onSecretClick(name)"
 							>
 								{{ secretActionLabel(name) }}
 							</button>
+							<span
+								v-if="secretNote[name]"
+								:class="['secret-note', secretState[name]]"
+							>{{ secretNote[name] }}</span>
 						</div>
 					</div>
 				</div>
@@ -1060,11 +1124,19 @@ onMounted(() => void refresh());
 							<button
 								type="button"
 								class="btn-regular"
-								:disabled="busy || !canSaveSecret(name)"
+								:disabled="
+									busy ||
+									secretState[name] === 'saving' ||
+									!canSaveSecret(name)
+								"
 								@click="onSecretClick(name)"
 							>
 								{{ secretActionLabel(name) }}
 							</button>
+							<span
+								v-if="secretNote[name]"
+								:class="['secret-note', secretState[name]]"
+							>{{ secretNote[name] }}</span>
 						</div>
 					</div>
 
@@ -1121,11 +1193,19 @@ onMounted(() => void refresh());
 							<button
 								type="button"
 								class="btn-regular"
-								:disabled="busy || !canSaveSecret(name)"
+								:disabled="
+									busy ||
+									secretState[name] === 'saving' ||
+									!canSaveSecret(name)
+								"
 								@click="onSecretClick(name)"
 							>
 								{{ secretActionLabel(name) }}
 							</button>
+							<span
+								v-if="secretNote[name]"
+								:class="['secret-note', secretState[name]]"
+							>{{ secretNote[name] }}</span>
 						</div>
 					</div>
 				</div>
@@ -1405,6 +1485,25 @@ onMounted(() => void refresh());
 				</div>
 			</aside>
 		</div>
+
+		<Transition name="toast">
+			<div
+				v-if="toastText"
+				class="toast"
+				:class="{ 'toast-error': toastIsError }"
+				role="status"
+			>
+				<span class="toast-text">{{ toastText }}</span>
+				<button
+					type="button"
+					class="toast-close"
+					aria-label="关闭提示"
+					@click="dismissToast"
+				>
+					×
+				</button>
+			</div>
+		</Transition>
 	</div>
 </template>
 
@@ -1954,8 +2053,23 @@ onMounted(() => void refresh());
 
 .secret-row {
 	display: flex;
+	align-items: center;
 	gap: 0.4rem;
 	margin-top: 0.4rem;
+}
+
+.secret-note {
+	font-size: 0.75rem;
+	color: var(--fg-50);
+	white-space: nowrap;
+}
+
+.secret-note.saved {
+	color: var(--primary);
+}
+
+.secret-note.error {
+	color: var(--admonitions-color-caution);
 }
 
 .copy-row {
@@ -2007,16 +2121,58 @@ onMounted(() => void refresh());
 	flex: 1;
 }
 
-.error {
+.toast {
+	position: fixed;
+	right: 1.25rem;
+	bottom: 1.25rem;
+	z-index: 60;
+	display: flex;
+	align-items: flex-start;
+	gap: 0.6rem;
+	max-width: min(26rem, calc(100vw - 2.5rem));
+	padding: 0.65rem 0.8rem;
+	border-radius: var(--radius-large);
+	border: 1px solid var(--line-divider);
+	background: var(--card-bg);
+	box-shadow: var(--card-shadow);
+	color: var(--fg-90);
 	font-size: 0.8rem;
-	color: var(--admonitions-color-caution);
-	margin: 0 0 0.6rem;
+	line-height: 1.5;
 }
 
-.notice {
-	font-size: 0.8rem;
+.toast-error {
+	color: var(--admonitions-color-caution);
+}
+
+.toast-text {
+	flex: 1;
+}
+
+.toast-close {
+	border: 0;
+	background: none;
+	padding: 0;
+	color: var(--fg-50);
+	font-size: 0.95rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.toast-close:hover {
 	color: var(--fg-90);
-	margin: 0 0 0.6rem;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+	transition:
+		opacity 0.18s ease,
+		transform 0.18s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+	opacity: 0;
+	transform: translateY(0.4rem);
 }
 
 .state {
