@@ -22,6 +22,7 @@ import {
 	sectionLabel,
 	warnBlock,
 } from "./mail-template";
+import { normalizeOrigin } from "./origin";
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
@@ -64,11 +65,7 @@ export interface MailResult {
 function originFrom(env: Env, fallbackLink: string): string {
 	const configured = env.SITE_ORIGIN;
 	if (configured?.startsWith("http")) return configured.replace(/\/$/, "");
-	try {
-		return new URL(fallbackLink).origin;
-	} catch {
-		return "https://yiyu14.top";
-	}
+	return normalizeOrigin(fallbackLink);
 }
 
 /** 品牌与配色一起取，各封邮件开头都调它 */

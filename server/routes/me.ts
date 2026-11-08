@@ -9,6 +9,7 @@ import {
 	setField,
 	splitMarkdown,
 } from "../lib/frontmatter";
+import { publicOrigin } from "../lib/origin";
 import { type RepoPost, readRepoPosts } from "../lib/post-index";
 import {
 	deleteRepoFile,
@@ -40,9 +41,7 @@ const EDITABLE = new Set(["draft", "rejected"]);
 
 /** 邮件里的链接要用对外地址，本地开发才退回请求自身的 origin */
 export function originOf(c: Context<AppEnv>): string {
-	const configured = c.env.SITE_ORIGIN;
-	if (configured?.startsWith("http")) return configured.replace(/\/$/, "");
-	return new URL(c.req.url).origin;
+	return publicOrigin(c.req.raw, c.env.SITE_ORIGIN);
 }
 
 /* ---------------------------- 我的资料 ---------------------------- */

@@ -3,6 +3,7 @@ import { writeAudit } from "../lib/audit";
 import { putRepoFile } from "../lib/github-contents";
 import { sendTestMail } from "../lib/mail";
 import { mailSettingsView, writeMailSettings } from "../lib/mail-config";
+import { publicOrigin } from "../lib/origin";
 import {
 	checkConfig,
 	clearSecret,
@@ -441,7 +442,7 @@ admin.post("/mail-test", sameOriginGuard, requireJsonBody, async (c) => {
 		);
 	}
 
-	const origin = new URL(c.req.url).origin;
+	const origin = publicOrigin(c.req.raw, c.env.SITE_ORIGIN);
 	const result = await sendTestMail(c.env, to, origin);
 
 	await writeAudit(c.env.DB, {

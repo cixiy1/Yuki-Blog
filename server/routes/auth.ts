@@ -22,6 +22,7 @@ import {
 	sendResetMail,
 	sendVerifyMail,
 } from "../lib/mail";
+import { publicOrigin } from "../lib/origin";
 import {
 	encryptPassword,
 	type PasswordKeys,
@@ -104,11 +105,7 @@ function nowSeconds(): number {
 }
 
 function siteOrigin(c: Context<AppEnv>): string {
-	const configured = c.env.SITE_ORIGIN;
-	if (configured?.startsWith("http")) {
-		return configured.replace(/\/$/, "");
-	}
-	return new URL(c.req.url).origin;
+	return publicOrigin(c.req.raw, c.env.SITE_ORIGIN);
 }
 
 async function ipHash(c: Context<AppEnv>, pepper: string): Promise<string> {
