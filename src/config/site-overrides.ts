@@ -18,6 +18,7 @@ import raw from "../../config/site.json";
  *   friends      → src/config/friendsConfig.ts（page 与 links 两段）
  *   banner       → src/config/backgroundWallpaper.ts
  *   announcement → src/config/announcementConfig.ts
+ *   sponsor      → src/config/sponsorConfig.ts
  *
  * 几个约定：
  *  - 文件始终存在（默认只有 `_comment`），不做条件导入，构建不会因文件缺失而挂
@@ -34,7 +35,8 @@ export type ConfigNamespace =
 	| "music"
 	| "friends"
 	| "banner"
-	| "announcement";
+	| "announcement"
+	| "sponsor";
 
 /** 某个命名空间的原始覆盖内容；不存在时返回空对象 */
 export function overrideFor<T>(ns: ConfigNamespace): Partial<T> {

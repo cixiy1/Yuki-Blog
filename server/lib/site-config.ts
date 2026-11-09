@@ -260,6 +260,37 @@ const ANNOUNCEMENT_SPEC: Record<string, Spec> = {
 	},
 };
 
+const SPONSOR_SPEC: Record<string, Spec> = {
+	title: { t: "string", max: 120 },
+	description: { t: "string", max: 300 },
+	usage: { t: "string", max: 1000 },
+	showSponsorsList: { t: "bool" },
+	showComment: { t: "bool" },
+	showButtonInPost: { t: "bool" },
+	methods: {
+		t: "list",
+		maxItems: 10,
+		fields: {
+			name: { t: "string", max: 40 },
+			icon: { t: "string", max: 80 },
+			qrCode: { t: "string", max: 400 },
+			link: { t: "string", max: 400 },
+			description: { t: "string", max: 200 },
+			enabled: { t: "bool" },
+		},
+	},
+	sponsors: {
+		t: "list",
+		maxItems: 200,
+		fields: {
+			name: { t: "string", max: 40 },
+			avatar: { t: "string", max: 400 },
+			amount: { t: "string", max: 40 },
+			date: { t: "string", max: 20 },
+		},
+	},
+};
+
 /**
  * 顶层按「配置文件」分命名空间，一个命名空间对应一个 config 模块：
  * `site` → siteConfig、`profile` → profileConfig、`music` → musicPlayerConfig、
@@ -275,6 +306,7 @@ export const CONFIG_SPEC: Record<string, Spec> = {
 	friends: { t: "obj", fields: FRIENDS_SPEC },
 	banner: { t: "obj", fields: BANNER_SPEC },
 	announcement: { t: "obj", fields: ANNOUNCEMENT_SPEC },
+	sponsor: { t: "obj", fields: SPONSOR_SPEC },
 };
 
 /** 命名空间清单，管理端与前端覆盖层都按这个顺序走 */

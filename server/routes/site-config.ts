@@ -247,7 +247,7 @@ admin.post("/site-config/publish", sameOriginGuard, async (c) => {
 	// `_comment` 只写进仓库文件（给人看的），不进 D1 草稿——否则过不了白名单校验
 	const fileDoc = {
 		_comment:
-			"管理端「站点设置」发布时整体覆盖本文件。各分区留空即使用 src/config 里的默认值。分区：site / profile / music / friends / banner / announcement",
+			"管理端「站点设置」发布时整体覆盖本文件。各分区留空即使用 src/config 里的默认值。分区：site / profile / music / friends / banner / announcement / sponsor",
 		...draft,
 	};
 	const content = `${JSON.stringify(fileDoc, null, "\t")}\n`;

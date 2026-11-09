@@ -15,6 +15,7 @@ import { friendsConfig, friendsPageConfig } from "@/config/friendsConfig";
 import { musicPlayerConfig } from "@/config/musicConfig";
 import { profileConfig } from "@/config/profileConfig";
 import { siteConfig } from "@/config/siteConfig";
+import { sponsorConfig } from "@/config/sponsorConfig";
 
 export const prerender = true;
 
@@ -84,6 +85,16 @@ export const GET: APIRoute = () => {
 			},
 		},
 		announcement: announcementConfig,
+		sponsor: {
+			title: sponsorConfig.title,
+			description: sponsorConfig.description,
+			usage: sponsorConfig.usage,
+			showSponsorsList: sponsorConfig.showSponsorsList,
+			showComment: sponsorConfig.showComment,
+			showButtonInPost: sponsorConfig.showButtonInPost,
+			methods: sponsorConfig.methods,
+			sponsors: sponsorConfig.sponsors,
+		},
 	};
 
 	return new Response(JSON.stringify(payload), {

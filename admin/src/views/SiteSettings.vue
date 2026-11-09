@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import LoadingState from "../components/LoadingState.vue";
+import MediaPickerDialog from "../components/MediaPickerDialog.vue";
 import PageHeader from "../components/PageHeader.vue";
 import SegTabs from "../components/SegTabs.vue";
 import WallpaperModePicker from "../components/WallpaperModePicker.vue";
@@ -92,6 +93,44 @@ const versions = ref<ConfigVersion[]>([]);
 const secrets = ref<SecretStatus[]>([]);
 const secretInput = ref<Record<string, string>>({});
 const tagInput = ref<Record<string, string>>({});
+
+/**
+ * 图片字段（收款码、打赏者头像）走媒体库。
+ * index 为空表示顶层字段，否则是列表里的第几行——两者写回路径不一样。
+ */
+const imagePicker = ref<{
+	field: SettingField;
+	ns: ConfigNamespace;
+	itemPath: string;
+	index: number | null;
+	initial: string;
+} | null>(null);
+
+function openImageField(
+	field: SettingField,
+	ns: ConfigNamespace,
+	itemPath = field.path,
+	index: number | null = null,
+): void {
+	const initial =
+		index === null
+			? asText(field, ns)
+			: String(
+					(listRows(field, ns)[index]?.[itemPath] as string | undefined) ?? "",
+				);
+	imagePicker.value = { field, ns, itemPath, index, initial };
+}
+
+function applyPickedImage(value: string): void {
+	const target = imagePicker.value;
+	if (!target) return;
+	if (target.index === null) {
+		set(target.field, target.ns, value);
+	} else {
+		setCell(target.field, target.ns, target.index, target.itemPath, value);
+	}
+	imagePicker.value = null;
+}
 
 /* ---------- 发信配置 ---------- */
 const mailConfig = ref<MailConfig>({
@@ -1379,6 +1418,7 @@ onMounted(() => void refresh());
 											v-for="item in field.itemFields"
 											:key="item.path"
 											class="cell"
+											:class="{ wide: item.type === 'image' }"
 										>
 											<span class="cell-label">{{ item.label }}</span>
 											<button
@@ -1389,6 +1429,40 @@ onMounted(() => void refresh());
 											>
 												<span class="knob" />
 											</button>
+											<div v-else-if="item.type === 'image'" class="image-cell">
+												<span v-if="row[item.path]" class="image-thumb small">
+													<img :src="String(row[item.path])" alt="" />
+												</span>
+												<input
+													class="field"
+													type="text"
+													:placeholder="item.placeholder ?? '选图或填路径'"
+													:value="row[item.path] ?? ''"
+													@input="
+														setCell(
+															field,
+															section.namespace,
+															index,
+															item.path,
+															($event.target as HTMLInputElement).value,
+														)
+													"
+												/>
+												<button
+													type="button"
+													class="btn-regular pick"
+													@click="
+														openImageField(
+															field,
+															section.namespace,
+															item.path,
+															index,
+														)
+													"
+												>
+													选图
+												</button>
+											</div>
 											<input
 												v-else
 												class="field"
@@ -1408,6 +1482,26 @@ onMounted(() => void refresh());
 									@click="addRow(field, section.namespace)"
 								>
 									添加一行
+								</button>
+							</div>
+
+							<div v-else-if="field.type === 'image'" class="image-field">
+								<span v-if="asText(field, section.namespace)" class="image-thumb">
+									<img :src="asText(field, section.namespace)" alt="" />
+								</span>
+								<input
+									class="field"
+									type="text"
+									:value="asText(field, section.namespace)"
+									:placeholder="field.placeholder ?? '选一张图，或直接填路径'"
+									@input="setText(field, section.namespace, $event)"
+								/>
+								<button
+									type="button"
+									class="btn-regular"
+									@click="openImageField(field, section.namespace)"
+								>
+									选图
 								</button>
 							</div>
 
@@ -1504,6 +1598,14 @@ onMounted(() => void refresh());
 				</button>
 			</div>
 		</Transition>
+
+		<MediaPickerDialog
+			v-if="imagePicker"
+			context="site"
+			:initial="imagePicker.initial"
+			@close="imagePicker = null"
+			@select="applyPickedImage"
+		/>
 	</div>
 </template>
 
@@ -1913,6 +2015,57 @@ onMounted(() => void refresh());
 .cell-label {
 	font-size: 0.68rem;
 	color: var(--fg-50);
+}
+
+/* 图片字段：路径输入框 + 选图按钮 + 小缩略图，三样并排 */
+.image-field,
+.image-cell {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-width: 0;
+}
+
+.image-field .field,
+.image-cell .field {
+	flex: 1;
+	min-width: 0;
+}
+
+/* 图片格子里要同时塞缩略图、路径和按钮，一列放不下，独占一整行 */
+.cell.wide {
+	grid-column: 1 / -1;
+}
+
+.image-thumb {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 2rem;
+	height: 2rem;
+	overflow: hidden;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.35rem;
+	background: var(--btn-plain-bg-hover);
+}
+
+.image-thumb.small {
+	width: 1.6rem;
+	height: 1.6rem;
+}
+
+.image-thumb img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.image-cell .pick {
+	flex-shrink: 0;
+	font-size: 0.7rem;
+	padding: 0.2rem 0.45rem;
 }
 
 .add-row {

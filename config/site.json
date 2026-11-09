@@ -1,5 +1,5 @@
 {
-	"_comment": "管理端「站点设置」发布时整体覆盖本文件。各分区留空即使用 src/config 里的默认值；不要手改格式，改坏会导致构建失败。分区：site / profile / music / friends / banner / announcement",
+	"_comment": "管理端「站点设置」发布时整体覆盖本文件。各分区留空即使用 src/config 里的默认值；不要手改格式，改坏会导致构建失败。分区：site / profile / music / friends / banner / announcement / sponsor",
 	"banner": {
 		"mode": "banner",
 		"common": {

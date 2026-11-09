@@ -1,6 +1,8 @@
 import type { SponsorConfig } from "../types/sponsorConfig";
+import { applyNamespace } from "./site-overrides";
 
-export const sponsorConfig: SponsorConfig = {
+/** 默认值；管理端发布后由 site.json 的 `sponsor` 分区覆盖 */
+const sponsorConfigBase: SponsorConfig = {
 	title: "",
 	description: "",
 	usage:
@@ -29,3 +31,8 @@ export const sponsorConfig: SponsorConfig = {
 		},
 	],
 };
+
+export const sponsorConfig: SponsorConfig = applyNamespace(
+	"sponsor",
+	sponsorConfigBase,
+);

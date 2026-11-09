@@ -19,7 +19,9 @@ export type FieldType =
 	| "select"
 	| "tags"
 	| "hue"
-	| "list";
+	| "list"
+	/** 图片：一个路径输入框 + 选图按钮，值仍是字符串，走媒体库 */
+	| "image";
 
 /** 列表里每一行的字段 */
 export interface ListItemField {
@@ -82,7 +84,8 @@ export type ConfigNamespace =
 	| "music"
 	| "friends"
 	| "banner"
-	| "announcement";
+	| "announcement"
+	| "sponsor";
 
 const switchField = (
 	path: string,
@@ -303,6 +306,133 @@ export const SETTING_GROUPS: SettingGroup[] = [
 						type: "number",
 						min: 1,
 						max: 50,
+					},
+				],
+			},
+		],
+	},
+	{
+		key: "sponsor",
+		label: "打赏页",
+		desc: "打赏方式的收款码、打赏者名单与头像。都要发布，页面等一次构建才会变。",
+		sections: [
+			{
+				title: "页面文案",
+				namespace: "sponsor",
+				note: "留空则用主题内置的文案",
+				fields: [
+					{
+						path: "title",
+						label: "页面标题",
+						type: "text",
+						placeholder: "打赏",
+					},
+					{
+						path: "description",
+						label: "页面描述",
+						type: "textarea",
+						placeholder: "支持一下",
+						help: "标题右侧的一句话",
+					},
+					{
+						path: "usage",
+						label: "用途说明",
+						type: "textarea",
+						help: "打赏会花在哪，显示在页面顶部的提示框里",
+					},
+				],
+			},
+			{
+				title: "显示项",
+				namespace: "sponsor",
+				fields: [
+					switchField("showSponsorsList", "显示打赏者名单"),
+					switchField("showButtonInPost", "文章底部显示打赏按钮"),
+					switchField(
+						"showComment",
+						"页面底部显示评论区",
+						"需要先在「评论」里配好评论系统",
+					),
+				],
+			},
+			{
+				title: "打赏方式",
+				namespace: "sponsor",
+				note: "每种方式一张卡片：图标、名称、描述，加收款码或跳转链接，至少有一个",
+				fields: [
+					{
+						path: "methods",
+						label: "打赏方式",
+						type: "list",
+						itemTitle: "name",
+						emptyText: "还没有打赏方式，页面上不会出现任何收款入口",
+						itemFields: [
+							{
+								path: "name",
+								label: "名称",
+								type: "text",
+								placeholder: "微信",
+							},
+							{
+								path: "icon",
+								label: "图标",
+								type: "text",
+								placeholder: "fa7-brands:weixin",
+							},
+							{
+								path: "description",
+								label: "描述",
+								type: "text",
+								placeholder: "扫码请我喝杯奶茶",
+							},
+							{
+								path: "qrCode",
+								label: "收款码",
+								type: "image",
+							},
+							{
+								path: "link",
+								label: "跳转链接",
+								type: "text",
+								placeholder: "https://…",
+							},
+							{ path: "enabled", label: "启用", type: "switch" },
+						],
+					},
+				],
+			},
+			{
+				title: "打赏者名单",
+				namespace: "sponsor",
+				note: "头像可以现传或从媒体库选，也可直接贴外链；不填则用名字首字兜底",
+				fields: [
+					{
+						path: "sponsors",
+						label: "打赏者",
+						type: "list",
+						itemTitle: "name",
+						emptyText: "还没有记录，页面上会显示一句「暂无」",
+						itemFields: [
+							{
+								path: "name",
+								label: "称呼",
+								type: "text",
+								placeholder: "Crescent.ice",
+							},
+							{ path: "avatar", label: "头像", type: "image" },
+							{
+								path: "amount",
+								label: "金额",
+								type: "text",
+								placeholder: "¥10",
+							},
+							{
+								path: "date",
+								label: "日期",
+								type: "text",
+								placeholder: "2026-11-08",
+							},
+						],
 					},
 				],
 			},
