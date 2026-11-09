@@ -3,6 +3,7 @@ import { onMount } from "svelte";
 import Icon from "@/components/common/Icon.svelte";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
+import { toQrDataUrl } from "@/utils/qr-code";
 
 interface Props {
 	/** 二维码指向的地址；缺省时取当前页面地址（不含查询串与 hash） */
@@ -35,14 +36,8 @@ async function generate(codeUrl: string) {
 	generating = true;
 	failed = false;
 	try {
-		// 按需加载 qrcode，只有真正点开二维码时才付出这部分体积
-		const { default: QRCode } = await import("qrcode");
-		dataUrl = await QRCode.toDataURL(codeUrl, {
-			errorCorrectionLevel: "M",
-			margin: 2,
-			width: 720,
-			color: { dark: "#111827", light: "#ffffff" },
-		});
+		// 与文章分享海报共用同一套二维码外观，见 @/utils/qr-code
+		dataUrl = await toQrDataUrl(codeUrl, 720);
 	} catch (error) {
 		console.error("Failed to generate QR code:", error);
 		failed = true;

@@ -3,6 +3,7 @@ import { onMount } from "svelte";
 import Icon from "@/components/common/Icon.svelte";
 import { siteConfig } from "@/config";
 import iconsData from "@/constants/icons-data.json";
+import { toQrDataUrl } from "@/utils/qr-code";
 import { url as withBase } from "@/utils/url-utils";
 import I18nKey from "../../i18n/i18nKey";
 import { i18n } from "../../i18n/translation";
@@ -212,19 +213,13 @@ async function generatePoster() {
 
 	generating = true;
 	try {
-		// 按需加载 qrcode（仅生成分享海报时才需要），避免拖慢每篇博文的首屏 JS
-		const { default: QRCode } = await import("qrcode");
 		const scale = 2;
 		const width = 425 * scale;
 		const padding = 24 * scale;
 		const logoBox = 22 * scale; // 站点 Logo 尺寸
 
-		// 1. Prepare resources
-		const qrCodeUrl = await QRCode.toDataURL(url, {
-			margin: 1,
-			width: 100 * scale,
-			color: { dark: "#000000", light: "#ffffff" },
-		});
+		// 1. Prepare resources（二维码外观与页面二维码共用 @/utils/qr-code）
+		const qrCodeUrl = await toQrDataUrl(url, 100 * scale);
 		const resolvedCoverImage = resolveImageSource(
 			coverImage,
 			coverImageSelector,
