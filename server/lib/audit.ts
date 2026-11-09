@@ -46,6 +46,7 @@ export type AuditAction =
 	| "review.withdraw"
 	| "media.upload"
 	| "media.delete"
+	| "page.update"
 	| "comment.create"
 	| "comment.delete"
 	| "comment.review"

@@ -224,7 +224,7 @@ export const LinkPresets: Record<string, NavBarLink> = {
 		pageKey: "sponsor",
 	},
 	About: {
-		name: "关于我",
+		name: "关于雪穗",
 		url: "/about/",
 		icon: "material-symbols:person",
 	},

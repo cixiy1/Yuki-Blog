@@ -9,6 +9,8 @@ export type RouteName =
 	| "posts"
 	| "all-posts"
 	| "post-edit"
+	| "pages"
+	| "page-edit"
 	| "components"
 	| "media"
 	| "review"
@@ -23,6 +25,8 @@ export interface Route {
 	id?: number;
 	/** post-edit 用：仓库文章的 slug（子目录用 %2F 编码，切分时不会被拆开） */
 	repoSlug?: string;
+	/** page-edit 用：src/content/spec 下的文件名，如 about.md */
+	pageFile?: string;
 	/** settings 用：页内分组，如 /settings/comments 直接落到「评论」 */
 	tab?: string;
 }
@@ -32,6 +36,7 @@ const ROUTES: RouteName[] = [
 	"posts",
 	"all-posts",
 	"post-edit",
+	"pages",
 	"components",
 	"media",
 	"review",
@@ -75,6 +80,10 @@ function parse(hash: string): Route {
 	if (name === "settings" && parts.length > 1 && parts[1]) {
 		return { name, tab: parts[1] };
 	}
+	// /pages/about.md：单页编辑，与列表共用 pages 这一段前缀
+	if (name === "pages" && parts.length > 1 && parts[1]) {
+		return { name: "page-edit", pageFile: decodeURIComponent(parts[1]) };
+	}
 	return { name };
 }
 
@@ -115,6 +124,11 @@ export function goRepoEdit(
 ): void {
 	editOrigin.value = from;
 	go(`/posts/repo/${encodeURIComponent(slug)}`);
+}
+
+/** 站点单页：/pages/about.md */
+export function goPageEdit(file: string): void {
+	go(`/pages/${encodeURIComponent(file)}`);
 }
 
 export function replaceHash(path: string): void {

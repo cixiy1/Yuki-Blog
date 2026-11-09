@@ -8,6 +8,13 @@ import { computed } from "vue";
 const PATHS: Record<string, string[]> = {
 	overview: ["M3 10.6 12 3l9 7.6", "M5.6 9.4V21h12.8V9.4"],
 	posts: ["M4 20h4.2L19 9.2a2.9 2.9 0 0 0-4.1-4.1L4 15.8V20z"],
+	/** 站点单页：一张带折角的纸 */
+	page: [
+		"M6.2 3.5h7.4L18.2 8v12.5H6.2z",
+		"M13.6 3.5V8h4.6",
+		"M9 12.5h6.2",
+		"M9 16h4.2",
+	],
 	components: [
 		"M4 4h7v7H4z",
 		"M13 4h7v7h-7z",

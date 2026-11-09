@@ -1,4 +1,4 @@
-# 关于我 / About Me
+# 关于雪穗 / About Me
 
 <p align="center">
   <img src="/assets/images/avatar.jpg" alt="雪穗（Yuki）" width="140" style="border-radius:50%;" />

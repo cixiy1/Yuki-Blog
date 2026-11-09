@@ -32,6 +32,8 @@ const NAVBAR_DEFAULT_NAMES: Record<string, I18nKey> = {
 	哔哩哔哩: I18nKey.bilibili,
 	番组计划: I18nKey.bangumi,
 	打赏: I18nKey.sponsor,
+	// 站点导航里这一项叫「关于雪穗」；旧的「关于我」留着，避免老配置失配后不再翻译
+	关于雪穗: I18nKey.about,
 	关于我: I18nKey.about,
 };
 

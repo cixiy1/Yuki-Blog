@@ -19,6 +19,7 @@ import {
 } from "../lib/repo-posts";
 import { notifyReviewers, notifyWithdrawn } from "../lib/review-notify";
 import { readSecret } from "../lib/site-config";
+import { listSpecPages, readSpecPage, saveSpecPage } from "../lib/spec-pages";
 import { isValidSlug, normalizeTags } from "../lib/validate";
 import { requireAuth } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
@@ -1387,3 +1388,108 @@ me.post("/posts/:id/publish", requireAuth, sameOriginGuard, async (c) => {
 		building: true,
 	});
 });
+
+/* ---------- 站点单页：src/content/spec 下的关于我、友链、留言板 ---------- */
+
+const MAX_PAGE_BODY = 200_000;
+
+const SPEC_FORBIDDEN = {
+	error: "forbidden",
+	message: "只有站主能编辑站点页面",
+};
+
+me.get("/spec-pages", requireAuth, async (c) => {
+	if (!isOwner(c)) return c.json(SPEC_FORBIDDEN, 403);
+
+	const token = await repoToken(c);
+	if (!token) return c.json(TOKEN_MISSING, 412);
+
+	const result = await listSpecPages(token);
+	if (!result.ok) {
+		return c.json(
+			{ error: "repo_read_failed", message: result.message },
+			result.status === 400 ? 400 : 502,
+		);
+	}
+	return c.json({ pages: result.value });
+});
+
+me.get("/spec-page", requireAuth, async (c) => {
+	if (!isOwner(c)) return c.json(SPEC_FORBIDDEN, 403);
+
+	const file = c.req.query("file") ?? "";
+	if (!file)
+		return c.json({ error: "bad_request", message: "缺少文件名" }, 400);
+
+	const token = await repoToken(c);
+	if (!token) return c.json(TOKEN_MISSING, 412);
+
+	const result = await readSpecPage(file, token);
+	if (!result.ok) {
+		return c.json(
+			{ error: "repo_read_failed", message: result.message },
+			result.status === 400 ? 400 : 502,
+		);
+	}
+	return c.json({ page: result.value });
+});
+
+me.put(
+	"/spec-page",
+	requireAuth,
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		if (!isOwner(c)) return c.json(SPEC_FORBIDDEN, 403);
+
+		const payload = (await c.req.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		const file = readField(payload, "file");
+		if (!file)
+			return c.json({ error: "bad_request", message: "缺少文件名" }, 400);
+
+		const body = typeof payload.body === "string" ? payload.body : "";
+		if (!body.trim()) {
+			return c.json({ error: "bad_request", message: "正文不能为空" }, 400);
+		}
+		if (body.length > MAX_PAGE_BODY) {
+			return c.json(
+				{ error: "body_too_long", message: "正文太长了，精简一下再存" },
+				413,
+			);
+		}
+		const title = readField(payload, "title").slice(0, 120);
+		const description = readField(payload, "description").slice(0, 300);
+
+		const token = await repoToken(c);
+		if (!token) return c.json(TOKEN_MISSING, 412);
+
+		const result = await saveSpecPage({
+			file,
+			title,
+			description,
+			body,
+			token,
+		});
+		if (!result.ok) {
+			return c.json(
+				{
+					error: result.status === 409 ? "repo_conflict" : "repo_write_failed",
+					message: result.message,
+				},
+				result.status === 409 ? 409 : 502,
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: c.get("user")?.uid ?? null,
+			action: "page.update",
+			target: file,
+			detail: { path: `src/content/spec/${file}`, sha: result.value.sha },
+		});
+
+		return c.json({ ok: true, sha: result.value.sha, building: true });
+	},
+);

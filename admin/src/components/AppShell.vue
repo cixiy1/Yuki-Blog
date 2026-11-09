@@ -16,6 +16,8 @@ import MediaLibrary from "../views/MediaLibrary.vue";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
 import Overview from "../views/OverviewPage.vue";
+import PageEdit from "../views/PageEdit.vue";
+import PagesAdmin from "../views/PagesAdmin.vue";
 import PostEdit from "../views/PostEdit.vue";
 import ReviewDetail from "../views/ReviewDetail.vue";
 import ReviewQueue from "../views/ReviewQueue.vue";
@@ -28,6 +30,8 @@ const VIEWS: Record<RouteName, unknown> = {
 	posts: MyPosts,
 	"all-posts": AllPosts,
 	"post-edit": PostEdit,
+	pages: PagesAdmin,
+	"page-edit": PageEdit,
 	components: MyComponents,
 	media: MediaLibrary,
 	review: ReviewQueue,
@@ -73,6 +77,7 @@ const navGroups = computed<NavGroup[]>(() => {
 						]
 					: []),
 				{ key: "posts", label: "我的文章", icon: "posts", path: "/posts" },
+				{ key: "pages", label: "页面", icon: "page", path: "/pages" },
 				{ key: "media", label: "媒体库", icon: "image", path: "/media" },
 				{
 					key: "components",
@@ -121,6 +126,8 @@ const activeKey = computed(() => {
 		// 以前一律归到「全站文章」，从「我的文章」点编辑时高亮会跳走。
 		return route.value.repoSlug ? editOrigin.value : "posts";
 	}
+	// 单页编辑与「页面」列表共用一段前缀，高亮跟着列表走
+	if (route.value.name === "page-edit") return "pages";
 	return route.value.name;
 });
 
