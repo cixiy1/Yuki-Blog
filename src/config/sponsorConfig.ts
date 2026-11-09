@@ -20,6 +20,10 @@ export const sponsorConfig: SponsorConfig = {
 	],
 	sponsors: [
 		{
+			name: "Crescent.ice",
+			avatar: "/assets/images/sponsor/crescent-ice.jpg",
+		},
+		{
 			name: "苏志锦（校友）",
 			avatar: "/assets/images/sponsor/suzhijin.jpg",
 		},
