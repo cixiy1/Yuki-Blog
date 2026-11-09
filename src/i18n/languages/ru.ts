@@ -541,4 +541,12 @@ export const ru: Translation = {
 	[Key.exitImmersiveReading]: "Выйти из режима чтения",
 	[Key.tocExpand]: "Развернуть оглавление",
 	[Key.tocCollapse]: "Свернуть оглавление",
+
+	// QR-код страницы
+	[Key.qrCode]: "QR-код",
+	[Key.qrCodeHint]: "Отсканируйте камерой телефона, чтобы открыть страницу",
+	[Key.qrCodeFailed]:
+		"Не удалось создать QR-код. Обновите страницу и попробуйте снова",
+	[Key.saveQrCode]: "Сохранить QR-код",
+	[Key.close]: "Закрыть",
 };

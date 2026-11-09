@@ -1,5 +1,6 @@
 ---
 import type { MarkdownHeading } from "astro";
+import PageQrCode from "@/components/misc/PageQrCode.svelte";
 import { siteConfig } from "@/config";
 import BackToComment from "./BackToComment.astro";
 import BackToHome from "./BackToHome.astro";
@@ -11,9 +12,11 @@ import ImmersiveTOC from "./ImmersiveTOC.astro";
 interface Props {
 	headings?: MarkdownHeading[];
 	encrypted?: boolean;
+	/** 是否渲染页面二维码按钮（纯功能页关掉） */
+	showQrCode?: boolean;
 }
 
-const { headings, encrypted } = Astro.props;
+const { headings, encrypted, showQrCode = true } = Astro.props;
 const immersiveReadingEnabled =
 	siteConfig.post.immersiveReading?.enable !== false;
 ---
@@ -26,6 +29,7 @@ const immersiveReadingEnabled =
       <ImmersiveTOC headings={headings ?? []} encrypted={encrypted} />
     </>
   )}
+  {showQrCode && <PageQrCode client:idle />}
   <BackToComment />
   <BackToHome />
   <BackToTop />

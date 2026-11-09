@@ -70,6 +70,19 @@ const {
 
 const isHomePageCheck = isHomePage(Astro.url.pathname);
 const isPostPage = !!postSlug;
+
+// 纯功能页不提供页面二维码：扫码打开登录/搜索/404 没意义
+const QR_CODE_EXCLUDED_PATHS = new Set([
+	"/404",
+	"/login",
+	"/register",
+	"/forgot-password",
+	"/reset-password",
+	"/verify",
+	"/search",
+]);
+const normalizedPath = Astro.url.pathname.replace(/\/+$/, "") || "/";
+const showQrCode = !QR_CODE_EXCLUDED_PATHS.has(normalizedPath);
 const shouldRenderCategoryBar = !!siteConfig.categoryBar;
 const navbarWidthFull = siteConfig.navbar.widthFull ?? false;
 
@@ -172,7 +185,7 @@ const {
     </div>
 </div>
 
-<FloatingControls headings={headings} encrypted={encrypted} />
+<FloatingControls headings={headings} encrypted={encrypted} showQrCode={showQrCode} />
 
 <!-- 移动端导航抽屉：渲染为 <body> 直系子元素，脱离导航栏的 transform 包含块才能铺满视口 -->
 <NavMenuPanel links={resolveNavMenuLinks()} />

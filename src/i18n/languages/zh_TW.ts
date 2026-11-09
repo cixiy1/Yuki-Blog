@@ -529,4 +529,11 @@ export const zh_TW: Translation = {
 	[Key.exitImmersiveReading]: "退出沉浸閱讀",
 	[Key.tocExpand]: "展開目錄",
 	[Key.tocCollapse]: "摺疊目錄",
+
+	// 頁面二維碼
+	[Key.qrCode]: "二維碼",
+	[Key.qrCodeHint]: "用手機相機或掃碼工具開啟本頁",
+	[Key.qrCodeFailed]: "二維碼產生失敗，請重新整理後再試",
+	[Key.saveQrCode]: "儲存二維碼",
+	[Key.close]: "關閉",
 };

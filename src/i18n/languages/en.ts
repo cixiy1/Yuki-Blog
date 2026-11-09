@@ -540,4 +540,11 @@ export const en: Translation = {
 	[Key.exitImmersiveReading]: "Exit Immersive Reading",
 	[Key.tocExpand]: "Expand directory",
 	[Key.tocCollapse]: "Collapse directory",
+
+	// Page QR code
+	[Key.qrCode]: "QR Code",
+	[Key.qrCodeHint]: "Scan with your phone camera to open this page",
+	[Key.qrCodeFailed]: "Failed to generate the QR code. Refresh and try again.",
+	[Key.saveQrCode]: "Save QR Code",
+	[Key.close]: "Close",
 };

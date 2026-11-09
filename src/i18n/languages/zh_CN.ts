@@ -527,4 +527,11 @@ export const zh_CN: Translation = {
 	[Key.exitImmersiveReading]: "退出沉浸阅读",
 	[Key.tocExpand]: "展开目录",
 	[Key.tocCollapse]: "折叠目录",
+
+	// 页面二维码
+	[Key.qrCode]: "二维码",
+	[Key.qrCodeHint]: "用手机相机或扫码工具打开本页",
+	[Key.qrCodeFailed]: "二维码生成失败，请刷新后重试",
+	[Key.saveQrCode]: "保存二维码",
+	[Key.close]: "关闭",
 };

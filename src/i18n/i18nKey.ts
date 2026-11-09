@@ -521,6 +521,13 @@ enum I18nKey {
 	exitImmersiveReading = "exitImmersiveReading",
 	tocExpand = "tocExpand",
 	tocCollapse = "tocCollapse",
+
+	// 页面二维码
+	qrCode = "qrCode",
+	qrCodeHint = "qrCodeHint",
+	qrCodeFailed = "qrCodeFailed",
+	saveQrCode = "saveQrCode",
+	close = "close",
 }
 
 export default I18nKey;

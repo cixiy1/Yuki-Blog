@@ -537,4 +537,11 @@ export const ja: Translation = {
 	[Key.exitImmersiveReading]: "没入型リーディングを終了する",
 	[Key.tocExpand]: "目錄を開く",
 	[Key.tocCollapse]: "目錄をたたむ",
+
+	// ページのQRコード
+	[Key.qrCode]: "QRコード",
+	[Key.qrCodeHint]: "スマートフォンのカメラで読み取ってこのページを開く",
+	[Key.qrCodeFailed]: "QRコードの生成に失敗しました。再読み込みしてください",
+	[Key.saveQrCode]: "QRコードを保存",
+	[Key.close]: "閉じる",
 };
