@@ -292,7 +292,7 @@ export const SETTING_GROUPS: SettingGroup[] = [
 					switchField("pages.bangumi", "番组计划"),
 					switchField("pages.vndb", "VNDB"),
 					switchField("pages.mal", "MyAnimeList"),
-					switchField("pages.sponsor", "打赏"),
+					switchField("pages.sponsor", "打赏", "内容在「打赏页」里改"),
 				],
 			},
 			{
@@ -314,7 +314,7 @@ export const SETTING_GROUPS: SettingGroup[] = [
 	{
 		key: "sponsor",
 		label: "打赏页",
-		desc: "打赏方式的收款码、打赏者名单与头像。都要发布，页面等一次构建才会变。",
+		desc: "收款码、打赏者名单与头像都在这里改；页面本身开不开在「页面 → 栏目开关」。都要发布，等一次构建才生效。",
 		sections: [
 			{
 				title: "页面文案",
