@@ -10,7 +10,10 @@ tags:
 category: 项目
 slug: go2-controller-structure
 comment: true
-provenance: co-written
+provenance:
+  kind: co-written
+  model: DeepSeek-V4.1-Flash
+image: /assets/uploads/2026/11/download-3c168684.png
 ---
 
 四足机器人能做什么，取决于你能碰到哪一层。
