@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>雪穗（Yuki）</b><br/>
-  某高校工科 2026 级大一学生 · 全栈开发 / LLM Agent / 移动端跨平台 / AI 训练工程<br/>
+  某高校软件工程专业 2026 级大一学生 · 全栈开发 / LLM Agent / 移动端跨平台 / AI 训练工程<br/>
   技术博客 <a href="https://yiyu14.top">yiyu14.top</a>　·　GitHub <a href="https://github.com/cixiy1">cixiy1</a>
 </p>
 
@@ -21,7 +21,7 @@
 | 项 | 内容 |
 |---|---|
 | 姓名 | 雪穗（Yuki） |
-| 身份 | 某高校工科 大一学生（2026 级） |
+| 身份 | 某高校软件工程专业 大一学生（2026 级） |
 | 技术博客 | [yiyu14.top](https://yiyu14.top) |
 | GitHub | [cixiy1](https://github.com/cixiy1) |
 | 主要方向 | 全栈开发 · LLM Agent · 移动端跨平台 · AI 训练工程 |
@@ -33,7 +33,7 @@
 | Python | ★★★★★ | asyncio、LLM SDK、SQLite | Agent 内核、校园系统服务端主力 |
 | TypeScript / Astro | ★★★★★ | Astro 7、Svelte、Tailwind | 个人博客全站二次开发 |
 | Dart / Flutter | ★★★★★ | Flutter 3、Material 3、go_router | 跨五端班级应用，自研沉浸式标题栏 |
-| 前端框架 | ★★★★☆ | Vue 3、Nuxt 4（在研） | EduSync 前台、fsp 在研 |
+| 前端框架 | ★★★★☆ | Vue 3、Nuxt 4 | EduSync 前台、fsp 结赛作品 |
 | LLM / Agent | ★★★★☆ | OpenAI / Anthropic、自建 kernel | 事件/记忆/上下文/策略/技能内核 |
 | CI/CD 与云 | ★★★★☆ | Cloudflare Pages、GitHub Actions | 推送即上线、APK 自动发版 |
 | 移动端工程 | ★★★★☆ | 应用内更新、离线优先同步 | 三源回退 + 本地兜底 |
@@ -57,8 +57,9 @@
 - Vue 3 + Python，设备实时状态检测与上报、服务端远程介入终端、教育资源多端共享。
 - 2025 粤港澳学生信息科技创新大赛二等奖作品。
 
-### 5. fsp · AI 自主学习系统 · 竞赛 / 在研
-- Nuxt 4 + @nuxt/ui + @nuxt/content + better-sqlite3，计划接入华为云 MaaS。
+### 5. fsp · AI 自主学习系统 · 结赛作品
+- 华为开发者竞赛「AI 自主学习系统设计大赛」参赛作品，已结赛。
+- Nuxt 4 + @nuxt/ui + SQLite，大模型走华为云 MaaS：一句话说出想学的方向，访谈后生成技能关卡与学习资料。
 
 ### 6. ChestSmartDiagnosis · 多卡训练调度 · 在研
 - 多卡训练调度服务及网页控制台，覆盖终端子命令，支持远程显卡、日志与训练管理。
@@ -98,7 +99,7 @@
 ## 七、教育经历
 
 - 高中：广东省某中学（2025 年毕业），期间连续在省级、市级信息科技赛事获奖。
-- 大学：某高校工科 大一（2026 级，在读）。
+- 大学：某高校软件工程专业 大一（2026 级，在读）。
 
 ---
 
