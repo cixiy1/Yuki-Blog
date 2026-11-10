@@ -545,6 +545,7 @@ export const en: Translation = {
 	[Key.qrCode]: "QR Code",
 	[Key.qrCodeHint]: "Scan with your phone camera to open this page",
 	[Key.qrCodeFailed]: "Failed to generate the QR code. Refresh and try again.",
+	[Key.scanToOpenPage]: "Scan to open",
 	[Key.saveQrCode]: "Save QR Code",
 	[Key.close]: "Close",
 };

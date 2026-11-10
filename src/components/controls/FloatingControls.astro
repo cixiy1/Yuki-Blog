@@ -1,7 +1,7 @@
 ---
 import type { MarkdownHeading } from "astro";
 import PageQrCode from "@/components/misc/PageQrCode.svelte";
-import { siteConfig } from "@/config";
+import { profileConfig, siteConfig } from "@/config";
 import BackToComment from "./BackToComment.astro";
 import BackToHome from "./BackToHome.astro";
 import BackToTop from "./BackToTop.astro";
@@ -29,7 +29,14 @@ const immersiveReadingEnabled =
       <ImmersiveTOC headings={headings ?? []} encrypted={encrypted} />
     </>
   )}
-  {showQrCode && <PageQrCode client:idle />}
+  {showQrCode && (
+    <PageQrCode
+      client:idle
+      siteTitle={siteConfig.title}
+      author={profileConfig.name}
+      avatarSelector={profileConfig.avatar ? ".profile-avatar-image img" : null}
+    />
+  )}
   <BackToComment />
   <BackToHome />
   <BackToTop />

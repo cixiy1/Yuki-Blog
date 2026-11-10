@@ -542,6 +542,7 @@ export const ja: Translation = {
 	[Key.qrCode]: "QRコード",
 	[Key.qrCodeHint]: "スマートフォンのカメラで読み取ってこのページを開く",
 	[Key.qrCodeFailed]: "QRコードの生成に失敗しました。再読み込みしてください",
+	[Key.scanToOpenPage]: "スキャンで開く",
 	[Key.saveQrCode]: "QRコードを保存",
 	[Key.close]: "閉じる",
 };

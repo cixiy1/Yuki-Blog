@@ -543,6 +543,7 @@ export const ko: Translation = {
 	[Key.qrCodeHint]: "휴대폰 카메라로 스캔하여 이 페이지 열기",
 	[Key.qrCodeFailed]:
 		"QR 코드 생성에 실패했습니다. 새로고침 후 다시 시도하세요",
+	[Key.scanToOpenPage]: "스캔하여 열기",
 	[Key.saveQrCode]: "QR 코드 저장",
 	[Key.close]: "닫기",
 };

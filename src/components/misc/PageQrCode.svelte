@@ -3,43 +3,100 @@ import { onMount } from "svelte";
 import Icon from "@/components/common/Icon.svelte";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
-import { toQrDataUrl } from "@/utils/qr-code";
+import {
+	renderShareCard,
+	resolveElementImage,
+	resolveSiteLogoSource,
+} from "@/utils/share-card";
 
 interface Props {
 	/** 二维码指向的地址；缺省时取当前页面地址（不含查询串与 hash） */
 	url?: string;
-	/** 弹窗标题；缺省时取当前页面的 document.title */
+	/** 卡片标题；缺省时取当前页面的 document.title，并去掉站点名后缀 */
 	title?: string;
 	/** 内联样式（页面标题栏用）；默认渲染为右下角浮动按钮 */
 	inline?: boolean;
+	/** 卡片顶部的站点名 */
+	siteTitle?: string;
+	/** 卡片底部的作者名 */
+	author?: string;
+	avatar?: string | null;
+	avatarSelector?: string | null;
 }
 
-let { url = "", title = "", inline = false }: Props = $props();
+let {
+	url = "",
+	title = "",
+	inline = false,
+	siteTitle = "",
+	author = "",
+	avatar = null,
+	avatarSelector = null,
+}: Props = $props();
 
 let open = $state(false);
-let dataUrl = $state<string | null>(null);
+let cardImage = $state<string | null>(null);
 let target = $state("");
-let heading = $state("");
 let generating = $state(false);
 let failed = $state(false);
 let copied = $state(false);
-// 为避免重复生成，记住当前 dataUrl 对应的地址；站点切换页面后地址会变
+let themeColor = $state("#558e88");
+// 为避免重复生成，记住当前卡片对应的地址；站内切页后地址会变
 let cachedFor = "";
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function resolveTarget(): string {
 	if (url) return url;
 	return `${window.location.origin}${window.location.pathname}`;
 }
 
+/** 页面标题：从 document.title 里剥掉「- 站点名」，卡片上只留页面自己的名字 */
+function resolveHeading(): string {
+	const raw = title || document.title;
+	if (!siteTitle) return raw;
+	const trimmed = raw
+		.replace(new RegExp(`\\s*[-|–—]\\s*${escapeRegExp(siteTitle)}$`), "")
+		.trim();
+	return trimmed || raw;
+}
+
+function resolveDescription(heading: string): string {
+	const meta = document
+		.querySelector('meta[name="description"]')
+		?.getAttribute("content");
+	const text = (meta ?? "").trim();
+	if (!text) return "";
+	// 单页的描述常常就是页面名，卡片上会跟标题重复，直接丢掉
+	if (text === heading) return "";
+	if (text.startsWith(heading) && text.length <= heading.length + 10) return "";
+	return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+}
+
 async function generate(codeUrl: string) {
 	generating = true;
 	failed = false;
 	try {
-		// 与文章分享海报共用同一套二维码外观，见 @/utils/qr-code
-		dataUrl = await toQrDataUrl(codeUrl, 720);
+		const heading = resolveHeading();
+		cardImage = await renderShareCard({
+			title: heading,
+			meta: window.location.host,
+			description: resolveDescription(heading),
+			author,
+			authorLabel: i18n(I18nKey.author),
+			siteTitle,
+			themeColor,
+			qrText: codeUrl,
+			qrCaption: i18n(I18nKey.scanToOpenPage),
+			logo: resolveSiteLogoSource(44),
+			avatar: resolveElementImage(avatar, avatarSelector),
+			cover: null,
+		});
 	} catch (error) {
-		console.error("Failed to generate QR code:", error);
+		console.error("Failed to generate share card:", error);
 		failed = true;
 	} finally {
 		generating = false;
@@ -48,10 +105,9 @@ async function generate(codeUrl: string) {
 
 async function show() {
 	target = resolveTarget();
-	heading = title || document.title;
 	open = true;
 	if (cachedFor !== target) {
-		dataUrl = null;
+		cardImage = null;
 		cachedFor = target;
 		await generate(target);
 	}
@@ -75,10 +131,11 @@ async function copyLink() {
 }
 
 function download() {
-	if (!dataUrl) return;
+	if (!cardImage) return;
+	const name = resolveHeading() || "page";
 	const a = document.createElement("a");
-	a.href = dataUrl;
-	a.download = `${(heading || "page").replace(/[\\/:*?"<>|]+/g, "-")}.png`;
+	a.href = cardImage;
+	a.download = `${name.replace(/[\\/:*?"<>|]+/g, "-")}.png`;
 	a.rel = "noopener";
 	a.click();
 }
@@ -107,6 +164,15 @@ $effect(() => {
 });
 
 onMount(() => {
+	// 主题色用于卡片上的色带与装饰圆
+	const probe = document.createElement("div");
+	probe.style.color = "var(--primary)";
+	probe.style.display = "none";
+	document.body.appendChild(probe);
+	const computed = getComputedStyle(probe).color;
+	document.body.removeChild(probe);
+	if (computed) themeColor = computed;
+
 	// 站内切页后地址变了，残留的弹窗要关掉，下次点击重新生成
 	const onNavigate = () => {
 		open = false;
@@ -152,14 +218,9 @@ onMount(() => {
 				<Icon icon="material-symbols:close-rounded" />
 			</button>
 
-			<div class="qr-head">
-				<p class="qr-title">{heading}</p>
-				<p class="qr-hint">{i18n(I18nKey.qrCodeHint)}</p>
-			</div>
-
-			<div class="qr-frame" class:is-loading={generating || failed}>
-				{#if dataUrl}
-					<img src={dataUrl} alt={heading} width="720" height="720" />
+			<div class="qr-card">
+				{#if cardImage}
+					<img src={cardImage} alt={resolveHeading()} width="850" />
 				{:else if failed}
 					<p class="qr-error">{i18n(I18nKey.qrCodeFailed)}</p>
 				{:else}
@@ -184,10 +245,10 @@ onMount(() => {
 					type="button"
 					class="qr-btn qr-btn-primary"
 					onclick={download}
-					disabled={!dataUrl}
+					disabled={!cardImage}
 				>
 					<Icon icon="material-symbols:download" />
-					<span>{i18n(I18nKey.saveQrCode)}</span>
+					<span>{i18n(I18nKey.savePoster)}</span>
 				</button>
 			</div>
 		</div>
@@ -247,7 +308,9 @@ onMount(() => {
 
 	@media (max-width: 768px) {
 		.qr-trigger:not(.qr-inline) {
-			display: none;
+			width: 2.6rem;
+			height: 2.6rem;
+			font-size: 1.4rem;
 		}
 
 		.qr-inline {
@@ -273,80 +336,53 @@ onMount(() => {
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 0.9rem;
-		width: min(92vw, 20rem);
-		max-height: 90vh;
-		padding: 1.1rem 1.1rem 1rem;
+		gap: 0.7rem;
+		width: min(94vw, 26rem);
+		max-height: 92vh;
+		padding: 0.85rem;
 		border-radius: 1.25rem;
 		background-color: var(--card-bg);
 		box-shadow: 0 20px 50px rgb(0 0 0 / 25%);
+		overflow-y: auto;
 		animation: qr-pop 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
 	}
 
 	.qr-close {
 		position: absolute;
-		top: 0.55rem;
-		right: 0.55rem;
+		top: 0.35rem;
+		right: 0.35rem;
+		z-index: 1;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		width: 1.9rem;
 		height: 1.9rem;
 		border-radius: 999px;
-		color: var(--content-meta);
-		font-size: 1.15rem;
+		background-color: rgb(0 0 0 / 45%);
+		color: #fff;
+		font-size: 1.05rem;
 		cursor: pointer;
 		transition: background-color 0.2s ease;
 	}
 
 	.qr-close:hover {
-		background-color: var(--btn-regular-bg-hover);
-		color: var(--primary);
+		background-color: rgb(0 0 0 / 62%);
 	}
 
-	.qr-head {
-		padding-right: 1.9rem;
-	}
-
-	.qr-title {
-		margin: 0;
-		overflow: hidden;
-		color: rgb(0 0 0 / 88%);
-		font-size: 0.95rem;
-		font-weight: 600;
-		line-height: 1.35;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	:global(.dark) .qr-title {
-		color: rgb(255 255 255 / 92%);
-	}
-
-	.qr-hint {
-		margin: 0.25rem 0 0;
-		color: var(--content-meta);
-		font-size: 0.75rem;
-		line-height: 1.5;
-	}
-
-	.qr-frame {
+	.qr-card {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		aspect-ratio: 1;
-		/* 二维码固定白底黑码，暗色主题下也不跟随，保证可扫 */
+		min-height: 12rem;
 		border-radius: 0.85rem;
-		background-color: #fff;
-		box-shadow: inset 0 0 0 1px rgb(0 0 0 / 6%);
+		background-color: #f4f6f7;
 		overflow: hidden;
 	}
 
-	.qr-frame img {
+	.qr-card img {
 		display: block;
 		width: 100%;
-		height: 100%;
-		object-fit: contain;
+		height: auto;
 	}
 
 	.qr-spinner {

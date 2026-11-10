@@ -526,6 +526,7 @@ enum I18nKey {
 	qrCode = "qrCode",
 	qrCodeHint = "qrCodeHint",
 	qrCodeFailed = "qrCodeFailed",
+	scanToOpenPage = "scanToOpenPage",
 	saveQrCode = "saveQrCode",
 	close = "close",
 }

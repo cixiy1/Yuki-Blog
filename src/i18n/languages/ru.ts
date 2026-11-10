@@ -547,6 +547,7 @@ export const ru: Translation = {
 	[Key.qrCodeHint]: "Отсканируйте камерой телефона, чтобы открыть страницу",
 	[Key.qrCodeFailed]:
 		"Не удалось создать QR-код. Обновите страницу и попробуйте снова",
+	[Key.scanToOpenPage]: "Сканировать",
 	[Key.saveQrCode]: "Сохранить QR-код",
 	[Key.close]: "Закрыть",
 };
