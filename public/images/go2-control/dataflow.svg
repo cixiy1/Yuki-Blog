@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 650" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif">
-  <rect width="980" height="650" fill="#fcfcfb"/>
+  <rect width="980" height="650" rx="10" fill="#fcfcfb"/>
   <text x="28" y="30" font-size="17" font-weight="600" fill="#1a1a1a">一次 forward(2.0) 到底走了哪条路</text>
   <text x="28" y="51" font-size="12" fill="#6b6b66">调用方只看到「走两米然后停」，中间隔着一条 200 Hz 回路和两个 DDS 话题</text>
 

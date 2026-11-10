@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 430" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif">
-  <rect width="860" height="430" fill="#fcfcfb"/>
+  <rect width="860" height="430" rx="10" fill="#fcfcfb"/>
   <text x="40" y="36" font-size="17" font-weight="600" fill="#1a1a1a">一条腿的解析逆解，分两步算完</text>
   <text x="40" y="58" font-size="12.5" fill="#6b6b66">没有数值迭代，500 Hz 里跑得起 —— 每个控制周期 12 条腿各算一次</text>
 

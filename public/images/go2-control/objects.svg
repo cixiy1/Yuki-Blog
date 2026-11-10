@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 520" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif">
-  <rect width="880" height="520" fill="#fcfcfb"/>
+  <rect width="880" height="520" rx="10" fill="#fcfcfb"/>
   <text x="30" y="34" font-size="17" font-weight="600" fill="#1a1a1a">三个对象怎么连起来，以及依赖朝哪边</text>
   <text x="30" y="55" font-size="12" fill="#6b6b66">持有是双向的，依赖是单向的 —— 这两件事分开看，架构才立得住</text>
 

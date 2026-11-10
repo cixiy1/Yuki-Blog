@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 490" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif">
-  <rect width="860" height="490" fill="#fcfcfb"/>
+  <rect width="860" height="490" rx="10" fill="#fcfcfb"/>
   <text x="40" y="36" font-size="17" font-weight="600" fill="#1a1a1a">谁跟谁同相，决定它跑起来像什么</text>
   <text x="40" y="58" font-size="12.5" fill="#6b6b66">深色 = 支撑相（脚在地上），浅色 = 摆动相（脚在跨步）</text>
 
