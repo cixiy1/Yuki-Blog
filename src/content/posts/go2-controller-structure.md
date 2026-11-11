@@ -10,6 +10,8 @@ tags:
 category: 项目
 slug: go2-controller-structure
 comment: true
+series: 具身智能
+seriesOrder: 2
 provenance:
   kind: co-written
   model: DeepSeek-V4.1-Flash

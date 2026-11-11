@@ -8,6 +8,8 @@ tags:
   - MuJoCo
   - Go2
 category: 机器人
+series: 具身智能
+seriesOrder: 3
 provenance: handwritten
 ---
 

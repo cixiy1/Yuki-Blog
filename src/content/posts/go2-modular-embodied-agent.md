@@ -9,6 +9,8 @@ tags:
   - 架构设计
 category: 项目
 slug: go2-modular-embodied-agent
+series: 具身智能
+seriesOrder: 1
 comment: true
 ---
 
