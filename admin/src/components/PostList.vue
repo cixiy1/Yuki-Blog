@@ -236,6 +236,18 @@ function statusShown(post: PostSummary): boolean {
 	return post.status !== "published" || mixedStatus.value;
 }
 
+/**
+ * 受限文章的标记。
+ *
+ * 这个不是「例外状态」，反而是最需要被看见的一条：作者自己在列表里看不出
+ * 哪篇是限定的，只能点进去翻访问控制，很容易误以为站点上人人都能读到。
+ */
+function limitedLabel(post: PostSummary): string {
+	if (post.visibility === "users") return "仅指定人";
+	if (post.visibility === "login") return "需登录";
+	return "";
+}
+
 const rows = computed<Row[]>(() =>
 	props.items.map((post) => {
 		const raw =
@@ -377,7 +389,11 @@ const rows = computed<Row[]>(() =>
 					</span>
 
 					<div
-						v-if="statusShown(row.post) || row.post.source_link"
+						v-if="
+							statusShown(row.post) ||
+							row.post.source_link ||
+							limitedLabel(row.post)
+						"
 						class="badges"
 					>
 						<span
@@ -386,6 +402,9 @@ const rows = computed<Row[]>(() =>
 							:data-status="row.post.status"
 						>
 							{{ STATUS_LABEL[row.post.status] ?? row.post.status }}
+						</span>
+						<span v-if="limitedLabel(row.post)" class="badge limited">
+							{{ limitedLabel(row.post) }}
 						</span>
 						<span v-if="row.post.source_link" class="badge repost">转载</span>
 					</div>
@@ -915,6 +934,13 @@ const rows = computed<Row[]>(() =>
 		var(--card-bg)
 	);
 	color: var(--admonitions-color-caution);
+}
+
+/* 受限标记用主题色描边而不是实心：它是要持续提醒的状态，不是要抢眼的告警 */
+.badge.limited {
+	border: 1px solid color-mix(in oklab, var(--primary) 42%, transparent);
+	background: color-mix(in oklab, var(--primary) 12%, var(--card-bg));
+	color: color-mix(in oklab, var(--primary) 70%, var(--fg-90));
 }
 
 .badge.repost {

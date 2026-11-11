@@ -1,4 +1,6 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { setMaxListeners } from "node:events";
+import path from "node:path";
 import cloudflare from "@astrojs/cloudflare";
 import { unified } from "@astrojs/markdown-remark";
 import mdx from "@astrojs/mdx";
@@ -38,6 +40,47 @@ import {
 } from "./src/config";
 import I18nKey from "./src/i18n/i18nKey";
 import { i18n } from "./src/i18n/translation";
+
+/**
+ * sitemap 的 filter 是同步函数，拿不到 astro:content，只能直接扫一遍 frontmatter。
+ *
+ * 只做一件事：把 `visibility` 不是 public 的文章从 sitemap 里摘掉。带着它们的
+ * URL 出去，等于公开承认这些文章存在——页面那头已经统一回 404 了，这里不能漏。
+ *
+ * 规则要跟 glob loader 保持一致：frontmatter 写了 `slug` 就用它当 id，
+ * 否则用相对路径去掉扩展名。
+ */
+function collectProtectedPostSlugs() {
+	const postsDir = new URL("./src/content/posts/", import.meta.url);
+	const slugs = new Set();
+
+	const walk = (dir, prefix = "") => {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			if (entry.name.startsWith("_")) continue;
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				walk(full, `${prefix}${entry.name}/`);
+				continue;
+			}
+			if (!/\.mdx?$/.test(entry.name)) continue;
+
+			const text = readFileSync(full, "utf8");
+			const block = text.startsWith("---")
+				? text.slice(3, text.indexOf("---", 3))
+				: "";
+			const visibility = block.match(/^visibility:\s*["']?([a-z]+)/m)?.[1];
+			if (!visibility || visibility === "public") continue;
+
+			const custom = block.match(/^slug:\s*["']?([^"'\n]+)/m)?.[1];
+			slugs.add((custom ?? `${prefix}${entry.name}`).replace(/\.mdx?$/, "").trim());
+		}
+	};
+
+	walk(postsDir.pathname);
+	return slugs;
+}
+
+const protectedPostSlugs = collectProtectedPostSlugs();
 import { GithubCardComponent } from "./src/plugins/rehype-component-github-card.mjs";
 import { rehypeDiagramPanZoom } from "./src/plugins/rehype-diagram-panzoom.mjs";
 import rehypeEmailProtection from "./src/plugins/rehype-email-protection.mjs";
@@ -250,6 +293,11 @@ export default defineConfig({
 				];
 				if (authPaths.some((p) => pathname === `${p}/` || pathname === p)) {
 					return false;
+				}
+				// 受限文章的页面照常构建，但不该出现在 sitemap 里
+				if (pathname.startsWith("/posts/")) {
+					const slug = pathname.slice("/posts/".length).replace(/\/$/, "");
+					if (protectedPostSlugs.has(slug)) return false;
 				}
 				if (pathname === "/dynamic/" && !siteConfig.pages.dynamic) {
 					return false;

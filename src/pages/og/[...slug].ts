@@ -16,7 +16,11 @@ export const getStaticPaths: GetStaticPaths = async () => {
 	}
 
 	const allPosts = await getCollection("posts");
-	const publishedPosts = allPosts.filter((post) => !post.data.draft);
+	// 受限文章不生成 OG 图：这张图里印着标题，而 /og/*.png 是公开静态文件，
+	// 谁拿到地址都能看。页面本身有 Worker 把门，图没有。
+	const publishedPosts = allPosts.filter(
+		(post) => !post.data.draft && post.data.visibility === "public",
+	);
 
 	return publishedPosts.map((post) => {
 		// 将 id 转换为 slug（移除扩展名）以匹配路由参数

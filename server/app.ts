@@ -7,6 +7,7 @@ import { comments, commentsAdmin } from "./routes/comments";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
+import { pages } from "./routes/pages";
 import { seriesAdmin } from "./routes/series";
 import { siteConfig } from "./routes/site-config";
 import { uploads } from "./routes/uploads";
@@ -30,6 +31,8 @@ app.route("/api/admin", commentsAdmin);
 app.route("/api/admin", seriesAdmin);
 // 上传目录的兜底：构建没跑完时回源 GitHub raw（wrangler.jsonc 里 run_worker_first）
 app.route("/", uploads);
+// 文章页的访问控制：受限文章按会话判定，其余原样转发给静态资源
+app.route("/", pages);
 
 // API 未命中返回 JSON，不要落成 HTML 404。
 app.notFound((c) => {

@@ -1,37 +1,42 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { readSessionCookie, verifySession } from "../lib/session";
 import { findByUid, toSessionUser } from "../lib/users";
 import { type AppEnv, ROLE_LEVEL, type Role } from "../types";
 
 /**
- * 读 cookie → 验签 → 查库 → 挂到 c.var.user。
+ * 读 cookie → 验签 → 查库，返回当前用户或 null。
  *
  * 无状态 cookie 的好处是不用查会话表，但「改角色 / 封禁 / 踢下线」必须立刻生效，
  * 所以这里仍然查一次 users（按 uid 的唯一索引，代价很小）。
- * 结论：一次请求只查这一次，后面的 requireRole 直接用结果，不再二次查库。
  *
- * 票里的 session_epoch 与库里不一致时**当作未登录**（401），
- * 不返回 403——否则等于告诉别人「这张票曾经是真的」。
+ * 票里的 session_epoch 与库里不一致时**当作未登录**——否则等于告诉别人
+ * 「这张票曾经是真的」。
+ *
+ * 单独抽出来是因为文章页的访问控制要「先判断这篇是不是受限的，再决定要不要查库」：
+ * 公开文章占绝大多数，没理由为每一次阅读都打一次 D1。
  */
-export const loadSession: MiddlewareHandler<AppEnv> = async (c, next) => {
-	c.set("user", null);
-
+export async function resolveSessionUser(
+	c: Context<AppEnv>,
+): Promise<ReturnType<typeof toSessionUser> | null> {
 	const secret = c.env.SESSION_SECRET;
 	const raw = readSessionCookie(c);
-	if (secret && raw) {
-		const payload = await verifySession(
-			secret,
-			raw,
-			Math.floor(Date.now() / 1000),
-		);
-		if (payload) {
-			const row = await findByUid(c.env.DB, payload.u);
-			if (row && row.session_epoch === payload.e) {
-				c.set("user", toSessionUser(row));
-			}
-		}
-	}
+	if (!secret || !raw) return null;
 
+	const payload = await verifySession(
+		secret,
+		raw,
+		Math.floor(Date.now() / 1000),
+	);
+	if (!payload) return null;
+
+	const row = await findByUid(c.env.DB, payload.u);
+	if (!row || row.session_epoch !== payload.e) return null;
+	return toSessionUser(row);
+}
+
+/** 挂到 c.var.user 的中间件：API 一律走这条，一次请求只查一次库 */
+export const loadSession: MiddlewareHandler<AppEnv> = async (c, next) => {
+	c.set("user", await resolveSessionUser(c));
 	await next();
 };
 

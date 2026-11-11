@@ -29,6 +29,8 @@ export interface PostSummary {
 	updated_at: string;
 	/** 已通过审核的评论数；接口没给（老接口）时按 0 处理 */
 	comments?: number;
+	/** 可见范围：接口没给时按公开处理 */
+	visibility?: "public" | "login" | "users";
 }
 
 export interface PostDetail extends PostSummary {

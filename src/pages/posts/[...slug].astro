@@ -10,9 +10,9 @@ import { i18n } from "@i18n/translation";
 import MainGridLayout from "@layouts/MainGridLayout.astro";
 import "@/styles/banner-post.css";
 import {
+	getPostsForPaths,
 	getRelatedPosts,
 	getSeriesPosts,
-	getSortedPosts,
 } from "@utils/content-utils";
 import {
 	getCategoryUrl,
@@ -56,7 +56,8 @@ const showSponsorButton =
 const showPostActionCard = siteConfig.post.share || showSponsorButton;
 
 export async function getStaticPaths() {
-	const blogEntries = await getSortedPosts();
+	// 含非 public 的文章：页面照样构建，能不能看由 Worker 按会话判定
+	const blogEntries = await getPostsForPaths();
 	return blogEntries.map((entry) => {
 		// 将 id 转换为 slug（移除扩展名）以匹配路由参数
 		const slug = removeFileExtension(entry.id);
@@ -74,6 +75,15 @@ const { remarkPluginFrontmatter } = await render(entry);
 
 // 站内阅读量的计数 id（由 slug 哈希而来，见 src/utils/stats-utils.ts）
 const statsId = getStatsId(removeFileExtension(entry.id));
+
+/**
+ * 能不能进站内搜索索引。
+ *
+ * Pagefind 只处理带 `data-pagefind-body` 的页面，标了才收。受限文章把标题块的
+ * 这个标记去掉，整页就不再被收录——只在 `main` 上写 `data-pagefind-ignore` 不够：
+ * 标题印在 banner 里，不在 main 里面，光凭标题就能搜到这篇。
+ */
+const indexable = entry.data.visibility === "public";
 
 const bannerPostMeta = {
 	title: entry.data.title,
@@ -219,6 +229,7 @@ const seriesData = await getSeriesPosts(entry);
   ogImageAlt={entry.data.title}
   headings={headings}
   encrypted={!!entry.data.password}
+  pagefindIgnore={entry.data.visibility !== "public"}
   bannerPostMeta={bannerPostMeta}
 >
   <!-- KaTeX 按需加载 - 仅在文章页面 -->
@@ -236,8 +247,9 @@ const seriesData = await getSeriesPosts(entry);
   {entry.data.tags.map((tag) => (
     <meta slot="head" property="article:tag" content={tag.trim()} />
   ))}
-  {/* 加密/密码保护文章：内容不可被爬取，标注 noindex, noarchive */}
-  {entry.data.password && (
+  {/* 加密/密码保护文章：内容不可被爬取，标注 noindex, noarchive。
+      受限文章同理——HTML 照常产出给 Worker 回给有权限的人，但不该被任何爬虫收录 */}
+  {(entry.data.password || entry.data.visibility !== "public") && (
     <meta slot="head" name="robots" content="noindex, noarchive" />
   )}
 
@@ -315,7 +327,7 @@ const seriesData = await getSeriesPosts(entry);
             </div>
             <div class="absolute inset-x-0 bottom-0 px-6 md:px-9 pt-10 pb-3 bg-gradient-to-t from-black/80 via-black/45 to-transparent">
               <div
-                data-pagefind-body
+                data-pagefind-body={indexable ? "" : undefined}
                 data-pagefind-weight="10"
                 data-pagefind-meta="title"
                 class="mb-2 text-xl md:text-2xl font-bold leading-tight text-white"
@@ -395,7 +407,7 @@ const seriesData = await getSeriesPosts(entry);
         !usePostCoverOverlay && (
           <div class="relative onload-animation">
             <div
-              data-pagefind-body
+              data-pagefind-body={indexable ? "" : undefined}
               data-pagefind-weight="10"
               data-pagefind-meta="title"
               class="transition w-full block font-bold mb-3

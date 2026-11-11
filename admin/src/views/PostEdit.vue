@@ -16,6 +16,7 @@ import LoadingState from "../components/LoadingState.vue";
 import MediaPickerDialog from "../components/MediaPickerDialog.vue";
 import PageHeader from "../components/PageHeader.vue";
 import PagePreview from "../components/PagePreview.vue";
+import SegTabs from "../components/SegTabs.vue";
 import SeriesPickerDialog from "../components/SeriesPickerDialog.vue";
 import { ApiError } from "../lib/api";
 import { isAdmin } from "../lib/auth";
@@ -48,6 +49,7 @@ import {
 	withdrawPost,
 } from "../lib/posts";
 import { isDark } from "../lib/theme";
+import { type AdminUser, listUsers } from "../lib/users";
 import { go, route } from "../router";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -86,7 +88,8 @@ type Kind =
 	| "tags"
 	| "image"
 	| "series"
-	| "provenance";
+	| "provenance"
+	| "visibility";
 
 interface Def {
 	key: string;
@@ -215,8 +218,9 @@ const GROUPS: Group[] = [
 	},
 	{
 		title: "访问控制",
-		note: "设了密码，站点上的正文要输密码才能看",
+		note: "可见范围决定谁能打开这篇；密码是另一层，知道地址还要再输一次",
 		defs: [
+			{ key: "visibility", label: "可见范围", kind: "visibility" },
 			{ key: "password", label: "访问密码", kind: "password" },
 			{
 				key: "passwordHint",
@@ -238,6 +242,8 @@ const KNOWN = new Set([
 	...ALL_DEFS.map((def) => def.key),
 	"title",
 	"slug",
+	// 跟 visibility 一起写，不单独占一行
+	"visibleTo",
 	// 站内自动算出来的上下篇，改了也会被覆盖
 	"prevTitle",
 	"prevSlug",
@@ -272,6 +278,33 @@ const vals = reactive<Record<string, string | number>>({});
 /** 布尔字段（draft / pinned / comment） */
 const flags = reactive<Record<string, boolean>>({});
 const prov = reactive({ kind: "", model: "", agent: "", note: "" });
+/**
+ * 可见范围。`visibleTo` 单独放着而不是塞进 vals：它在 frontmatter 里是数组，
+ * 表单里却是「勾了哪些人」，中间没有可直接编辑的字符串形态。
+ */
+const guard = reactive<{
+	visibility: "public" | "login" | "users";
+	users: string[];
+}>({
+	visibility: "public",
+	users: [],
+});
+/** 可选用户：只有管理员拿得到，普通作者打开时是空列表 */
+const members = ref<AdminUser[]>([]);
+const membersLoading = ref(false);
+const membersError = ref("");
+
+const VISIBILITY_TABS = [
+	{ key: "public", label: "公开" },
+	{ key: "login", label: "登录可见" },
+	{ key: "users", label: "指定用户" },
+];
+
+const VISIBILITY_NOTE: Record<string, string> = {
+	public: "谁都能打开，也会出现在列表、归档、RSS 和搜索结果里。",
+	login: "要登录才能看。列表与搜索里不出现，直接开地址才看得到。",
+	users: "只有下面勾到的人能看。名单外的人开地址是 404，不会知道这篇存在。",
+};
 
 interface CustomRow {
 	orig: string;
@@ -588,6 +621,62 @@ function textOf(key: string): string {
 	return value === undefined || value === null ? "" : String(value);
 }
 
+/**
+ * 拉可选用户。
+ *
+ * 只在可见范围切成「指定用户」时才拉：多数文章是公开的，没必要为它多打一次请求。
+ * 用户列表接口只给管理员开，普通作者会拿到 403——这时保留已有名单、只提示一句，
+ * 保存时不会把原来的名单抹掉。
+ */
+async function ensureMembers(): Promise<void> {
+	if (members.value.length > 0 || membersLoading.value) return;
+	membersLoading.value = true;
+	membersError.value = "";
+	try {
+		const result = await listUsers({ limit: 100 });
+		members.value = result.users.filter((user) => user.status !== "deleted");
+	} catch (err) {
+		membersError.value = err instanceof Error ? err.message : "读不到用户列表";
+	} finally {
+		membersLoading.value = false;
+	}
+}
+
+function onVisibilityChange(next: string): void {
+	guard.visibility = next === "login" || next === "users" ? next : "public";
+	if (guard.visibility === "users") void ensureMembers();
+	onFieldInput();
+}
+
+/** 名单里已有的值不一定还在用户表里（改了登录名、账号注销），也要能看见并取消 */
+const guardChoices = computed(() => {
+	const rows = members.value.map((user) => ({
+		value: user.account,
+		label: user.display_name || user.account,
+		sub: `@${user.account} · uid ${user.uid}`,
+	}));
+	const known = new Set(rows.map((row) => row.value.toLowerCase()));
+	for (const item of guard.users) {
+		if (known.has(item.toLowerCase())) continue;
+		rows.push({ value: item, label: item, sub: "不在用户列表里" });
+	}
+	return rows;
+});
+
+function isPicked(value: string): boolean {
+	const target = value.toLowerCase();
+	return guard.users.some((item) => item.toLowerCase() === target);
+}
+
+function toggleMember(value: string): void {
+	if (!editable.value) return;
+	const target = value.toLowerCase();
+	guard.users = isPicked(value)
+		? guard.users.filter((item) => item.toLowerCase() !== target)
+		: [...guard.users, value];
+	onFieldInput();
+}
+
 function splitTags(): string[] {
 	return textOf("tags")
 		.split(/[,，]/)
@@ -652,6 +741,8 @@ function loadFields(fields: Record<string, FieldValue>): void {
 	for (const def of ALL_DEFS) {
 		// 地址走 form.slug + nextSlug 那条路，不进 frontmatter 字段表
 		if (def.key === "slug") continue;
+		// 可见范围与名单是「一个控件两个键」，下面单独铺
+		if (def.kind === "visibility") continue;
 		const raw = fields[def.key];
 		if (def.kind === "bool") {
 			flags[def.key] = raw === true || raw === "true";
@@ -671,6 +762,16 @@ function loadFields(fields: Record<string, FieldValue>): void {
 		}
 		vals[def.key] = raw === undefined || raw === null ? "" : String(raw);
 	}
+
+	const visibility = fields.visibility;
+	guard.visibility =
+		visibility === "login" || visibility === "users" ? visibility : "public";
+	guard.users = Array.isArray(fields.visibleTo)
+		? fields.visibleTo.filter(
+				(item): item is string => typeof item === "string",
+			)
+		: [];
+	if (guard.visibility === "users") void ensureMembers();
 
 	custom.value = Object.entries(fields)
 		.filter(([key]) => !KNOWN.has(key))
@@ -757,6 +858,13 @@ function buildFields(): Record<string, FieldValue | null> {
 
 	for (const def of ALL_DEFS) {
 		if (def.key === "slug") continue;
+		if (def.kind === "visibility") {
+			// public 是默认值，不写进 frontmatter：否则每篇都会多一行没意义的配置
+			put("visibility", guard.visibility, guard.visibility === "public");
+			const names = guard.visibility === "users" ? guard.users : [];
+			put("visibleTo", names, names.length === 0);
+			continue;
+		}
 		if (def.kind === "bool") {
 			const value = Boolean(flags[def.key]);
 			put(def.key, value, !value);
@@ -1650,6 +1758,46 @@ watch(isDark, (dark) => {
 								</div>
 							</template>
 
+							<template v-else-if="def.kind === 'visibility'">
+								<SegTabs
+									:model-value="guard.visibility"
+									:options="VISIBILITY_TABS"
+									@update:model-value="onVisibilityChange"
+								/>
+								<p class="field-hint">
+									{{ VISIBILITY_NOTE[guard.visibility] }}
+								</p>
+								<div v-if="guard.visibility === 'users'" class="guard-list">
+									<p v-if="membersLoading" class="guard-tip">
+										读取用户列表…
+									</p>
+									<p v-else-if="membersError" class="guard-tip is-warn">
+										{{ membersError }}。已有名单不会丢，只是这次加不了新的人。
+									</p>
+									<label
+										v-for="item in guardChoices"
+										:key="item.value"
+										class="guard-row"
+										:class="{ on: isPicked(item.value) }"
+									>
+										<input
+											type="checkbox"
+											:checked="isPicked(item.value)"
+											:disabled="!editable"
+											@change="toggleMember(item.value)"
+										/>
+										<span class="guard-name">{{ item.label }}</span>
+										<span class="guard-sub">{{ item.sub }}</span>
+									</label>
+									<p
+										v-if="!membersLoading && !membersError && guardChoices.length === 0"
+										class="guard-tip"
+									>
+										站内还没有别的账号，可以先建一个再来勾。
+									</p>
+								</div>
+							</template>
+
 							<template v-else-if="def.kind === 'bool'">
 								<label class="check-row" :for="`f-${def.key}`">
 									<input
@@ -2299,6 +2447,73 @@ watch(isDark, (dark) => {
 	margin: 0;
 	font-size: 0.66rem;
 	color: var(--fg-50);
+}
+
+/* 可见范围底下的人名单：一列勾选，名字在前、账号在后，
+   行高比输入框矮一档——它是从属信息，不该抢上面三选一的注意力 */
+.guard-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin-top: 0.1rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 0.55rem;
+	overflow: hidden;
+	max-height: 13rem;
+	overflow-y: auto;
+}
+
+.guard-row {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	padding: 0.32rem 0.55rem;
+	font-size: 0.75rem;
+	color: var(--fg-75);
+	cursor: pointer;
+	background: var(--card-bg);
+	transition: background-color 0.15s ease;
+}
+
+.guard-row:hover {
+	background: var(--btn-plain-bg-hover);
+}
+
+.guard-row.on {
+	background: color-mix(in oklab, var(--primary) 8%, var(--card-bg));
+	color: var(--fg-90);
+}
+
+.guard-row input {
+	flex: none;
+	accent-color: var(--primary);
+}
+
+.guard-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.guard-sub {
+	flex: none;
+	font-size: 0.66rem;
+	color: var(--fg-50);
+	font-variant-numeric: tabular-nums;
+}
+
+.guard-tip {
+	margin: 0;
+	padding: 0.4rem 0.55rem;
+	font-size: 0.68rem;
+	color: var(--fg-50);
+	background: var(--card-bg);
+}
+
+.guard-tip.is-warn {
+	color: color-mix(in oklab, #d97706 78%, var(--fg-90));
 }
 
 /* 属性栏里的输入框比全局小一档：14px 的正文在这里显得笨重 */

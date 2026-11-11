@@ -10,7 +10,7 @@ import {
 	splitMarkdown,
 } from "../lib/frontmatter";
 import { publicOrigin } from "../lib/origin";
-import { type RepoPost, readRepoPosts } from "../lib/post-index";
+import { type RepoPost, readRepoPostsFor } from "../lib/post-index";
 import {
 	deleteRepoFile,
 	readRepoFile,
@@ -276,6 +276,8 @@ function repoToSummary(post: RepoPost): Record<string, unknown> {
 		updated_at: updated,
 		source_link: post.sourceLink,
 		author: post.author,
+		// 列表上要能一眼分出「这篇只有指定的人能看」
+		visibility: post.visibility ?? "public",
 	};
 }
 
@@ -431,7 +433,9 @@ me.get("/posts", requireAuth, async (c) => {
 	// 仓库里的文章都算站主的。不能拿 frontmatter 的 author 过滤：那栏在转载
 	// 文章里写的是原文出处（比如「腾讯云开发者社区」），不是站内作者。
 	const isAdmin = user.role === "admin";
-	const repoPosts = isAdmin ? await readRepoPosts(c.env.ASSETS) : [];
+	const repoPosts = isAdmin
+		? await readRepoPostsFor(c.env.ASSETS, c.get("user"))
+		: [];
 	const repoBySlug = new Map(repoPosts.map((post) => [post.slug, post]));
 	const counts = await commentCounts(c.env.DB);
 
@@ -491,7 +495,7 @@ me.get("/all-posts", requireAuth, async (c) => {
 	// 显式标类型：展开 Record<string, unknown> 会把索引签名丢掉，只剩新加的 comments，
 	// 后面访问 post.slug 就会报「属性不存在」
 	const repo: Record<string, unknown>[] = (
-		await readRepoPosts(c.env.ASSETS)
+		await readRepoPostsFor(c.env.ASSETS, c.get("user"))
 	).map((post) => ({
 		...repoToSummary(post),
 		comments: counts.get(post.slug) ?? 0,
@@ -556,7 +560,7 @@ me.get("/series", requireAuth, async (c) => {
 		if (at > group.updated) group.updated = at;
 	};
 
-	const repo = await readRepoPosts(c.env.ASSETS);
+	const repo = await readRepoPostsFor(c.env.ASSETS, c.get("user"));
 	const repoSlugs = new Set(repo.map((post) => post.slug));
 	for (const post of repo) {
 		put(
@@ -966,7 +970,7 @@ async function findRepoPost(
 	slug: string,
 ): Promise<RepoPost | null> {
 	if (!slug) return null;
-	const posts = await readRepoPosts(c.env.ASSETS);
+	const posts = await readRepoPostsFor(c.env.ASSETS, c.get("user"));
 	return posts.find((post) => post.slug === slug) ?? null;
 }
 

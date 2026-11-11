@@ -4,11 +4,27 @@ import { i18n } from "@i18n/translation";
 import { getCategoryUrl } from "@utils/url-utils";
 import { type SeriesMeta, seriesMetaFor } from "@/config/seriesConfig";
 
+/**
+ * 这篇文章能不能出现在列表类页面里。
+ *
+ * 列表、归档、标签、分类、系列、RSS 都是构建期固化的静态内容，没法按人渲染出
+ * 不同的版本；把非 public 的文章放进去，等于对所有访客泄露标题与摘要。所以
+ * 构建期（PROD）就摘掉，本地 dev 保留以便预览。
+ *
+ * 注意文章页本身**不**走这个判断：`/posts/<slug>/` 照常构建，能不能看由 Worker
+ * 在请求时按会话判定（server/routes/pages.ts）。
+ */
+function isListable(data: { draft?: boolean; visibility?: string }): boolean {
+	if (!import.meta.env.PROD) return true;
+	if (data.draft === true) return false;
+	return (data.visibility ?? "public") === "public";
+}
+
 // // Retrieve posts and sort them by publication date
 async function getRawSortedPosts() {
-	const allBlogPosts = await getCollection("posts", ({ data }) => {
-		return import.meta.env.PROD ? data.draft !== true : true;
-	});
+	const allBlogPosts = await getCollection("posts", ({ data }) =>
+		isListable(data),
+	);
 
 	const sorted = allBlogPosts.sort((a, b) => {
 		// 首先按置顶状态排序，置顶文章在前
@@ -21,6 +37,24 @@ async function getRawSortedPosts() {
 		return dateA > dateB ? -1 : 1;
 	});
 	return sorted;
+}
+
+/**
+ * 文章页 getStaticPaths 用：包含非 public 的文章，只排除草稿。
+ *
+ * 为什么受限文章还要构建出来：Worker 拿到登录态后要能把真实页面回给有权限的人，
+ * 不能现场渲染。`prevSlug/nextSlug` 不在这里设置——相邻文章只按公开列表算，
+ * 否则受限文章的标题会顺着「上一篇」泄露出去。
+ */
+export async function getPostsForPaths(): Promise<CollectionEntry<"posts">[]> {
+	const all = await getCollection("posts", ({ data }) => {
+		return import.meta.env.PROD ? data.draft !== true : true;
+	});
+	return all.sort((a, b) => {
+		if (a.data.pinned && !b.data.pinned) return -1;
+		if (!a.data.pinned && b.data.pinned) return 1;
+		return new Date(a.data.published) > new Date(b.data.published) ? -1 : 1;
+	});
 }
 
 export async function getSortedPosts(): Promise<CollectionEntry<"posts">[]> {
@@ -168,9 +202,9 @@ export type Tag = {
 };
 
 export async function getTagList(): Promise<Tag[]> {
-	const allBlogPosts = await getCollection<"posts">("posts", ({ data }) => {
-		return import.meta.env.PROD ? data.draft !== true : true;
-	});
+	const allBlogPosts = await getCollection<"posts">("posts", ({ data }) =>
+		isListable(data),
+	);
 
 	const countMap: { [key: string]: number } = {};
 	allBlogPosts.forEach((post: { data: { tags: string[] } }) => {
@@ -195,9 +229,9 @@ export type Category = {
 };
 
 export async function getCategoryList(): Promise<Category[]> {
-	const allBlogPosts = await getCollection<"posts">("posts", ({ data }) => {
-		return import.meta.env.PROD ? data.draft !== true : true;
-	});
+	const allBlogPosts = await getCollection<"posts">("posts", ({ data }) =>
+		isListable(data),
+	);
 	const count: { [key: string]: number } = {};
 	allBlogPosts.forEach((post: { data: { category: string | null } }) => {
 		if (!post.data.category) {

@@ -3,6 +3,19 @@ import type { CollectionConfig } from "astro/content/config";
 import { glob } from "astro/loaders";
 import { type ZodType, z } from "astro/zod";
 
+/**
+ * 文章可见范围。
+ *
+ * - `public`：所有人可读（默认）
+ * - `login`：任何登录账号可读
+ * - `users`：只有 `visibleTo` 里的账号或 uid 可读
+ *
+ * 页面本身照常构建，访问控制由 Worker 在请求时判定（server/routes/pages.ts）。
+ * 列表、归档、RSS、搜索索引在构建期就把非 public 的文章摘掉——静态站没法按人
+ * 渲染不同的列表，所以它们对所有访客都不出现。
+ */
+type PostVisibility = "public" | "login" | "users";
+
 type PostData = {
 	title: string;
 	slug: string;
@@ -22,6 +35,8 @@ type PostData = {
 	comment: boolean;
 	password: string;
 	passwordHint: string;
+	visibility: PostVisibility;
+	visibleTo: string[];
 	series: string;
 	seriesOrder?: number;
 	provenance: string | ProvenanceDetail;
@@ -110,6 +125,16 @@ const postsCollection: ContentCollection<PostData> = defineCollection({
 		comment: z.boolean().optional().default(true),
 		password: z.string().optional().default(""),
 		passwordHint: z.string().optional().default(""),
+		// 写成一句散文也没关系：认不出的值按 public 处理，不让构建直接挂掉
+		visibility: z
+			.string()
+			.optional()
+			.default("public")
+			.transform(
+				(value): PostVisibility =>
+					value === "login" || value === "users" ? value : "public",
+			),
+		visibleTo: z.array(z.string()).optional().default([]),
 		series: z.string().optional().default(""),
 		seriesOrder: z.number().optional(),
 		provenance: provenanceSchema,
