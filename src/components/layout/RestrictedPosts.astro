@@ -1,0 +1,254 @@
+---
+/**
+ * 首页顶部的「仅你可见」入口。
+ *
+ * 受限文章（frontmatter 的 visibility 不是 public）在构建期就被列表、归档、标签、
+ * RSS 和搜索索引剔除了——静态站没法按人渲染列表。但作者自己得能进去，所以这里在
+ * 浏览器里现拉一次「我读得到的受限文章」，补一条入口。
+ *
+ * 匿名访客请求这个接口拿不到东西（401），整块保持 hidden，页面上看不出存在。
+ */
+---
+
+<div id="restricted-posts" class="restricted-block" hidden>
+  <div class="restricted-head">
+    <svg
+      class="restricted-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4" y="10" width="16" height="10" rx="2"></rect>
+      <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+    </svg>
+    <span class="restricted-label">仅你可见</span>
+    <span class="restricted-count text-50" data-restricted-count></span>
+    <span class="restricted-hint text-30">不进列表、归档与搜索，只有拿到地址的人能打开</span>
+  </div>
+  <ul class="restricted-list" data-restricted-list></ul>
+</div>
+
+<script>
+  import { formatDateToYYYYMMDD } from "@/utils/date-utils";
+  import { getPostUrlBySlug, url } from "@/utils/url-utils";
+
+  interface RestrictedPost {
+    slug: string;
+    title: string;
+    published: number;
+    tags: string[];
+    category: string;
+    series: string;
+    visibility: string;
+  }
+
+  const VISIBILITY_LABEL: Record<string, string> = {
+    login: "需登录",
+    users: "仅指定人",
+  };
+
+  /** 每行末尾的箭头，纯装饰；用常量字符串拼，不掺任何接口数据 */
+  const ARROW =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>';
+
+  function row(post: RestrictedPost): HTMLLIElement {
+    const item = document.createElement("li");
+
+    const link = document.createElement("a");
+    link.className = "restricted-row";
+    link.href = getPostUrlBySlug(post.slug);
+
+    const text = document.createElement("span");
+    text.className = "restricted-text";
+
+    // 标题来自自己的仓库，仍然走 textContent：拼 HTML 的习惯一旦留下就会出事
+    const title = document.createElement("span");
+    title.className = "restricted-title text-90";
+    title.textContent = post.title;
+
+    const meta = document.createElement("span");
+    meta.className = "restricted-meta text-50";
+    meta.textContent = [
+      post.published ? formatDateToYYYYMMDD(new Date(post.published)) : "",
+      VISIBILITY_LABEL[post.visibility] ?? "",
+      post.category,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    text.append(title, meta);
+    link.append(text);
+    link.insertAdjacentHTML("beforeend", ARROW);
+    item.append(link);
+    return item;
+  }
+
+  async function loadRestricted(): Promise<void> {
+    const box = document.getElementById("restricted-posts");
+    if (!box) return;
+    // swup 换页会带来新的空容器；同一个容器只拉一次
+    if (box.dataset.loaded === "1") return;
+    box.dataset.loaded = "1";
+
+    try {
+      const res = await fetch(url("/api/me/restricted"), {
+        credentials: "same-origin",
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) return;
+
+      const data = (await res.json()) as { posts?: RestrictedPost[] };
+      const posts = data.posts ?? [];
+      if (posts.length === 0) return;
+
+      const list = box.querySelector("[data-restricted-list]");
+      const count = box.querySelector("[data-restricted-count]");
+      if (!list) return;
+
+      list.replaceChildren(...posts.map(row));
+      if (count) count.textContent = `${posts.length} 篇`;
+      box.removeAttribute("hidden");
+    } catch {
+      // 接口不可用（离线、未登录、本地没起 Worker）时这块不出现即可，不影响首页
+    }
+  }
+
+  const run = (): void => void loadRestricted();
+
+  // 三种触发都挂上：首次加载、swup 换页回首页、以及可能存在的原生视图过渡
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+  document.addEventListener("astro:page-load", run);
+  document.addEventListener("swup:contentReplaced", run);
+</script>
+
+<style is:global>
+  /* 行是运行时创建的，拿不到 Astro 的作用域属性，所以整块用全局样式 + id 收口 */
+  #restricted-posts {
+    margin-bottom: 1rem;
+    padding: 0.8rem 1rem 0.45rem;
+    border: 1px solid color-mix(in oklab, var(--primary) 26%, var(--line-divider));
+    border-radius: var(--radius-large);
+    background: color-mix(in oklab, var(--primary) 5%, var(--card-bg));
+  }
+
+  #restricted-posts .restricted-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px dashed color-mix(in oklab, var(--primary) 22%, var(--line-divider));
+  }
+
+  #restricted-posts .restricted-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    color: var(--primary);
+  }
+
+  #restricted-posts .restricted-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--primary);
+  }
+
+  #restricted-posts .restricted-count {
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #restricted-posts .restricted-hint {
+    margin-left: auto;
+    font-size: 0.7rem;
+  }
+
+  #restricted-posts .restricted-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  #restricted-posts .restricted-list > li + li > .restricted-row {
+    border-top: 1px solid var(--line-divider);
+  }
+
+  #restricted-posts .restricted-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.42rem 0.3rem;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    transition:
+      background-color 0.2s ease,
+      padding-left 0.2s ease;
+  }
+
+  #restricted-posts .restricted-row:hover {
+    background: color-mix(in oklab, var(--primary) 10%, transparent);
+    padding-left: 0.55rem;
+    text-decoration: none;
+  }
+
+  #restricted-posts .restricted-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  #restricted-posts .restricted-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.2s ease;
+  }
+
+  #restricted-posts .restricted-row:hover .restricted-title {
+    color: var(--primary);
+  }
+
+  #restricted-posts .restricted-meta {
+    font-size: 0.68rem;
+  }
+
+  #restricted-posts .restricted-row > svg {
+    width: 0.85rem;
+    height: 0.85rem;
+    flex: none;
+    margin-left: auto;
+    color: var(--primary);
+    /* 常驻一点弱箭头：不然这一行看起来只是文字，不像能点 */
+    opacity: 0.3;
+    transform: translateX(0);
+    transition:
+      opacity 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  #restricted-posts .restricted-row:hover > svg {
+    opacity: 0.85;
+    transform: translateX(3px);
+  }
+
+  @media (max-width: 767px) {
+    #restricted-posts {
+      padding: 0.7rem 0.8rem 0.35rem;
+    }
+    /* 手机上这行说明会把标题挤到第二行，直接不要 */
+    #restricted-posts .restricted-hint {
+      display: none;
+    }
+  }
+</style>

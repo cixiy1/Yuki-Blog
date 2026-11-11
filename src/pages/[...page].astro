@@ -2,6 +2,7 @@
 import type { GetStaticPaths } from "astro";
 import Pagination from "@/components/common/Pagination.astro";
 import PostPage from "@/components/layout/PostPage.astro";
+import RestrictedPosts from "@/components/layout/RestrictedPosts.astro";
 import { siteConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
@@ -28,6 +29,8 @@ const heading =
 ---
 
 <MainGridLayout heading={heading}>
+  {/* 受限文章在构建期不进列表，只有第一页补一条给登录者的入口 */}
+  {page.currentPage === 1 && <RestrictedPosts />}
   <PostPage page={page} />
   {
     page.total > page.size && (

@@ -517,6 +517,40 @@ me.get("/all-posts", requireAuth, async (c) => {
 	return c.json({ posts });
 });
 
+/**
+ * 当前用户能读、但不在任何列表页上的文章（visibility 不是 public）。
+ *
+ * 站点是静态生成的，首页、归档、标签页在构建期就固化了，服务端没法给不同的人
+ * 渲染不同的列表。这些文章因此不进任何列表；作者要找到它们只能靠浏览器现拉一次，
+ * 前端据此在首页顶部补一块入口。
+ *
+ * 判定复用文章页那一套（readRepoPostsFor 内部就是 canReadPost），所以不会出现
+ * 「列表里看得到、点进去 404」。
+ *
+ * 刻意不挂 requireAuth：首页每人都会请求一次，未登录回 401 会在控制台留一条红字。
+ * 没有会话就是空列表，本来也没有可泄露的东西。
+ */
+me.get("/restricted", async (c) => {
+	const user = c.get("user");
+	if (!user) return c.json({ posts: [] });
+
+	const posts = (await readRepoPostsFor(c.env.ASSETS, user))
+		.filter((post) => post.visibility && post.visibility !== "public")
+		.sort((a, b) => b.published - a.published)
+		.map((post) => ({
+			slug: post.slug,
+			title: post.title,
+			summary: post.description,
+			published: post.published,
+			tags: post.tags,
+			category: post.category,
+			series: post.series,
+			visibility: post.visibility,
+		}));
+
+	return c.json({ posts });
+});
+
 /** 系列里的一篇：编辑页据此提示「哪些序号已被占用」 */
 interface SeriesEntry {
 	slug: string;
