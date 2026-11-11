@@ -11,6 +11,7 @@ category: 机器人
 series: 具身智能
 seriesOrder: 3
 provenance: handwritten
+image: /assets/uploads/2026/11/382c851410194e098c12d816caf8b90d-21866468.jpg
 ---
 
 ## 一、前提：手写步态的局限
