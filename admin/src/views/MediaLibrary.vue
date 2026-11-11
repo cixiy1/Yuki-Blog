@@ -18,6 +18,7 @@ import {
 	formatBytes,
 	listMedia,
 	type MediaFile,
+	replaceMediaFile,
 	uploadMediaFiles,
 } from "../lib/media";
 
@@ -39,6 +40,8 @@ const dragging = ref(false);
 
 const detail = ref<MediaFile | null>(null);
 const confirmDelete = ref(false);
+/** 替换用的隐藏文件输入：详情面板上的「替换」按钮点它 */
+const replaceInput = ref<HTMLInputElement | null>(null);
 const copied = ref("");
 /** 详情里的大图打不开：刚上传的图要等构建，这个状态是正常的 */
 const previewBroken = ref(false);
@@ -130,6 +133,46 @@ async function copy(text: string, label: string): Promise<void> {
 		}, 1600);
 	} catch {
 		copied.value = "复制失败，手动选中吧";
+	}
+}
+
+/**
+ * 替换：换图 + 改写引用 + 删旧图在服务端是一次提交，
+ * 这里只负责把新文件推进列表，别让用户以为还在看旧图。
+ */
+async function onReplacePicked(event: Event): Promise<void> {
+	const input = event.target as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = "";
+	if (!file || !detail.value) return;
+
+	const previous = detail.value;
+	busy.value = true;
+	uploadError.value = "";
+	try {
+		const result = await replaceMediaFile(previous.path, file);
+		if (result.entry) {
+			const entry = result.entry;
+			files.value = [
+				entry,
+				...files.value.filter((item) => item.path !== previous.path),
+			];
+			detailed(entry);
+		}
+		const parts = [`已替换 ${previous.name}`];
+		if (result.updated.length) {
+			parts.push(`改写了 ${result.updated.length} 处引用`);
+		}
+		if (result.unresolved.length) {
+			parts.push(
+				`另有 ${result.unresolved.length} 处引用在草稿里，没能自动改`,
+			);
+		}
+		note.value = `${parts.join("，")}。构建约 1–2 分钟后站点上生效。`;
+	} catch (err) {
+		uploadError.value = err instanceof Error ? err.message : "替换失败";
+	} finally {
+		busy.value = false;
 	}
 }
 
@@ -314,6 +357,23 @@ onBeforeUnmount(() => {
 							复制地址
 						</button>
 						<template v-if="isAdmin">
+							<input
+								ref="replaceInput"
+								type="file"
+								accept="image/*"
+								class="dt-file"
+								@change="onReplacePicked"
+							/>
+							<button
+								type="button"
+								class="btn-regular"
+								:disabled="busy"
+								title="换一张图，引用它的文章与系列封面会一起改"
+								@click="replaceInput?.click()"
+							>
+								<AppIcon name="refresh" :size="13" />
+								替换
+							</button>
 							<button
 								v-if="!confirmDelete"
 								type="button"
@@ -410,6 +470,10 @@ onBeforeUnmount(() => {
 }
 
 /* ---- 详情 ---- */
+.dt-file {
+	display: none;
+}
+
 .dt-mask {
 	position: fixed;
 	inset: 0;

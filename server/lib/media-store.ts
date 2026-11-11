@@ -13,6 +13,7 @@ import {
 	listRepoTree,
 	putRepoFiles,
 	type RepoFileChange,
+	readRepoFile,
 	safeRepoPath,
 } from "./github-contents";
 import { readSecret } from "./site-config";
@@ -457,4 +458,215 @@ export async function deleteMedia(input: {
 	}
 
 	return { ok: true, status: 200, commit: result.commit };
+}
+
+/* ------------------------------- 替换 ------------------------------- */
+
+/** 构建期文章索引，给 slug → 仓库路径的映射用 */
+const POST_INDEX_KEY = "https://assets.local/api/post-index.json";
+
+/** 可能引用图片的配置文件；系列封面就写在里面 */
+const CONFIG_FILES = ["config/site.json", "config/series.json"] as const;
+
+/** 一次替换最多改多少个文件，防止异常情况下狂读仓库 */
+const MAX_REF_FILES = 24;
+
+export interface ReplaceResult {
+	ok: boolean;
+	status: number;
+	message?: string;
+	commit?: string;
+	/** 换上去的新文件 */
+	entry?: MediaEntry;
+	/** 跟着改了引用的文件（仓库路径） */
+	updated: string[];
+	/** 在索引里但找不到对应文章文件、没法自动改的 slug */
+	unresolved: string[];
+}
+
+async function readPostPaths(
+	assets: AssetsFetcher,
+): Promise<Map<string, string>> {
+	const map = new Map<string, string>();
+	try {
+		const res = await assets.fetch(new URL(POST_INDEX_KEY));
+		if (!res.ok) return map;
+		const data = (await res.json()) as Array<{
+			slug?: string;
+			repoPath?: string;
+		}>;
+		for (const post of data) {
+			if (post.slug && post.repoPath) map.set(post.slug, post.repoPath);
+		}
+	} catch {
+		// 索引缺失时只改配置文件，文章引用留着不动
+	}
+	return map;
+}
+
+/**
+ * 替换一张图：新文件落在旧文件同目录，然后把所有引用改成新文件名，旧文件删掉。
+ *
+ * 为什么留在同目录：文章内嵌图写的是相对路径（`./images/x.webp`），
+ * 换到别的目录后相对路径就错了；同目录只改文件名，引用形态不用动。
+ * 为什么文件名里带内容摘要还能改：摘要只是文件名的一部分，引用按字符串替换，
+ * 旧名字里的摘要换成新的就完事。
+ *
+ * 找不到对应文件的引用方（比如只存在于 D1 草稿里的引用）会列在 `unresolved` 里，
+ * 页面上要提示一句，不然草稿里的图会静默断掉。
+ */
+export async function replaceMedia(input: {
+	env: Env;
+	token: string;
+	path: string;
+	file: IncomingFile;
+}): Promise<ReplaceResult> {
+	const { env, token, file } = input;
+	const empty = { updated: [] as string[], unresolved: [] as string[] };
+
+	const safe = safeRepoPath(input.path);
+	if (!safe || !MEDIA_ROOTS.some((prefix) => safe.startsWith(prefix))) {
+		return {
+			ok: false,
+			status: 400,
+			message: "这个路径不在媒体目录里",
+			...empty,
+		};
+	}
+	const oldEntry = describePath(safe);
+	if (!oldEntry) {
+		return {
+			ok: false,
+			status: 400,
+			message: "这个路径不是图片",
+			...empty,
+		};
+	}
+	if (file.bytes.byteLength === 0) {
+		return { ok: false, status: 400, message: "文件是空的", ...empty };
+	}
+	if (file.bytes.byteLength > MAX_UPLOAD_BYTES) {
+		return {
+			ok: false,
+			status: 413,
+			message: `${file.name} 超过 5 MB，先压缩再传`,
+			...empty,
+		};
+	}
+
+	const mime = sniffImageMime(file.bytes) ?? file.mime;
+	const ext = extForMime(mime);
+	if (!ext) {
+		return {
+			ok: false,
+			status: 415,
+			message: `不支持的图片格式：${mime || "未知"}`,
+			...empty,
+		};
+	}
+
+	const dir = safe.slice(0, safe.lastIndexOf("/") + 1);
+	const digest = (await sha256HexBytes(file.bytes)).slice(0, 8);
+	const nextPath = `${dir}${slugStem(file.name || oldEntry.name)}-${digest}.${ext}`;
+	const nextEntry = describePath(nextPath);
+	if (!nextEntry) {
+		return { ok: false, status: 400, message: "生成的新路径不合法", ...empty };
+	}
+
+	// 同一张图重传一次：内容摘要一样，路径不变，什么都不用做
+	if (nextPath === safe) {
+		return {
+			ok: true,
+			status: 200,
+			message: "内容和现在这张一样，没有改动",
+			entry: oldEntry,
+			...empty,
+		};
+	}
+
+	const index = await readMediaIndex(env.ASSETS);
+	const slugs = index.refs[oldEntry.name] ?? [];
+	const postPaths = await readPostPaths(env.ASSETS);
+
+	const targets = new Set<string>(CONFIG_FILES);
+	const unresolved: string[] = [];
+	for (const slug of slugs) {
+		const repoPath = postPaths.get(slug);
+		if (repoPath) targets.add(repoPath);
+		else unresolved.push(slug);
+	}
+
+	// 长串在前：站内地址包含文件名，先换整条地址再换文件名，结果一致但更稳
+	const pairs: Array<[string, string]> = [
+		[safe, nextPath],
+		[oldEntry.url, nextEntry.url],
+	];
+	if (oldEntry.name !== nextEntry.name) {
+		pairs.push([oldEntry.name, nextEntry.name]);
+	}
+
+	const updated: string[] = [];
+	const changes: RepoFileChange[] = [
+		{ path: nextPath, bytes: file.bytes },
+		{ path: safe, remove: true },
+	];
+
+	for (const target of [...targets].slice(0, MAX_REF_FILES)) {
+		const read = await readRepoFile({
+			repo: MEDIA_REPO,
+			path: target,
+			branch: MEDIA_BRANCH,
+			token,
+		});
+		if (!read.ok || read.content === null) continue;
+
+		let text = read.content;
+		for (const [from, to] of pairs) {
+			if (from && text.includes(from)) text = text.split(from).join(to);
+		}
+		if (text === read.content) continue;
+
+		updated.push(target);
+		changes.push({ path: target, bytes: new TextEncoder().encode(text) });
+	}
+
+	const result = await putRepoFiles({
+		repo: MEDIA_REPO,
+		branch: MEDIA_BRANCH,
+		files: changes,
+		message: `chore(media): 替换 ${oldEntry.name} → ${nextEntry.name}`,
+		token,
+	});
+	if (!result.ok) {
+		return {
+			ok: false,
+			status: result.status,
+			message: result.message,
+			updated,
+			unresolved,
+		};
+	}
+
+	// 新图与旧图同步进内存索引，不用等下一次构建
+	if (cached) {
+		cached = {
+			at: Date.now(),
+			data: {
+				...cached.data,
+				files: [
+					{ ...nextEntry, bytes: file.bytes.byteLength, at: Date.now() },
+					...cached.data.files.filter((entry) => entry.path !== safe),
+				],
+			},
+		};
+	}
+
+	return {
+		ok: true,
+		status: 200,
+		commit: result.commit,
+		entry: nextEntry,
+		updated,
+		unresolved,
+	};
 }

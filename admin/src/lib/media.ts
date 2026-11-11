@@ -126,3 +126,32 @@ export function formatBytes(bytes: number): string {
 	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
 	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * 替换一张图：服务端写新文件、把所有引用改成新文件名、删掉旧文件，
+ * 三件事在同一个提交里，所以要么全成要么全不动。
+ */
+export async function replaceMediaFile(
+	path: string,
+	file: File,
+): Promise<{ entry: MediaFile | null; updated: string[]; unresolved: string[] }> {
+	const image = await prepareImage(file);
+	const data = await api.post<{
+		entry: MediaFile | null;
+		updated?: string[];
+		unresolved?: string[];
+		message?: string | null;
+	}>("/api/media/replace", {
+		path,
+		file: {
+			name: file.name || `image-${Date.now()}`,
+			mime: guessMime(file, image.mime),
+			data: image.data,
+		},
+	});
+	return {
+		entry: data.entry ? { ...data.entry, pending: true } : null,
+		updated: data.updated ?? [],
+		unresolved: data.unresolved ?? [],
+	};
+}

@@ -8,6 +8,7 @@ import {
 	MAX_UPLOAD_BYTES,
 	MAX_UPLOAD_FILES,
 	readMediaIndex,
+	replaceMedia,
 	resolveGithubToken,
 	uploadMedia,
 } from "../lib/media-store";
@@ -339,6 +340,98 @@ media.delete(
 		});
 
 		return c.json({ ok: true, commit: result.commit ?? null });
+	},
+);
+
+/**
+ * 替换：把一张图换成新的，并把所有引用改成新文件名，旧文件一并删掉。
+ *
+ * 单独一条接口而不是「上传 + 改引用 + 删除」三次调用：三件事必须落在同一个
+ * 提交里，否则中间失败会让文章指向一个已经被删掉的路径。
+ */
+media.post(
+	"/replace",
+	requireRole("admin"),
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const user = c.get("user");
+		if (!user)
+			return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+
+		const body = (await c.req.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		const path = typeof body.path === "string" ? body.path : "";
+		if (!path) {
+			return c.json({ error: "bad_request", message: "缺少 path" }, 400);
+		}
+
+		const record = (body.file ?? {}) as Record<string, unknown>;
+		const data = typeof record.data === "string" ? record.data : "";
+		const bytes = decodeBase64(data);
+		if (!bytes || bytes.byteLength === 0) {
+			return c.json(
+				{ error: "invalid_data", message: "新图片不是合法的 base64" },
+				400,
+			);
+		}
+
+		const token = await resolveGithubToken(c.env);
+		if (!token) {
+			return c.json(
+				{
+					error: "github_token_missing",
+					message: "还没配置 GitHub 令牌，去「站点设置 → 集成」填一个",
+				},
+				412,
+			);
+		}
+
+		const result = await replaceMedia({
+			env: c.env,
+			token,
+			path,
+			file: {
+				name: typeof record.name === "string" ? record.name : "",
+				mime: typeof record.mime === "string" ? record.mime : "",
+				bytes,
+			},
+		});
+
+		if (!result.ok) {
+			await writeAudit(c.env.DB, {
+				actorUid: user.uid,
+				action: "media.replace",
+				target: path,
+				detail: { path, status: result.status },
+			});
+			return c.json(
+				{ error: "replace_failed", message: result.message ?? "替换失败" },
+				asStatus(result.status),
+			);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: user.uid,
+			action: "media.replace",
+			target: path,
+			detail: {
+				path,
+				replaced_by: result.entry?.path ?? null,
+				refs: String(result.updated.length),
+			},
+		});
+
+		return c.json({
+			ok: true,
+			commit: result.commit ?? null,
+			entry: result.entry ?? null,
+			updated: result.updated,
+			unresolved: result.unresolved,
+			message: result.message ?? null,
+		});
 	},
 );
 
