@@ -17,6 +17,7 @@
 			"!/api/post-index.json",
 			"!/api/media-index.json",
 			"!/api/stats-config.json",
+			"!/api/series-config.json",
 			"/assets/uploads/*"
 		]
 	},

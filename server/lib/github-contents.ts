@@ -103,6 +103,77 @@ function toBase64(text: string): string {
 	return bytesToBase64(new TextEncoder().encode(text));
 }
 
+/* ------------------------------- 读文件 ------------------------------- */
+
+export interface ReadFileResult {
+	ok: boolean;
+	status: number;
+	message?: string;
+	/** 文件不存在时 content 为 null、sha 为 null，不算失败 */
+	content: string | null;
+	sha: string | null;
+}
+
+/**
+ * 读仓库里的文本文件（GitHub Contents API）。
+ *
+ * 目前只有 `config/series.json` 用：管理端保存前要先拿到仓库里的当前版本，
+ * 在上面改一项，否则整份覆盖会把别人刚加的系列抹掉。
+ * 超过 1 MB 的文件 GitHub 不给 base64，这里的调用方都用不到，直接报错。
+ */
+export async function readRepoFile(input: {
+	repo: string;
+	path: string;
+	branch: string;
+	token: string;
+}): Promise<ReadFileResult> {
+	const { repo, path, branch, token } = input;
+	const res = await fetch(
+		`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`,
+		{ headers: headers(token) },
+	);
+	if (res.status === 404) {
+		return { ok: true, status: 200, content: null, sha: null };
+	}
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		return {
+			ok: false,
+			status: res.status,
+			message: explain(res.status, text),
+			content: null,
+			sha: null,
+		};
+	}
+
+	const data = (await res.json()) as {
+		content?: string;
+		encoding?: string;
+		sha?: string;
+	};
+	if (data.encoding !== "base64" || typeof data.content !== "string") {
+		return {
+			ok: false,
+			status: 415,
+			message: `${path} 太大，Contents API 不返回内容`,
+			content: null,
+			sha: data.sha ?? null,
+		};
+	}
+
+	const binary = atob(data.content.replace(/\s/g, ""));
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i += 1) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return {
+		ok: true,
+		status: 200,
+		content: new TextDecoder().decode(bytes),
+		sha: data.sha ?? null,
+	};
+}
+
 export async function putRepoFile(input: {
 	repo: string;
 	path: string;

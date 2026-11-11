@@ -7,6 +7,7 @@ import { comments, commentsAdmin } from "./routes/comments";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
+import { seriesAdmin } from "./routes/series";
 import { siteConfig } from "./routes/site-config";
 import { uploads } from "./routes/uploads";
 import type { AppEnv } from "./types";
@@ -26,6 +27,7 @@ app.route("/api/comments", comments);
 app.route("/api", siteConfig);
 app.route("/api/admin", admin);
 app.route("/api/admin", commentsAdmin);
+app.route("/api/admin", seriesAdmin);
 // 上传目录的兜底：构建没跑完时回源 GitHub raw（wrangler.jsonc 里 run_worker_first）
 app.route("/", uploads);
 

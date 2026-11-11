@@ -2,6 +2,7 @@ import { type CollectionEntry, getCollection } from "astro:content";
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
 import { getCategoryUrl } from "@utils/url-utils";
+import { type SeriesMeta, seriesMetaFor } from "@/config/seriesConfig";
 
 // // Retrieve posts and sort them by publication date
 async function getRawSortedPosts() {
@@ -125,7 +126,11 @@ export async function getSeriesPosts(
 	return { seriesName, posts, currentIndex };
 }
 
-export type Series = { name: string; count: number; posts: PostForList[] };
+export type Series = {
+	name: string;
+	count: number;
+	posts: PostForList[];
+} & SeriesMeta;
 
 /**
  * 获取全站所有系列（按文章中 series 字段分组，每组内部按系列序号排序）
@@ -145,7 +150,13 @@ export async function getSeriesList(): Promise<Series[]> {
 	const seriesList: Series[] = [];
 	for (const [name, posts] of groupMap) {
 		posts.sort(sortBySeriesOrder);
-		seriesList.push({ name, count: posts.length, posts });
+		// 封面 / 简介 / 形态来自 config/series.json，没配过就是空值与默认形态
+		seriesList.push({
+			name,
+			count: posts.length,
+			posts,
+			...seriesMetaFor(name),
+		});
 	}
 
 	seriesList.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));

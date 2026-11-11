@@ -1,0 +1,5 @@
+{
+	"_comment": "管理端「系列管理」保存时整体覆盖本文件。key 必须与文章 frontmatter 的 series 完全一致（含空格）。layout 取值 banner / icon / none，留空则跟随 defaultLayout。封面写站内路径（/assets/...）或 http(s) 地址，留空时横幅形态用系列名首字兜底。",
+	"defaultLayout": "icon",
+	"series": {}
+}

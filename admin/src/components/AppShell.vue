@@ -21,6 +21,7 @@ import PagesAdmin from "../views/PagesAdmin.vue";
 import PostEdit from "../views/PostEdit.vue";
 import ReviewDetail from "../views/ReviewDetail.vue";
 import ReviewQueue from "../views/ReviewQueue.vue";
+import SeriesAdmin from "../views/SeriesAdmin.vue";
 import SiteSettings from "../views/SiteSettings.vue";
 import UsersAdmin from "../views/UsersAdmin.vue";
 import AppIcon from "./AppIcon.vue";
@@ -32,6 +33,7 @@ const VIEWS: Record<RouteName, unknown> = {
 	"post-edit": PostEdit,
 	pages: PagesAdmin,
 	"page-edit": PageEdit,
+	series: SeriesAdmin,
 	components: MyComponents,
 	media: MediaLibrary,
 	review: ReviewQueue,
@@ -78,6 +80,7 @@ const navGroups = computed<NavGroup[]>(() => {
 					: []),
 				{ key: "posts", label: "我的文章", icon: "posts", path: "/posts" },
 				{ key: "pages", label: "页面", icon: "page", path: "/pages" },
+				{ key: "series", label: "系列管理", icon: "layers", path: "/series" },
 				{ key: "media", label: "媒体库", icon: "image", path: "/media" },
 				{
 					key: "components",

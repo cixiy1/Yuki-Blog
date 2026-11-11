@@ -46,6 +46,8 @@ export type AuditAction =
 	| "review.withdraw"
 	| "media.upload"
 	| "media.delete"
+	| "media.replace"
+	| "series.update"
 	| "page.update"
 	| "comment.create"
 	| "comment.delete"
@@ -78,6 +80,9 @@ const DETAIL_KEYS = new Set([
 	// 媒体库：动了哪个文件、一次几张
 	"path",
 	"count",
+	// 图片替换：换成了哪个文件、顺手改了几处引用
+	"replaced_by",
+	"refs",
 	// 评论：哪条、是不是游客发的、是不是管理员动的手
 	"comment_id",
 	"guest",
