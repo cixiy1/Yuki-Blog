@@ -371,21 +371,24 @@ const mmOpen = ref(false);
 /** 打开画布那一刻正文里的 mindmap 块；改的就是这一块 */
 const mmBlocks = ref<MindBlock[]>([]);
 const mmIndex = ref(0);
+/** true 表示这一轮在画新的一幅，提交时追加到文末，任何已有块都不动 */
+const mmNew = ref(false);
 /** 读不出来时的提示：宁可不覆盖，也不要拿空白画布把人家原来的图冲掉 */
 const mmNotice = ref("");
 
 const mmInitial = computed(() => {
+	if (mmNew.value) return null;
 	const block = mmBlocks.value[mmIndex.value];
 	return block ? parseMermaid(block.source) : null;
 });
 
 /** 目标块的原始源码：画布读不出来时弹窗退到源码模式，照样能改 */
-const mmInitialSource = computed(
-	() => mmBlocks.value[mmIndex.value]?.source ?? "",
+const mmInitialSource = computed(() =>
+	mmNew.value ? "" : (mmBlocks.value[mmIndex.value]?.source ?? ""),
 );
 
 const mmTargetLabel = computed(() => {
-	if (mmBlocks.value.length === 0) return "插入正文";
+	if (mmNew.value) return "插入新导图";
 	return mmBlocks.value.length > 1
 		? `更新第 ${mmIndex.value + 1} 幅`
 		: "更新正文";
@@ -397,29 +400,52 @@ function openMindMap(): void {
 	mmBlocks.value = blocks;
 	// 一篇里有多幅时默认改最后画的；前面的用弹窗顶部的 ◀ ▶ 切过去
 	mmIndex.value = Math.max(0, blocks.length - 1);
+	// 正文里还没有导图，本来就只能新增
+	mmNew.value = blocks.length === 0;
 	mmNotice.value = "";
 	mmOpen.value = true;
 }
 
+/** 画布里的「新建一幅」：留住块列表，好让弹窗能切回去改原来的 */
+function startNewMindMap(): void {
+	mmNew.value = true;
+	mmNotice.value = "";
+}
+
 function pickMindMap(index: number): void {
 	if (index < 0 || index >= mmBlocks.value.length) return;
+	mmNew.value = false;
 	mmIndex.value = index;
 }
 
 function applyMindMap(source: string): void {
+	const wasNew = mmNew.value;
+	const fence = `\`\`\`mermaid\n${source}\n\`\`\`\n`;
 	mmOpen.value = false;
-	const block = mmBlocks.value[mmIndex.value];
+	mmNew.value = false;
+
+	const block = wasNew ? undefined : mmBlocks.value[mmIndex.value];
 	if (block) {
 		const next = replaceBlock(form.body, block, source);
 		form.body = next;
 		vditor?.setValue(next, false);
 		vditor?.focus();
+	} else if (wasNew && mmBlocks.value.length > 0) {
+		/*
+		 * 正文里已经有导图，这次是新增：追加到文末。
+		 * 不走光标插入——光标很可能就停在某幅图的围栏里，就地插入会嵌出第二层 ```，
+		 * 把原来那幅整个弄坏。
+		 */
+		const next = `${form.body.trimEnd()}\n\n${fence}`;
+		form.body = next;
+		vditor?.setValue(next, false);
+		vditor?.focus();
 	} else if (vditor) {
 		vditor.focus();
-		vditor.insertValue(`\n\`\`\`mermaid\n${source}\n\`\`\`\n`, true);
+		vditor.insertValue(`\n${fence}`, true);
 		form.body = vditor.getValue();
 	} else {
-		form.body = `${form.body.trimEnd()}\n\n\`\`\`mermaid\n${source}\n\`\`\`\n`;
+		form.body = `${form.body.trimEnd()}\n\n${fence}`;
 	}
 	onFieldInput();
 }
@@ -2170,15 +2196,17 @@ watch(isDark, (dark) => {
 
 		<MindMapDialog
 			v-if="mmOpen"
-			:key="mmIndex"
+			:key="mmNew ? 'new' : mmIndex"
 			:initial="mmInitial"
 			:initial-source="mmInitialSource"
 			:block-count="mmBlocks.length"
 			:block-index="mmIndex"
+			:new-mode="mmNew"
 			:dark="isDark"
 			:notice="mmNotice"
 			:target-label="mmTargetLabel"
 			@close="mmOpen = false"
+			@create="startNewMindMap"
 			@pick="pickMindMap"
 			@submit="applyMindMap"
 		/>

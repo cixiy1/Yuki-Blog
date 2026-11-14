@@ -22,6 +22,8 @@ const props = defineProps<{
 	/** 正文里 mindmap 块的总数与当前块序号（从 0 起），多块时给切换入口 */
 	blockCount?: number;
 	blockIndex?: number;
+	/** true 表示正在画新的一幅，正文里已有的图不会被覆盖 */
+	newMode?: boolean;
 	dark: boolean;
 	/** 非空表示会覆盖正文里那一块，按钮文案跟着变 */
 	targetLabel: string;
@@ -33,6 +35,8 @@ const emit = defineEmits<{
 	close: [];
 	submit: [source: string];
 	pick: [index: number];
+	/** 从「改已有」切到「画新的一幅」 */
+	create: [];
 }>();
 
 type Layout = "side" | "right" | "down";
@@ -49,9 +53,17 @@ const sourceText = ref(props.initialSource ?? "");
 const canvasError = ref("");
 const blockCount = computed(() => props.blockCount ?? 0);
 const blockIndex = computed(() => props.blockIndex ?? 0);
+/** 新增模式下读不到东西是正常状态，别把「用源码改」的警告挂到空白画布上 */
 const switchWarn = computed(
 	() =>
-		blockCount.value > 1 && props.initialSource !== undefined && !props.initial,
+		!props.newMode &&
+		blockCount.value > 1 &&
+		props.initialSource !== undefined &&
+		!props.initial,
+);
+/** 新增模式下切回原来那幅的入口文案：只有一块时不必报序号 */
+const resumeLabel = computed(() =>
+	props.blockCount === 1 ? "↩ 改原来那幅" : `↩ 改第 ${blockIndex.value + 1} 幅`,
 );
 let mind: MindElixir | null = null;
 let seq = 0;
@@ -180,13 +192,20 @@ function switchMode(next: Mode): void {
 	void nextTick(() => create());
 }
 
+/** 转屏或改窗口大小后容器变了，重新贴合一次，否则图会贴在右侧切掉一半 */
+function onResize(): void {
+	fit();
+}
+
 onMounted(() => {
 	if (mode.value === "canvas") void nextTick(() => create());
 	window.addEventListener("keydown", onEscape);
+	window.addEventListener("resize", onResize);
 });
 
 onBeforeUnmount(() => {
 	window.removeEventListener("keydown", onEscape);
+	window.removeEventListener("resize", onResize);
 	mind?.destroy();
 	mind = null;
 });
@@ -219,7 +238,12 @@ function submit(): void {
 					</p>
 				</div>
 				<div class="mm-tools">
-					<div v-if="blockCount > 1" class="mm-seg" role="group" aria-label="导图块">
+					<div
+						v-if="!newMode && blockCount > 1"
+						class="mm-seg"
+						role="group"
+						aria-label="导图块"
+					>
 						<button
 							type="button"
 							:disabled="blockIndex === 0"
@@ -238,6 +262,22 @@ function submit(): void {
 							▶
 						</button>
 					</div>
+					<button
+						v-if="!newMode && blockCount > 0"
+						type="button"
+						class="mm-pill"
+						@click="emit('create')"
+					>
+						＋ 新建一幅
+					</button>
+					<button
+						v-else-if="newMode && blockCount > 0"
+						type="button"
+						class="mm-pill"
+						@click="emit('pick', blockIndex)"
+					>
+						{{ resumeLabel }}
+					</button>
 					<div class="mm-seg" role="group" aria-label="编辑方式">
 						<button
 							v-for="item in [
@@ -296,6 +336,10 @@ function submit(): void {
 				</p>
 				<p v-else-if="mode === 'source'" class="mm-hint">
 					直接改下面的 mermaid 源码，保存后整块替换回正文。
+				</p>
+				<p v-else-if="newMode && blockCount > 0" class="mm-hint">
+					新导图会追加到正文末尾，已有的
+					{{ blockCount }} 幅不动。
 				</p>
 				<p v-else class="mm-hint">
 					插入后是 <code>```mermaid</code> 代码块，站点构建时渲染成图，深浅色自动跟随。
@@ -406,6 +450,22 @@ function submit(): void {
 	line-height: 1.6;
 }
 
+/* 「新建一幅」和它的反向入口：和分段控件长得像，但不是选中态 */
+.mm-pill {
+	padding: 0.26rem 0.7rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--fg-75);
+	font-size: 0.74rem;
+	cursor: pointer;
+}
+
+.mm-pill:hover {
+	background: var(--btn-plain-bg-hover);
+	color: var(--fg-90);
+}
+
 .mm-source {
 	flex: 1;
 	min-height: 0;
@@ -499,23 +559,31 @@ function submit(): void {
 		width: 96vw;
 		height: 88vh;
 	}
-}
 
-/* 窄屏：快捷键提示和说明都收掉，把高度留给画布 */
-@media (max-width: 640px) {
-	.mm-tip,
-	.mm-hint:not(.mm-warn) {
-		display: none;
+	/* 工具条比 390px 宽：标题独占一行，按钮整组换行，别被挤成竖排单字 */
+	.mm-head {
+		flex-wrap: wrap;
 	}
 
-	.mm-head,
-	.mm-foot {
-		padding: 0.6rem 0.75rem;
+	.mm-title-box {
+		flex: 1 1 100%;
+		min-width: 0;
 	}
 
-	.mm-dialog {
-		width: 96vw;
-		height: 88vh;
+	.mm-title {
+		white-space: nowrap;
+	}
+
+	.mm-tools {
+		flex: 1 1 100%;
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		row-gap: 0.3rem;
+	}
+
+	.mm-pill {
+		padding: 0.2rem 0.5rem;
+		font-size: 0.7rem;
 	}
 }
 </style>
