@@ -867,7 +867,10 @@ function applyMark(): void {
  *
  * markdown 没有带颜色的语法：`==文字==` 只有一层底色，颜色由站点 CSS 定，
  * 想在正文里指定颜色只有行内 HTML 一条路——`<span style="color:…">` 和
- * `<mark style="background:…">` 都是 HTML 标准写法，站点构建会原样保留。
+ * `<mark style="--mark-color:…">` 都是 HTML 标准写法，站点构建会原样保留。
+ *
+ * 底色不写死 `background`：只交出 `--mark-color`，混合比例、圆角、内边距仍由
+ * `src/styles/markdown.css` 的 mark 规则算，跟默认的 `==高亮==` 是同一套。
  * 取色交给系统面板，不自己画调色板。
  */
 type InlineTint = "color" | "background";
@@ -913,23 +916,6 @@ function openColorPicker(anchor: Event | undefined, kind: InlineTint): void {
 	input.click();
 }
 
-/**
- * 底色按半透明写进正文。
- * 深色主题下正文是浅色字，纯色底会把字压掉；站点自带的 `==高亮==` 也是半透明底。
- */
-function tintBackground(hex: string): string {
-	const found = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
-	if (!found) return hex;
-	const raw =
-		found[1].length === 3
-			? found[1]
-					.split("")
-					.map((char) => char + char)
-					.join("")
-			: found[1];
-	return `#${raw}80`;
-}
-
 function applyTint(event: Event): void {
 	const color = (event.target as HTMLInputElement).value;
 	const ed = vditor;
@@ -949,7 +935,7 @@ function applyTint(event: Event): void {
 	const open =
 		pending.kind === "color"
 			? `<span style="color:${color}">`
-			: `<mark style="background:${tintBackground(color)}">`;
+			: `<mark style="--mark-color:${color}">`;
 	const close = pending.kind === "color" ? "</span>" : "</mark>";
 	const next = `${md.slice(0, hit.start)}${lead}${open}${core}${close}${trail}${md.slice(hit.end)}`;
 	pendingTint = null;
@@ -1783,7 +1769,11 @@ const COLOR_HIGHLIGHT_PREFIX = "yb-inline-color-";
 const colorHighlightKeys = new Set<string>();
 let colorStyleEl: HTMLStyleElement | null = null;
 
-/** 两种行内样式的开标签写法与要补的 CSS，顺序与标签成对 */
+/**
+ * 两种行内样式的开标签写法与要补的 CSS，顺序与标签成对。
+ * 底色必须在这里重复一遍 `src/styles/markdown.css` 的混合配方：`::highlight()`
+ * 只吃字面值，引用不到那条规则。改比例时两边一起改。
+ */
 const INLINE_TINTS = [
 	{
 		open: /^<span style="color:\s*(#[0-9a-f]{3,8})/i,
@@ -1791,9 +1781,10 @@ const INLINE_TINTS = [
 		css: (color: string) => `color: ${color};`,
 	},
 	{
-		open: /^<mark style="background:\s*(#[0-9a-f]{3,8})/i,
+		open: /^<mark style="--mark-color:\s*(#[0-9a-f]{3,8})/i,
 		close: /^<\/mark>/i,
-		css: (color: string) => `background-color: ${color};`,
+		css: (color: string) =>
+			`background-color: color-mix(in srgb, transparent 52%, ${color});`,
 	},
 ];
 

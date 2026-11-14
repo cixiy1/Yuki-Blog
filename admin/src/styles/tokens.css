@@ -285,10 +285,15 @@ select {
  * `==高亮==` 在编辑器里没有样式，浏览器按 UA 默认画成黄底黑字，
  * 而线上是主题色的半透明底（src/styles/markdown.css 的 .custom-md mark）。
  * 两处对不上，编辑时看到的效果就不是发布后的效果，这里按线上那套补齐。
+ * 自定义底色只改 `--mark-color`，配方与线上完全一致。
  */
 .vditor-reset mark {
 	padding: 0.05em 0.2em;
 	border-radius: 0.25em;
-	background: color-mix(in srgb, transparent 52%, var(--primary));
+	background: color-mix(
+		in srgb,
+		transparent 52%,
+		var(--mark-color, var(--primary))
+	);
 	color: inherit;
 }
