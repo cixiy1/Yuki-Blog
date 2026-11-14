@@ -379,6 +379,11 @@ const mmInitial = computed(() => {
 	return block ? parseMermaid(block.source) : null;
 });
 
+/** 目标块的原始源码：画布读不出来时弹窗退到源码模式，照样能改 */
+const mmInitialSource = computed(
+	() => mmBlocks.value[mmIndex.value]?.source ?? "",
+);
+
 const mmTargetLabel = computed(() => {
 	if (mmBlocks.value.length === 0) return "插入正文";
 	return mmBlocks.value.length > 1
@@ -389,20 +394,16 @@ const mmTargetLabel = computed(() => {
 function openMindMap(): void {
 	if (!editable.value) return;
 	const blocks = findMindmapBlocks(form.body);
-	const last = blocks[blocks.length - 1];
-	if (last && !parseMermaid(last.source)) {
-		// 里面可能有 icon / class 这类画布表达不了的写法，整块覆盖会丢东西
-		mmBlocks.value = [];
-		mmIndex.value = 0;
-		mmNotice.value =
-			"正文里那幅导图用了画布不支持的写法，这次会新增一幅，不会覆盖原来那张。";
-	} else {
-		mmBlocks.value = blocks;
-		// 一篇里有多幅时改最后画的那幅，新插入的永远在文末
-		mmIndex.value = Math.max(0, blocks.length - 1);
-		mmNotice.value = "";
-	}
+	mmBlocks.value = blocks;
+	// 一篇里有多幅时默认改最后画的；前面的用弹窗顶部的 ◀ ▶ 切过去
+	mmIndex.value = Math.max(0, blocks.length - 1);
+	mmNotice.value = "";
 	mmOpen.value = true;
+}
+
+function pickMindMap(index: number): void {
+	if (index < 0 || index >= mmBlocks.value.length) return;
+	mmIndex.value = index;
 }
 
 function applyMindMap(source: string): void {
@@ -570,6 +571,105 @@ const IMAGE_ICON: string =
 	'<path d="m4 16.4 4.4-4.4 3.2 3.2 2.9-2.9L20 16.6"/>' +
 	"</g></svg>";
 
+/** 荧光笔：高亮 */
+const MARK_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M5 15.5 14.2 6.3a2 2 0 0 1 2.8 0l1.7 1.7a2 2 0 0 1 0 2.8L9.5 20H5z"/>' +
+	'<path d="M12.4 8.1 16.9 12.6"/>' +
+	"</g></svg>";
+
+/** A 加下划色条：文字颜色 */
+const COLOR_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M6 16 12 4l6 12"/>' +
+	'<path d="M8.4 12h7.2"/>' +
+	'<path d="M4.5 20h15"/>' +
+	"</g></svg>";
+
+/** x 加右上角小 2：上标 */
+const SUP_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M5 15 11.5 8"/>' +
+	'<path d="M5 8 11.5 15"/>' +
+	'<path d="M14.5 9.5 17 7.4a1.6 1.6 0 0 1 2.6 1.3c0 1.6-3.1 2.6-3.1 4.3h3.2"/>' +
+	"</g></svg>";
+
+/** x 加右下角小 2：下标 */
+const SUB_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M4 8 10.5 15"/>' +
+	'<path d="M4 15 10.5 8"/>' +
+	'<path d="M14 16 16.5 13.9a1.6 1.6 0 0 1 2.6 1.3c0 1.6-3.1 2.6-3.1 4.3"/>' +
+	"</g></svg>";
+
+/** 折叠箭头加两行字：折叠块 */
+const FOLD_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
+	'<path d="M4 6h9"/>' +
+	'<path d="M4 12h6"/>' +
+	'<path d="M4 18h9"/>' +
+	'<path d="m16 15 3-3 3 3"/>' +
+	"</g></svg>";
+
+/* ---------- 行内富文本 ---------- */
+
+/**
+ * 把选区包一层。IR 模式下 getSelection() 拿到的是纯文本，
+ * 没选中就塞一段占位文字，光标落进去接着改。
+ */
+function wrapSelection(
+	before: string,
+	after: string,
+	placeholder: string,
+): void {
+	const ed = vditor;
+	if (!ed) return;
+	const sel = ed.getSelection() ?? "";
+	const text = sel.trim() ? sel : placeholder;
+	// 用 insertMD 而不是 insertValue：后者会把 range 折叠再插入，
+	// 选区不会被替换，正文里那一段会重复一遍
+	ed.insertMD(`${before}${text}${after}`);
+	form.body = ed.getValue();
+	onFieldInput();
+}
+
+/** 原生取色器挂在隐藏 input 上，省得自己画调色板 */
+const colorInput = ref<HTMLInputElement | null>(null);
+let pendingColorText = "";
+
+function pickTextColor(): void {
+	pendingColorText = vditor?.getSelection() ?? "";
+	colorInput.value?.click();
+}
+
+function applyTextColor(event: Event): void {
+	const color = (event.target as HTMLInputElement).value;
+	const text = pendingColorText.trim() ? pendingColorText : "文字";
+	vditor?.insertMD(`<span style="color:${color}">${text}</span>`);
+	if (vditor) form.body = vditor.getValue();
+	onFieldInput();
+}
+
+/** 折叠块用 Obsidian 的 callout 语法，站点已有 rehype-callouts 渲染成 details */
+function insertFold(): void {
+	// 前后留空行：不然插在段落中间会把上下文黏成一块
+	const template = "\n\n> [!note]- 折叠标题\n> 这里写内容\n\n";
+	const ed = vditor;
+	if (!ed) {
+		form.body = `${form.body.trimEnd()}\n\n${template}`;
+		onFieldInput();
+		return;
+	}
+	ed.insertMD(template);
+	// Lute 序列化会把 `[!note]-` 写成 `[!note] -`，而折叠语法要求连写，
+	// 隔开后插件只当成普通 callout、标题里多一个减号
+	const raw = ed.getValue();
+	const fixed = raw.replace(/(\[![\w-]+\])\s+([+-])(?=\s|$)/g, "$1$2");
+	if (fixed !== raw) ed.setValue(fixed, false);
+	form.body = fixed;
+	onFieldInput();
+}
+
 const TOOLBAR: Array<string | IMenuItem> = [
 	"headings",
 	"bold",
@@ -586,6 +686,38 @@ const TOOLBAR: Array<string | IMenuItem> = [
 	"link",
 	"table",
 	"upload",
+	"line",
+	"|",
+	{
+		name: "mark",
+		tip: "文字高亮",
+		icon: MARK_ICON,
+		click: () => wrapSelection("<mark>", "</mark>", "高亮文字"),
+	},
+	{
+		name: "color",
+		tip: "文字颜色",
+		icon: COLOR_ICON,
+		click: () => pickTextColor(),
+	},
+	{
+		name: "sup",
+		tip: "上标",
+		icon: SUP_ICON,
+		click: () => wrapSelection("<sup>", "</sup>", "上标"),
+	},
+	{
+		name: "sub",
+		tip: "下标",
+		icon: SUB_ICON,
+		click: () => wrapSelection("<sub>", "</sub>", "下标"),
+	},
+	{
+		name: "fold",
+		tip: "折叠块",
+		icon: FOLD_ICON,
+		click: () => insertFold(),
+	},
 	"|",
 	"undo",
 	"redo",
@@ -1699,6 +1831,16 @@ watch(isDark, (dark) => {
 							</div>
 						</div>
 						<div ref="editorEl" class="editor" @click="onEditorClick" />
+						<!-- 工具栏「文字颜色」用它取色，不走自绘调色板 -->
+						<input
+							ref="colorInput"
+							type="color"
+							class="color-input"
+							value="#e11d48"
+							tabindex="-1"
+							aria-hidden="true"
+							@input="applyTextColor"
+						/>
 					</section>
 				</div>
 
@@ -2028,11 +2170,16 @@ watch(isDark, (dark) => {
 
 		<MindMapDialog
 			v-if="mmOpen"
+			:key="mmIndex"
 			:initial="mmInitial"
+			:initial-source="mmInitialSource"
+			:block-count="mmBlocks.length"
+			:block-index="mmIndex"
 			:dark="isDark"
 			:notice="mmNotice"
 			:target-label="mmTargetLabel"
 			@close="mmOpen = false"
+			@pick="pickMindMap"
 			@submit="applyMindMap"
 		/>
 
@@ -2926,6 +3073,18 @@ watch(isDark, (dark) => {
 .editor {
 	flex: 1;
 	min-height: 0;
+}
+
+/* 取色用的原生 input：不能 display:none，否则 click() 打不开面板 */
+.color-input {
+	position: absolute;
+	left: -9999px;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	border: 0;
+	opacity: 0;
+	pointer-events: none;
 }
 
 /* Vditor 会把容器元素本身变成 .vditor（类名挂在同一个节点上），

@@ -10,13 +10,18 @@ import MindElixir, {
 } from "mind-elixir";
 import { zh_CN } from "mind-elixir/i18n";
 import "mind-elixir/style.css";
-import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import type { MindNode } from "../lib/mindmap";
-import { toMermaid } from "../lib/mindmap";
+import { parseMermaid, toMermaid } from "../lib/mindmap";
 
 const props = defineProps<{
 	/** 打开时载入的已有导图；没有就是新建 */
 	initial: MindNode | null;
+	/** 目标块的原始 mermaid 源码：画布读不出来时退到源码编辑，至少能改 */
+	initialSource?: string;
+	/** 正文里 mindmap 块的总数与当前块序号（从 0 起），多块时给切换入口 */
+	blockCount?: number;
+	blockIndex?: number;
 	dark: boolean;
 	/** 非空表示会覆盖正文里那一块，按钮文案跟着变 */
 	targetLabel: string;
@@ -24,15 +29,32 @@ const props = defineProps<{
 	notice?: string;
 }>();
 
-const emit = defineEmits<{ close: []; submit: [source: string] }>();
+const emit = defineEmits<{
+	close: [];
+	submit: [source: string];
+	pick: [index: number];
+}>();
 
 type Layout = "side" | "right" | "down";
+type Mode = "canvas" | "source";
 
 const host = ref<HTMLElement | null>(null);
 const layout = ref<Layout>("side");
 const canvasKey = ref(0);
+/** 画布读不出来时默认落到源码，绝不给一张空白画布让人覆盖原文 */
+const mode = ref<Mode>(props.initial ? "canvas" : "source");
+const sourceText = ref(props.initialSource ?? "");
+const canvasError = ref("");
+const blockCount = computed(() => props.blockCount ?? 0);
+const blockIndex = computed(() => props.blockIndex ?? 0);
+const switchWarn = computed(
+	() =>
+		blockCount.value > 1 && props.initialSource !== undefined && !props.initial,
+);
 let mind: MindElixir | null = null;
 let seq = 0;
+/** 从源码切回画布时用的临时树，优先于 props.initial */
+let overrideTree: MindNode | null = null;
 
 function directionOf(value: Layout): 0 | 1 | 2 | 3 {
 	if (value === "right") return RIGHT;
@@ -61,7 +83,8 @@ function toMindNode(obj: NodeObj): MindNode {
 }
 
 function initialData(): MindElixirData {
-	if (props.initial) return { nodeData: toNodeObj(props.initial, true) };
+	const tree = overrideTree ?? props.initial;
+	if (tree) return { nodeData: toNodeObj(tree, true) };
 	return MindElixir.new("中心主题");
 }
 
@@ -130,8 +153,33 @@ function onEscape(event: KeyboardEvent): void {
 	if (event.key === "Escape") emit("close");
 }
 
-onMounted(() => {
+/** 画布 / 源码互切：源码能读成树才允许回画布，读不出来就留在源码里改 */
+function switchMode(next: Mode): void {
+	if (next === mode.value) return;
+	if (next === "source") {
+		// 画布上的改动先落回源码，别一换模式就丢
+		if (mind) sourceText.value = toMermaid(toMindNode(mind.getData().nodeData));
+		mind?.destroy();
+		mind = null;
+		mode.value = "source";
+		canvasError.value = "";
+		return;
+	}
+
+	const tree = parseMermaid(sourceText.value);
+	if (!tree) {
+		canvasError.value = "这段源码画布读不出来，先照着源码改，或重画一张。";
+		return;
+	}
+	overrideTree = tree;
+	canvasError.value = "";
+	mode.value = "canvas";
+	canvasKey.value += 1;
 	void nextTick(() => create());
+}
+
+onMounted(() => {
+	if (mode.value === "canvas") void nextTick(() => create());
 	window.addEventListener("keydown", onEscape);
 });
 
@@ -141,7 +189,17 @@ onBeforeUnmount(() => {
 	mind = null;
 });
 
+const canSubmit = computed(() =>
+	mode.value === "source" ? sourceText.value.trim().length > 0 : true,
+);
+
 function submit(): void {
+	if (mode.value === "source") {
+		const text = sourceText.value.trim();
+		if (!text) return;
+		emit("submit", text);
+		return;
+	}
 	if (!mind) return;
 	emit("submit", toMermaid(toMindNode(mind.getData().nodeData)));
 }
@@ -159,7 +217,40 @@ function submit(): void {
 					</p>
 				</div>
 				<div class="mm-tools">
-					<div class="mm-seg" role="group" aria-label="布局">
+					<div v-if="blockCount > 1" class="mm-seg" role="group" aria-label="导图块">
+						<button
+							type="button"
+							:disabled="blockIndex === 0"
+							title="上一张"
+							@click="emit('pick', blockIndex - 1)"
+						>
+							◀
+						</button>
+						<span class="mm-count">{{ blockIndex + 1 }} / {{ blockCount }}</span>
+						<button
+							type="button"
+							:disabled="blockIndex >= blockCount - 1"
+							title="下一张"
+							@click="emit('pick', blockIndex + 1)"
+						>
+							▶
+						</button>
+					</div>
+					<div class="mm-seg" role="group" aria-label="编辑方式">
+						<button
+							v-for="item in [
+								{ key: 'canvas', label: '画布' },
+								{ key: 'source', label: '源码' },
+							]"
+							:key="item.key"
+							type="button"
+							:class="{ on: mode === item.key }"
+							@click="switchMode(item.key as Mode)"
+						>
+							{{ item.label }}
+						</button>
+					</div>
+					<div v-if="mode === 'canvas'" class="mm-seg" role="group" aria-label="布局">
 						<button
 							v-for="item in [
 								{ key: 'side', label: '两侧' },
@@ -180,16 +271,41 @@ function submit(): void {
 				</div>
 			</header>
 
-			<div :key="canvasKey" ref="host" class="mm-canvas" />
+			<div
+				v-if="mode === 'canvas'"
+				:key="canvasKey"
+				ref="host"
+				class="mm-canvas"
+			/>
+			<textarea
+				v-else
+				v-model="sourceText"
+				class="mm-source"
+				spellcheck="false"
+				aria-label="mermaid 源码"
+			/>
+
+			<p v-if="canvasError" class="mm-error">{{ canvasError }}</p>
 
 			<footer class="mm-foot">
 				<p v-if="notice" class="mm-hint mm-warn">{{ notice }}</p>
+				<p v-else-if="switchWarn" class="mm-hint mm-warn">
+					这一块画布读不出来，先用源码改；保存仍会替换原来那一块。
+				</p>
+				<p v-else-if="mode === 'source'" class="mm-hint">
+					直接改下面的 mermaid 源码，保存后整块替换回正文。
+				</p>
 				<p v-else class="mm-hint">
 					插入后是 <code>```mermaid</code> 代码块，站点构建时渲染成图，深浅色自动跟随。
 				</p>
 				<div class="mm-actions">
 					<button type="button" class="btn-ghost" @click="emit('close')">取消</button>
-					<button type="button" class="btn-primary" @click="submit">
+					<button
+						type="button"
+						class="btn-primary"
+						:disabled="!canSubmit"
+						@click="submit"
+					>
 						{{ targetLabel || "插入正文" }}
 					</button>
 				</div>
@@ -276,6 +392,43 @@ function submit(): void {
 	box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
 }
 
+.mm-seg button:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.mm-count {
+	padding: 0 0.35rem;
+	color: var(--fg-50);
+	font-size: 0.72rem;
+	line-height: 1.6;
+}
+
+.mm-source {
+	flex: 1;
+	min-height: 0;
+	padding: 1rem 1.15rem;
+	border: none;
+	outline: none;
+	resize: none;
+	background: var(--card-bg);
+	color: var(--fg-90);
+	font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+	font-size: 0.82rem;
+	line-height: 1.65;
+	tab-size: 2;
+	white-space: pre;
+	overflow: auto;
+}
+
+.mm-error {
+	margin: 0;
+	padding: 0.5rem 1rem;
+	border-top: 1px solid var(--line-divider);
+	color: var(--admonitions-color-caution);
+	font-size: 0.74rem;
+}
+
 .mm-x {
 	width: 1.9rem;
 	height: 1.9rem;
@@ -331,7 +484,7 @@ function submit(): void {
 /* 窄屏：快捷键提示和说明都收掉，把高度留给画布 */
 @media (max-width: 640px) {
 	.mm-tip,
-	.mm-hint {
+	.mm-hint:not(.mm-warn) {
 		display: none;
 	}
 
@@ -349,7 +502,7 @@ function submit(): void {
 /* 窄屏：快捷键提示和说明都收掉，把高度留给画布 */
 @media (max-width: 640px) {
 	.mm-tip,
-	.mm-hint {
+	.mm-hint:not(.mm-warn) {
 		display: none;
 	}
 

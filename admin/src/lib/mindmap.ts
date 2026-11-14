@@ -62,10 +62,15 @@ export function toMermaid(root: MindNode): string {
 
 /** `root((文字))` / `n1["文字"]` / `A(文字)` / `A{{文字}}` 取花括号里的文字 */
 function nodeText(raw: string): string {
-	let text = raw
-		.replace(/::icon\([^)]*\)\s*$/, "")
-		.replace(/:{3}[^\s]+.*$/, "")
-		.trim();
+	let text = raw.trim();
+
+	// 尾部修饰（`:::class`、`::icon()`）只在形状之后追加，形状里的同名文本不能剥
+	if (!/[\])}]$/.test(text)) {
+		text = text
+			.replace(/\s*:::[A-Za-z0-9_-]+\s*$/, "")
+			.replace(/\s*::icon\([^)]*\)\s*$/, "")
+			.trim();
+	}
 
 	const pairs: [RegExp, RegExp][] = [
 		[/^[A-Za-z0-9_.-]+\(\(/, /\)\)$/],
@@ -135,23 +140,35 @@ export function parseMermaid(source: string): MindNode | null {
 	return root;
 }
 
-/** 正文里所有 mermaid mindmap 块，按出现顺序 */
-export function findMindmapBlocks(markdown: string): MindBlock[] {
-	const blocks: MindBlock[] = [];
-	const re = /```mermaid[^\n]*\n([\s\S]*?)```/g;
+/** 正文里所有 mermaid 块，按出现顺序；kind 区分是不是思维导图 */
+export interface MermaidBlock extends MindBlock {
+	kind: "mindmap" | "other";
+}
+
+export function findMermaidBlocks(markdown: string): MermaidBlock[] {
+	const blocks: MermaidBlock[] = [];
+	// 围栏可能是三个及以上反引号或波浪号，也可能整体缩进（放进列表、引用里）
+	const re =
+		/^([ \t]*)(`{3,}|~{3,})[ \t]*mermaid\b[^\n]*\n([\s\S]*?)^[ \t]*\2[ \t]*$/gm;
 	let match: RegExpExecArray | null = re.exec(markdown);
 	while (match) {
-		const source = match[1].replace(/\s+$/, "");
-		if (/^\s*mindmap\s*$/m.test(source)) {
-			blocks.push({
-				start: match.index,
-				end: match.index + match[0].length,
-				source,
-			});
-		}
+		const source = match[3].replace(/\s+$/, "");
+		blocks.push({
+			start: match.index,
+			end: match.index + match[0].length,
+			source,
+			kind: /^\s*mindmap\s*$/m.test(source) ? "mindmap" : "other",
+		});
 		match = re.exec(markdown);
 	}
 	return blocks;
+}
+
+/** 正文里所有 mermaid mindmap 块，按出现顺序 */
+export function findMindmapBlocks(markdown: string): MindBlock[] {
+	return findMermaidBlocks(markdown).filter(
+		(block) => block.kind === "mindmap",
+	);
 }
 
 /** 用新画好的导图替换掉某一块 */
