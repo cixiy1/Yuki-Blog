@@ -3,19 +3,11 @@
 .custom-md {
   overflow-wrap: break-word;
 
-  /*
-   * ==高亮== 与 <mark> 同一个观感：主题色的淡底，文字保持正文色。
-   * 正文里写了 `--mark-color`（`<mark style="--mark-color:#fde68a">`）就只换色源，
-   * 混合比例、圆角、内边距仍由这条规则决定，自定义底色和默认高亮走的是同一套算法。
-   */
+  /* ==高亮== 与 <mark> 同一个观感：主题色的淡底，文字保持正文色 */
   mark {
     padding: 0.05em 0.2em;
     border-radius: 0.25em;
-    background: color-mix(
-      in srgb,
-      transparent 52%,
-      var(--mark-color, var(--primary))
-    );
+    background: color-mix(in srgb, transparent 52%, var(--primary));
     color: inherit;
   }
 

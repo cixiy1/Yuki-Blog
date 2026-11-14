@@ -650,13 +650,6 @@ const MARK_ICON: string =
 	'<path d="M12.4 8.1 16.9 12.6"/>' +
 	"</g></svg>";
 
-/** 马克笔加一条粗底线：高亮底色 */
-const MARK_BG_ICON: string =
-	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.2) translate(-12 -12)">' +
-	'<path d="M5 14.6 13.7 5.9a2 2 0 0 1 2.8 0l1.6 1.6a2 2 0 0 1 0 2.8L9.4 19H5z"/>' +
-	'<path d="M3.6 21.2h16.8" style="stroke-width:3.6"/>' +
-	"</g></svg>";
-
 /** A 加下划色条：文字颜色 */
 const COLOR_ICON: string =
 	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
@@ -830,6 +823,29 @@ function peelEdges(text: string): {
 }
 
 /** 把选中文字包上 md 标记；没选中就提示，不塞占位字 */
+/**
+ * 用 Vditor 自己的 insertMD 把标记包在选区上，直接替换编辑器里的 range。
+ * 不走源码文本定位：同一句话在正文里出现两次就认不出来，只能弹「多选几个字」，
+ * 而用户选中的本来就是视觉位置，没必要从文字内容去猜。
+ */
+function insertInline(
+	open: string,
+	core: string,
+	close: string,
+	lead: string,
+	trail: string,
+): boolean {
+	const ed = vditor;
+	if (!ed) return false;
+	const before = ed.getValue();
+	ed.insertMD(`${lead}${open}${core}${close}${trail}`);
+	const after = ed.getValue();
+	if (after === before || !after.includes(open + core)) return false;
+	form.body = after;
+	onFieldInput();
+	return true;
+}
+
 function wrapSelection(open: string, close: string, label: string): void {
 	const ed = vditor;
 	if (!ed) return;
@@ -847,6 +863,8 @@ function wrapSelection(open: string, close: string, label: string): void {
 		showHint(`选中的只有标点，${label}得包住文字`);
 		return;
 	}
+	if (insertInline(open, core, close, lead, trail)) return;
+	// 编辑器里插入偶尔会失手（Safari 下 range 错位），退回到源码定位
 	const md = ed.getValue();
 	const hit = locateInSource(md, text);
 	if (!hit) {
@@ -863,18 +881,14 @@ function applyMark(): void {
 }
 
 /*
- * 文字颜色与高亮底色。
+ * 文字颜色。
  *
- * markdown 没有带颜色的语法：`==文字==` 只有一层底色，颜色由站点 CSS 定，
- * 想在正文里指定颜色只有行内 HTML 一条路——`<span style="color:…">` 和
- * `<mark style="--mark-color:…">` 都是 HTML 标准写法，站点构建会原样保留。
- *
- * 底色不写死 `background`：只交出 `--mark-color`，混合比例、圆角、内边距仍由
- * `src/styles/markdown.css` 的 mark 规则算，跟默认的 `==高亮==` 是同一套。
+ * `==文字==` 只有一层主题色底，颜色由站点 CSS 定，正文里没有带颜色的高亮语法。
+ * 想说「这几个字换个颜色」只有行内 HTML 一条路：`<span style="color:…">`，
+ * 站点有 rehype-raw，构建时原样保留。
+ * 底色不做自定义：它在编辑器里只能用 CSS Custom Highlight 模拟，画出来是没有
+ * 圆角和内边距的方块，跟文章页的 `==高亮==` 两个样子。一套 `==` 就够了。
  */
-type InlineTint = "color" | "background";
-
-/** 预设色，两行摆开，够覆盖正文里的强调需求 */
 const TINT_PRESETS = [
 	"#e11d48",
 	"#f97316",
@@ -889,14 +903,9 @@ const TINT_PRESETS = [
 ];
 
 const tintPanel = ref<HTMLElement | null>(null);
-const tintMenu = reactive({
-	open: false,
-	kind: "background" as InlineTint,
-	left: 0,
-	top: 0,
-});
-/** 面板弹出时选区已经没了，先把文字和用途存下来 */
-let pendingTint: { text: string; kind: InlineTint } | null = null;
+const tintMenu = reactive({ open: false, left: 0, top: 0 });
+/** 面板弹出时选区已经没了，先把文字存下来 */
+let pendingTint: string | null = null;
 
 function closeTintMenu(): void {
 	tintMenu.open = false;
@@ -924,54 +933,51 @@ function placeTintMenu(anchor: DOMRect | null): void {
 	tintMenu.top = top;
 }
 
-function openTintMenu(anchor: Event | undefined, kind: InlineTint): void {
+function openTintMenu(anchor: Event | undefined): void {
 	const text = pickedText();
 	if (!text) {
-		showHint(
-			kind === "color"
-				? "先选中要变色的文字，再点颜色"
-				: "先选中要高亮的文字，再点底色",
-		);
+		showHint("先选中要变色的文字，再点颜色");
 		return;
 	}
-	pendingTint = { text, kind };
+	pendingTint = text;
 	const node =
 		anchor?.currentTarget instanceof HTMLElement ? anchor.currentTarget : null;
-	tintMenu.kind = kind;
 	tintMenu.open = true;
 	void nextTick(() => placeTintMenu(node?.getBoundingClientRect() ?? null));
 }
 
-function applyTintColor(color: string, kind: InlineTint): void {
+function applyTintColor(color: string): void {
 	const ed = vditor;
 	const pending = pendingTint;
 	if (!ed || !pending) return;
-	const md = ed.getValue();
-	const hit = locateInSource(md, pending.text);
-	if (!hit) {
-		showHint("这段文字在正文里出现了好几次，多选几个字再试");
-		return;
-	}
-	const { lead, core, trail } = peelEdges(pending.text);
+	const { lead, core, trail } = peelEdges(pending);
 	if (!core) {
 		showHint("选中的只有标点，得包住文字");
 		return;
 	}
-	const open =
-		kind === "color"
-			? `<span style="color:${color}">`
-			: `<mark style="--mark-color:${color}">`;
-	const close = kind === "color" ? "</span>" : "</mark>";
-	const next = `${md.slice(0, hit.start)}${lead}${open}${core}${close}${trail}${md.slice(hit.end)}`;
 	pendingTint = null;
 	tintMenu.open = false;
+	if (
+		insertInline(`<span style="color:${color}">`, core, "</span>", lead, trail)
+	) {
+		showHint("已加上文字颜色");
+		return;
+	}
+	const md = ed.getValue();
+	const hit = locateInSource(md, pending);
+	if (!hit) {
+		showHint("这段文字在正文里出现了好几次，多选几个字再试");
+		return;
+	}
+	const open = `<span style="color:${color}">`;
+	const next = `${md.slice(0, hit.start)}${lead}${open}${core}</span>${trail}${md.slice(hit.end)}`;
 	writeBack(next, core);
-	showHint(kind === "color" ? "已加上文字颜色" : "已加上高亮底色");
+	showHint("已加上文字颜色");
 }
 
 /** 自定义色仍走系统取色器，input 就在面板里，弹出位置跟着它，不会跑偏 */
 function applyTint(event: Event): void {
-	applyTintColor((event.target as HTMLInputElement).value, tintMenu.kind);
+	applyTintColor((event.target as HTMLInputElement).value);
 }
 
 /** 折叠块用 Obsidian 的 callout 语法，站点已有 rehype-callouts 渲染成 details */
@@ -1022,13 +1028,7 @@ const TOOLBAR: Array<string | IMenuItem> = [
 		name: "color",
 		tip: "文字颜色",
 		icon: COLOR_ICON,
-		click: (event: Event) => openTintMenu(event, "color"),
-	},
-	{
-		name: "mark-bg",
-		tip: "高亮底色",
-		icon: MARK_BG_ICON,
-		click: (event: Event) => openTintMenu(event, "background"),
+		click: (event: Event) => openTintMenu(event),
 	},
 	{
 		name: "sup",
@@ -1791,33 +1791,17 @@ function applyNoteHighlights(): void {
 /* ---------- 行内颜色 / 底色的编辑器内显示 ---------- */
 
 /**
- * 行内 `<span style="color:…">` 和 `<mark style="background:…">` 在 Vditor 里
- * 只是两个灰色标签，中间的文字既不变色也没有底色。
+ * 行内 `<span style="color:…">` 在 Vditor 里只是两个灰色标签，中间的文字不变色。
  * 这里用 CSS Custom Highlight 补上，不往正文插节点——编辑器保存时读的是 DOM，
  * 插标签会被序列化进 Markdown。
+ * 只处理文字颜色：底色走 `==高亮==`，Lute 自己渲染成真 `<mark>`，样式跟文章页同一套。
  */
 const COLOR_HIGHLIGHT_PREFIX = "yb-inline-color-";
 const colorHighlightKeys = new Set<string>();
 let colorStyleEl: HTMLStyleElement | null = null;
 
-/**
- * 两种行内样式的开标签写法与要补的 CSS，顺序与标签成对。
- * 底色必须在这里重复一遍 `src/styles/markdown.css` 的混合配方：`::highlight()`
- * 只吃字面值，引用不到那条规则。改比例时两边一起改。
- */
-const INLINE_TINTS = [
-	{
-		open: /^<span style="color:\s*(#[0-9a-f]{3,8})/i,
-		close: /^<\/span>/i,
-		css: (color: string) => `color: ${color};`,
-	},
-	{
-		open: /^<mark style="--mark-color:\s*(#[0-9a-f]{3,8})/i,
-		close: /^<\/mark>/i,
-		css: (color: string) =>
-			`background-color: color-mix(in srgb, transparent 52%, ${color});`,
-	},
-];
+const INLINE_COLOR_OPEN = /^<span style="color:\s*(#[0-9a-f]{3,8})/i;
+const INLINE_COLOR_CLOSE = /^<\/span>/i;
 
 function applyInlineColors(): void {
 	const registry = highlightRegistry();
@@ -1829,24 +1813,21 @@ function applyInlineColors(): void {
 	const root = editorTextRoot();
 	if (!root) return;
 
-	/** 键是「颜色 + 用途」，同一种底色的一批文字只注册一次 */
-	const groups = new Map<string, { css: string; ranges: Range[] }>();
+	/** 同一个颜色的那批文字只注册一次 */
+	const groups = new Map<string, Range[]>();
 	const nodes = root.querySelectorAll<HTMLElement>(
 		'span[data-type="html-inline"]',
 	);
 	for (const node of nodes) {
 		const raw = (node.textContent ?? "").replace(/\u200b/g, "").trim();
-		const rule = INLINE_TINTS.map((item) => ({
-			item,
-			found: item.open.exec(raw),
-		})).find((hit) => hit.found);
-		if (!rule?.found) continue;
-		const color = rule.found[1];
+		const found = INLINE_COLOR_OPEN.exec(raw);
+		if (!found) continue;
+		const color = found[1];
 		const ranges: Range[] = [];
 		let next: Node | null = node.nextSibling;
 		while (next) {
 			const text = (next.textContent ?? "").replace(/\u200b/g, "").trim();
-			if (rule.item.close.test(text)) break;
+			if (INLINE_COLOR_CLOSE.test(text)) break;
 			if (next.nodeType === Node.TEXT_NODE && (next.textContent ?? "").trim()) {
 				const range = document.createRange();
 				range.selectNodeContents(next);
@@ -1855,19 +1836,18 @@ function applyInlineColors(): void {
 			next = next.nextSibling;
 		}
 		if (ranges.length === 0) continue;
-		const key = `${rule.item.css(color)}|${color}`;
-		const bucket = groups.get(key) ?? { css: rule.item.css(color), ranges: [] };
-		bucket.ranges.push(...ranges);
-		groups.set(key, bucket);
+		const bucket = groups.get(color) ?? [];
+		bucket.push(...ranges);
+		groups.set(color, bucket);
 	}
 
 	const rules: string[] = [];
 	let index = 0;
-	for (const bucket of groups.values()) {
+	for (const [color, ranges] of groups) {
 		const key = `${COLOR_HIGHLIGHT_PREFIX}${index}`;
 		index += 1;
-		rules.push(`::highlight(${key}) { ${bucket.css} }`);
-		registry.set(key, new Ctor(...bucket.ranges));
+		rules.push(`::highlight(${key}) { color: ${color}; }`);
+		registry.set(key, new Ctor(...ranges));
 		colorHighlightKeys.add(key);
 	}
 
@@ -2283,7 +2263,7 @@ watch(isDark, (dark) => {
 							</div>
 						</div>
 						<div ref="editorEl" class="editor" @click="onEditorClick" />
-						<!-- 文字颜色 / 高亮底色共用这个色板，位置贴着工具栏按钮 -->
+						<!-- 文字颜色的取色板，位置贴着工具栏按钮 -->
 						<Teleport to="body">
 							<div
 								v-if="tintMenu.open"
@@ -2293,7 +2273,7 @@ watch(isDark, (dark) => {
 								@mousedown.stop
 							>
 								<p class="tint-pop__title">
-									{{ tintMenu.kind === "color" ? "文字颜色" : "高亮底色" }}
+									文字颜色
 								</p>
 								<div class="tint-pop__grid">
 									<button
@@ -2303,7 +2283,7 @@ watch(isDark, (dark) => {
 										class="tint-swatch"
 										:style="{ background: preset }"
 										:title="preset"
-										@click="applyTintColor(preset, tintMenu.kind)"
+										@click="applyTintColor(preset)"
 									/>
 								</div>
 								<label class="tint-pop__custom">
