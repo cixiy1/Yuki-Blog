@@ -686,8 +686,44 @@ const FOLD_ICON: string =
 /* ---------- 行内富文本 ---------- */
 
 /**
- * 把选区包一层。IR 模式下 getSelection() 拿到的是纯文本，
- * 没选中就塞一段占位文字，光标落进去接着改。
+ * 编辑器里最后一次有效选区。点工具栏按钮、开原生取色器都会先把焦点和选区挪走，
+ * 等到 click 里再取 getSelection() 已经是空的，插入就会落在别处或塞进占位文字。
+ */
+let lastRange: Range | null = null;
+
+function rememberSelection(): void {
+	const sel = window.getSelection();
+	if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+	const range = sel.getRangeAt(0);
+	const host = editorEl.value;
+	if (!host?.contains(range.commonAncestorContainer)) return;
+	lastRange = range.cloneRange();
+}
+
+/** 把缓存选区贴回去；选区所在的节点被重渲染过就放弃，避免插到已消失的位置 */
+function restoreSelection(): boolean {
+	const host = editorEl.value;
+	if (!lastRange || !host?.contains(lastRange.startContainer)) {
+		return false;
+	}
+	const sel = window.getSelection();
+	if (!sel) return false;
+	sel.removeAllRanges();
+	sel.addRange(lastRange);
+	return true;
+}
+
+/** 当前选中的文字：优先用实时选区，没了就用缓存的那一段 */
+function selectedText(): string {
+	const live = window.getSelection()?.toString() ?? "";
+	if (live.trim()) return live;
+	return lastRange?.toString() ?? "";
+}
+
+/**
+ * 把选区包一层。没选中就塞一段占位文字，光标落进去接着改。
+ * 用 insertMD 而不是 insertValue：后者会把 range 折叠再插入，
+ * 选区不会被替换，正文里那一段会重复一遍。
  */
 function wrapSelection(
 	before: string,
@@ -696,13 +732,22 @@ function wrapSelection(
 ): void {
 	const ed = vditor;
 	if (!ed) return;
-	const sel = ed.getSelection() ?? "";
-	const text = sel.trim() ? sel : placeholder;
-	// 用 insertMD 而不是 insertValue：后者会把 range 折叠再插入，
-	// 选区不会被替换，正文里那一段会重复一遍
+	if (!window.getSelection()?.toString().trim()) restoreSelection();
+	const text = selectedText().trim() ? selectedText() : placeholder;
 	ed.insertMD(`${before}${text}${after}`);
 	form.body = ed.getValue();
 	onFieldInput();
+}
+
+/** 高亮走 `==文字==`：站点由 rehype-mark 转成 <mark>，编辑器里也不留一坨标签 */
+function applyMark(): void {
+	const text = selectedText();
+	// 跨段落的文字没法用 `==` 包，退回 HTML
+	if (text.includes("\n")) {
+		wrapSelection("<mark>", "</mark>", "高亮文字");
+		return;
+	}
+	wrapSelection("==", "==", "高亮文字");
 }
 
 /** 原生取色器挂在隐藏 input 上，省得自己画调色板 */
@@ -710,13 +755,15 @@ const colorInput = ref<HTMLInputElement | null>(null);
 let pendingColorText = "";
 
 function pickTextColor(): void {
-	pendingColorText = vditor?.getSelection() ?? "";
+	pendingColorText = selectedText();
 	colorInput.value?.click();
 }
 
 function applyTextColor(event: Event): void {
 	const color = (event.target as HTMLInputElement).value;
 	const text = pendingColorText.trim() ? pendingColorText : "文字";
+	// 打开取色器时焦点已经离开编辑器，选区要先贴回去
+	if (!window.getSelection()?.toString().trim()) restoreSelection();
 	vditor?.insertMD(`<span style="color:${color}">${text}</span>`);
 	if (vditor) form.body = vditor.getValue();
 	onFieldInput();
@@ -764,7 +811,7 @@ const TOOLBAR: Array<string | IMenuItem> = [
 		name: "mark",
 		tip: "文字高亮",
 		icon: MARK_ICON,
-		click: () => wrapSelection("<mark>", "</mark>", "高亮文字"),
+		click: () => applyMark(),
 	},
 	{
 		name: "color",
@@ -1717,6 +1764,8 @@ onMounted(async () => {
 	window.addEventListener("scroll", onPopoverScroll, true);
 	window.addEventListener("keydown", onPopoverKey);
 	document.addEventListener("click", onDocumentClick);
+	// 选区随时可能被工具栏、取色器抢走，先记下来
+	document.addEventListener("selectionchange", rememberSelection);
 	// 捕获阶段先于 Vditor 自己的 drop/paste 处理，见 takeDroppedFiles
 	document.addEventListener("drop", onEditorDrop, true);
 	document.addEventListener("paste", onEditorPaste, true);
@@ -1728,6 +1777,7 @@ onBeforeUnmount(() => {
 	window.removeEventListener("scroll", onPopoverScroll, true);
 	window.removeEventListener("keydown", onPopoverKey);
 	document.removeEventListener("click", onDocumentClick);
+	document.removeEventListener("selectionchange", rememberSelection);
 	document.removeEventListener("drop", onEditorDrop, true);
 	document.removeEventListener("paste", onEditorPaste, true);
 	if (timer !== null) window.clearTimeout(timer);
