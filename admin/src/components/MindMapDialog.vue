@@ -444,6 +444,7 @@ function submit(): void {
 
 .mm-seg {
 	display: flex;
+	align-items: center;
 	padding: 0.12rem;
 	border-radius: 999px;
 	background: var(--btn-regular-bg);
@@ -471,10 +472,15 @@ function submit(): void {
 }
 
 .mm-count {
-	padding: 0 0.35rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* 位数变化时（9/10）整组不跟着挪，数字用等宽的 */
+	min-width: 2.6rem;
 	color: var(--fg-50);
 	font-size: 0.72rem;
-	line-height: 1.6;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
 }
 
 /* 「新建一幅」和它的反向入口：和分段控件长得像，但不是选中态 */
