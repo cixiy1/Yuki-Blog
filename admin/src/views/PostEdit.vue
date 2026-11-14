@@ -685,11 +685,20 @@ const FOLD_ICON: string =
 
 /* ---------- 行内富文本 ---------- */
 
-/**
- * 编辑器里最后一次有效选区。点工具栏按钮、开原生取色器都会先把焦点和选区挪走，
- * 等到 click 里再取 getSelection() 已经是空的，插入就会落在别处或塞进占位文字。
- */
+/** 只在编辑器里最后一次有效选区的文本，点按钮时取不到实时选区就拿它顶上 */
 let lastRange: Range | null = null;
+
+/** 工具栏提示：写在一处，三秒后自己消失 */
+const inlineHint = ref("");
+let hintTimer = 0;
+
+function showHint(text: string): void {
+	inlineHint.value = text;
+	window.clearTimeout(hintTimer);
+	hintTimer = window.setTimeout(() => {
+		inlineHint.value = "";
+	}, 3200);
+}
 
 function rememberSelection(): void {
 	const sel = window.getSelection();
@@ -700,73 +709,181 @@ function rememberSelection(): void {
 	lastRange = range.cloneRange();
 }
 
-/** 把缓存选区贴回去；选区所在的节点被重渲染过就放弃，避免插到已消失的位置 */
-function restoreSelection(): boolean {
-	const host = editorEl.value;
-	if (!lastRange || !host?.contains(lastRange.startContainer)) {
-		return false;
-	}
-	const sel = window.getSelection();
-	if (!sel) return false;
-	sel.removeAllRanges();
-	sel.addRange(lastRange);
-	return true;
+/** 当前选中的文字：优先实时选区，没了就用缓存的那一段 */
+function pickedText(): string {
+	const live = window.getSelection()?.toString() ?? "";
+	if (live.trim()) return live.trim();
+	return (lastRange?.toString() ?? "").trim();
 }
 
-/** 当前选中的文字：优先用实时选区，没了就用缓存的那一段 */
-function selectedText(): string {
-	const live = window.getSelection()?.toString() ?? "";
-	if (live.trim()) return live;
-	return lastRange?.toString() ?? "";
+/** 选区左边紧邻的十来个字，用来在正文里区分反复出现的同一句话 */
+function anchorBefore(): string {
+	const sel = window.getSelection();
+	const range =
+		sel && sel.rangeCount > 0 && !sel.isCollapsed
+			? sel.getRangeAt(0)
+			: lastRange;
+	if (!range) return "";
+	const node = range.startContainer;
+	if (node.nodeType !== Node.TEXT_NODE) return "";
+	const data = node.textContent ?? "";
+	return data.slice(Math.max(0, range.startOffset - 12), range.startOffset);
 }
 
 /**
- * 把选区包一层。没选中就塞一段占位文字，光标落进去接着改。
- * 用 insertMD 而不是 insertValue：后者会把 range 折叠再插入，
- * 选区不会被替换，正文里那一段会重复一遍。
+ * 在 markdown 源码里给选中的文字定位。
+ * 出现一次就直接用；出现多次就靠选区左边的文字认，认不出来宁可让人多选几个字，
+ * 也不去猜位置——猜错就是把别的句子改了。
  */
-function wrapSelection(
-	before: string,
-	after: string,
-	placeholder: string,
-): void {
-	const ed = vditor;
-	if (!ed) return;
-	if (!window.getSelection()?.toString().trim()) restoreSelection();
-	const text = selectedText().trim() ? selectedText() : placeholder;
-	ed.insertMD(`${before}${text}${after}`);
-	form.body = ed.getValue();
-	onFieldInput();
+function locateInSource(
+	md: string,
+	text: string,
+): { start: number; end: number } | null {
+	const first = md.indexOf(text);
+	if (first < 0) return null;
+	if (md.indexOf(text, first + 1) < 0) {
+		return { start: first, end: first + text.length };
+	}
+	const anchor = anchorBefore();
+	if (anchor) {
+		const withCtx = anchor + text;
+		const at = md.indexOf(withCtx);
+		if (at >= 0 && md.indexOf(withCtx, at + 1) < 0) {
+			return {
+				start: at + anchor.length,
+				end: at + anchor.length + text.length,
+			};
+		}
+	}
+	return null;
 }
 
-/** 高亮走 `==文字==`：站点由 rehype-mark 转成 <mark>，编辑器里也不留一坨标签 */
-function applyMark(): void {
-	const text = selectedText();
-	// 跨段落的文字没法用 `==` 包，退回 HTML
-	if (text.includes("\n")) {
-		wrapSelection("<mark>", "</mark>", "高亮文字");
+/** 重渲染后把光标放到这段文字末尾，不然 setValue 会把光标丢到开头 */
+function placeCaretAfter(text: string): void {
+	const root = editorEl.value?.querySelector(
+		".vditor-ir .vditor-reset, .vditor-wysiwyg .vditor-reset",
+	);
+	if (!root) return;
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const data = (node as Text).data;
+		const at = data.indexOf(text);
+		if (at >= 0) {
+			const range = document.createRange();
+			range.setStart(node, at + text.length);
+			range.collapse(true);
+			const sel = window.getSelection();
+			sel?.removeAllRanges();
+			sel?.addRange(range);
+			vditor?.focus();
+			return;
+		}
+		node = walker.nextNode();
+	}
+}
+
+/**
+ * 改正文一律走整篇源码替换 + setValue。
+ * 不走编辑器内部的 range：那套在 Safari 下插行内语法会错位，
+ * `==高亮==` 只落下一个等号就是那么来的。
+ */
+function writeBack(next: string, caretAfter: string): void {
+	const ed = vditor;
+	if (!ed) return;
+	ed.setValue(next, false);
+	form.body = next;
+	onFieldInput();
+	// setValue 会重建 DOM，等这一帧画完再放光标
+	requestAnimationFrame(() => placeCaretAfter(caretAfter));
+}
+
+/**
+ * 首尾的标点和空白要留在标记外面。
+ * Lute 按 CommonMark 的定界规则判断 `^` `~` `==` 能不能开合：
+ * 选中「，第二段留给，」直接包成 `^，第二段留给，^` 是认不出来的，剥掉标点才行。
+ */
+const EDGE_PUNCT =
+	/[\s，。、；：！？…—～·,.;:!?()[\]（）【】《》「」『』“”‘’"']/;
+
+function peelEdges(text: string): {
+	lead: string;
+	core: string;
+	trail: string;
+} {
+	let start = 0;
+	let end = text.length;
+	while (start < end && EDGE_PUNCT.test(text[start])) start += 1;
+	while (end > start && EDGE_PUNCT.test(text[end - 1])) end -= 1;
+	return {
+		lead: text.slice(0, start),
+		core: text.slice(start, end),
+		trail: text.slice(end),
+	};
+}
+
+/** 把选中文字包上 md 标记；没选中就提示，不塞占位字 */
+function wrapSelection(open: string, close: string, label: string): void {
+	const ed = vditor;
+	if (!ed) return;
+	const text = pickedText();
+	if (!text) {
+		showHint(`先用鼠标选中要${label}的文字，再点这个按钮`);
 		return;
 	}
-	wrapSelection("==", "==", "高亮文字");
+	if (text.includes("\n")) {
+		showHint(`${label}不支持跨段落，一次选中一段`);
+		return;
+	}
+	const { lead, core, trail } = peelEdges(text);
+	if (!core) {
+		showHint(`选中的只有标点，${label}得包住文字`);
+		return;
+	}
+	const md = ed.getValue();
+	const hit = locateInSource(md, text);
+	if (!hit) {
+		showHint("这段文字在正文里出现了好几次，多选几个字再点");
+		return;
+	}
+	const next = `${md.slice(0, hit.start)}${lead}${open}${core}${close}${trail}${md.slice(hit.end)}`;
+	writeBack(next, core);
+}
+
+/** 高亮走 Lute 的 `==文字==`，编辑器里就是带底色的一段 */
+function applyMark(): void {
+	wrapSelection("==", "==", "高亮");
 }
 
 /** 原生取色器挂在隐藏 input 上，省得自己画调色板 */
 const colorInput = ref<HTMLInputElement | null>(null);
+/** 取色器弹系统面板时选区已经没了，先把文字存下来 */
 let pendingColorText = "";
 
 function pickTextColor(): void {
-	pendingColorText = selectedText();
+	const text = pickedText();
+	if (!text) {
+		showHint("先选中要变色的文字，再点颜色");
+		return;
+	}
+	pendingColorText = text;
 	colorInput.value?.click();
 }
 
 function applyTextColor(event: Event): void {
 	const color = (event.target as HTMLInputElement).value;
-	const text = pendingColorText.trim() ? pendingColorText : "文字";
-	// 打开取色器时焦点已经离开编辑器，选区要先贴回去
-	if (!window.getSelection()?.toString().trim()) restoreSelection();
-	vditor?.insertMD(`<span style="color:${color}">${text}</span>`);
-	if (vditor) form.body = vditor.getValue();
-	onFieldInput();
+	const ed = vditor;
+	if (!ed || !pendingColorText) return;
+	const md = ed.getValue();
+	const hit = locateInSource(md, pendingColorText);
+	if (!hit) {
+		showHint("这段文字在正文里出现了好几次，多选几个字再试");
+		return;
+	}
+	const wrapped = `<span style="color:${color}">${pendingColorText}</span>`;
+	const next = `${md.slice(0, hit.start)}${wrapped}${md.slice(hit.end)}`;
+	writeBack(next, pendingColorText);
+	pendingColorText = "";
 }
 
 /** 折叠块用 Obsidian 的 callout 语法，站点已有 rehype-callouts 渲染成 details */
@@ -823,13 +940,13 @@ const TOOLBAR: Array<string | IMenuItem> = [
 		name: "sup",
 		tip: "上标",
 		icon: SUP_ICON,
-		click: () => wrapSelection("<sup>", "</sup>", "上标"),
+		click: () => wrapSelection("^", "^", "上标"),
 	},
 	{
 		name: "sub",
 		tip: "下标",
 		icon: SUB_ICON,
-		click: () => wrapSelection("<sub>", "</sub>", "下标"),
+		click: () => wrapSelection("~", "~", "下标"),
 	},
 	{
 		name: "fold",
@@ -1456,6 +1573,9 @@ function createEditor(): void {
 			theme: { current: isDark.value ? "dark" : "light" },
 			hljs: { style: isDark.value ? "monokai" : "github", lineNumber: true },
 			math: { engine: "KaTeX" },
+			// Lute 默认关掉了这三样。开着编辑器才会把 ==高亮== 画成底色、
+			// ^上标^ / ~下标~ 画成上下标；关着就只看到一堆源码符号
+			markdown: { mark: true, sup: true, sub: true },
 		},
 		upload: {
 			accept: "image/png,image/jpeg,image/webp,image/gif,image/avif",
@@ -1574,12 +1694,78 @@ function applyNoteHighlights(): void {
 	}
 }
 
+/* ---------- 行内颜色的编辑器内显示 ---------- */
+
+/**
+ * 行内 `<span style="color:…">` 在 Vditor 里只是两个灰色标签，文字不上色。
+ * 这里用 CSS Custom Highlight 给标签之间的文字补颜色，不往正文插节点——
+ * 编辑器保存时读的是 DOM，插标签会被序列化进 Markdown。
+ */
+const COLOR_HIGHLIGHT_PREFIX = "yb-inline-color-";
+const colorHighlightKeys = new Set<string>();
+let colorStyleEl: HTMLStyleElement | null = null;
+
+function applyInlineColors(): void {
+	const registry = highlightRegistry();
+	const Ctor = (window as Window & { Highlight?: HighlightCtor }).Highlight;
+	for (const key of colorHighlightKeys) registry?.delete(key);
+	colorHighlightKeys.clear();
+	if (!registry || !Ctor) return;
+
+	const root = editorTextRoot();
+	if (!root) return;
+
+	const groups = new Map<string, Range[]>();
+	const nodes = root.querySelectorAll<HTMLElement>(
+		'span[data-type="html-inline"]',
+	);
+	for (const node of nodes) {
+		const raw = (node.textContent ?? "").replace(/\u200b/g, "").trim();
+		const found = /^<span style="color:\s*(#[0-9a-f]{3,8})/i.exec(raw);
+		if (!found) continue;
+		const color = found[1];
+		const ranges: Range[] = [];
+		let next: Node | null = node.nextSibling;
+		while (next) {
+			const text = (next.textContent ?? "").replace(/\u200b/g, "").trim();
+			if (/^<\/span>/i.test(text)) break;
+			if (next.nodeType === Node.TEXT_NODE && (next.textContent ?? "").trim()) {
+				const range = document.createRange();
+				range.selectNodeContents(next);
+				ranges.push(range);
+			}
+			next = next.nextSibling;
+		}
+		if (ranges.length === 0) continue;
+		const bucket = groups.get(color) ?? [];
+		bucket.push(...ranges);
+		groups.set(color, bucket);
+	}
+
+	const rules: string[] = [];
+	let index = 0;
+	for (const [color, ranges] of groups) {
+		const key = `${COLOR_HIGHLIGHT_PREFIX}${index}`;
+		index += 1;
+		rules.push(`::highlight(${key}) { color: ${color}; }`);
+		registry.set(key, new Ctor(...ranges));
+		colorHighlightKeys.add(key);
+	}
+
+	if (!colorStyleEl) {
+		colorStyleEl = document.createElement("style");
+		document.head.appendChild(colorStyleEl);
+	}
+	colorStyleEl.textContent = rules.join("\n");
+}
+
 /** 正文一改，编辑器就会重排 DOM，原来的 Range 会失效，安静地补一次 */
 function scheduleHighlights(): void {
 	if (highlightTimer !== null) window.clearTimeout(highlightTimer);
 	highlightTimer = window.setTimeout(() => {
 		highlightTimer = null;
 		applyNoteHighlights();
+		applyInlineColors();
 	}, 400);
 }
 
@@ -1782,9 +1968,14 @@ onBeforeUnmount(() => {
 	document.removeEventListener("paste", onEditorPaste, true);
 	if (timer !== null) window.clearTimeout(timer);
 	if (highlightTimer !== null) window.clearTimeout(highlightTimer);
+	window.clearTimeout(hintTimer);
 	if (coverTimer.value) window.clearTimeout(coverTimer.value);
 	renderObserver?.disconnect();
 	highlightRegistry()?.delete(HIGHLIGHT_NAME);
+	for (const key of colorHighlightKeys) highlightRegistry()?.delete(key);
+	colorHighlightKeys.clear();
+	colorStyleEl?.remove();
+	colorStyleEl = null;
 	vditor?.destroy();
 	vditor = null;
 });
@@ -1811,6 +2002,9 @@ watch(isDark, (dark) => {
 
 <template>
 	<div>
+		<div v-if="inlineHint" class="inline-hint" role="status">
+			{{ inlineHint }}
+		</div>
 		<PageHeader title="编辑文章" :desc="pageDesc">
 			<template #actions>
 				<button type="button" class="btn-ghost" @click="go('/posts')">
@@ -3289,5 +3483,24 @@ watch(isDark, (dark) => {
 	text-decoration: underline dashed
 		color-mix(in oklab, var(--admonitions-color-caution) 70%, transparent);
 	text-underline-offset: 0.18em;
+}
+
+/* 工具栏按钮的提示：悬在顶部，不挤正文 */
+.inline-hint {
+	position: fixed;
+	top: 1.1rem;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 60;
+	max-width: min(90vw, 30rem);
+	padding: 0.5rem 0.9rem;
+	border: 1px solid var(--line-divider);
+	border-radius: 999px;
+	background: var(--card-bg);
+	color: var(--fg);
+	font-size: 0.82rem;
+	line-height: 1.5;
+	text-align: center;
+	box-shadow: 0 8px 24px oklch(0 0 0 / 0.18);
 }
 </style>
