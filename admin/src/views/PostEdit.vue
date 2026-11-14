@@ -650,6 +650,13 @@ const MARK_ICON: string =
 	'<path d="M12.4 8.1 16.9 12.6"/>' +
 	"</g></svg>";
 
+/** 马克笔加一条粗底线：高亮底色 */
+const MARK_BG_ICON: string =
+	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.2) translate(-12 -12)">' +
+	'<path d="M5 14.6 13.7 5.9a2 2 0 0 1 2.8 0l1.6 1.6a2 2 0 0 1 0 2.8L9.4 19H5z"/>' +
+	'<path d="M3.6 21.2h16.8" style="stroke-width:3.6"/>' +
+	"</g></svg>";
+
 /** A 加下划色条：文字颜色 */
 const COLOR_ICON: string =
 	'<svg viewBox="0 0 24 24" width="15" height="15"><g style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round" transform="translate(12 12) scale(1.25) translate(-12 -12)">' +
@@ -855,35 +862,99 @@ function applyMark(): void {
 	wrapSelection("==", "==", "高亮");
 }
 
-/** 原生取色器挂在隐藏 input 上，省得自己画调色板 */
-const colorInput = ref<HTMLInputElement | null>(null);
-/** 取色器弹系统面板时选区已经没了，先把文字存下来 */
-let pendingColorText = "";
+/*
+ * 文字颜色与高亮底色。
+ *
+ * markdown 没有带颜色的语法：`==文字==` 只有一层底色，颜色由站点 CSS 定，
+ * 想在正文里指定颜色只有行内 HTML 一条路——`<span style="color:…">` 和
+ * `<mark style="background:…">` 都是 HTML 标准写法，站点构建会原样保留。
+ * 取色交给系统面板，不自己画调色板。
+ */
+type InlineTint = "color" | "background";
 
-function pickTextColor(): void {
+const colorInput = ref<HTMLInputElement | null>(null);
+/** 系统面板弹出时选区已经没了，先把文字和用途存下来 */
+let pendingTint: { text: string; kind: InlineTint } | null = null;
+
+/**
+ * 系统取色器的面板锚在 input 的位置上。
+ * 以前把 input 藏在 left:-9999px，Safari 会把面板画到屏幕外，看着就是点了没反应；
+ * 现在每次打开前把它挪到按钮下面。
+ */
+function openColorPicker(anchor: Event | undefined, kind: InlineTint): void {
 	const text = pickedText();
 	if (!text) {
-		showHint("先选中要变色的文字，再点颜色");
+		showHint(
+			kind === "color"
+				? "先选中要变色的文字，再点颜色"
+				: "先选中要高亮的文字，再点底色",
+		);
 		return;
 	}
-	pendingColorText = text;
-	colorInput.value?.click();
+	const input = colorInput.value;
+	if (!input) return;
+	const node =
+		anchor?.currentTarget instanceof HTMLElement ? anchor.currentTarget : null;
+	if (node) {
+		const rect = node.getBoundingClientRect();
+		input.style.left = `${rect.left}px`;
+		input.style.top = `${rect.bottom + 4}px`;
+	}
+	pendingTint = { text, kind };
+	const picker = input as HTMLInputElement & { showPicker?: () => void };
+	if (typeof picker.showPicker === "function") {
+		try {
+			picker.showPicker();
+			return;
+		} catch {
+			// 老浏览器或者非用户手势下会抛，退回到 click
+		}
+	}
+	input.click();
 }
 
-function applyTextColor(event: Event): void {
+/**
+ * 底色按半透明写进正文。
+ * 深色主题下正文是浅色字，纯色底会把字压掉；站点自带的 `==高亮==` 也是半透明底。
+ */
+function tintBackground(hex: string): string {
+	const found = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+	if (!found) return hex;
+	const raw =
+		found[1].length === 3
+			? found[1]
+					.split("")
+					.map((char) => char + char)
+					.join("")
+			: found[1];
+	return `#${raw}80`;
+}
+
+function applyTint(event: Event): void {
 	const color = (event.target as HTMLInputElement).value;
 	const ed = vditor;
-	if (!ed || !pendingColorText) return;
+	const pending = pendingTint;
+	if (!ed || !pending) return;
 	const md = ed.getValue();
-	const hit = locateInSource(md, pendingColorText);
+	const hit = locateInSource(md, pending.text);
 	if (!hit) {
 		showHint("这段文字在正文里出现了好几次，多选几个字再试");
 		return;
 	}
-	const wrapped = `<span style="color:${color}">${pendingColorText}</span>`;
-	const next = `${md.slice(0, hit.start)}${wrapped}${md.slice(hit.end)}`;
-	writeBack(next, pendingColorText);
-	pendingColorText = "";
+	const { lead, core, trail } = peelEdges(pending.text);
+	if (!core) {
+		showHint("选中的只有标点，得包住文字");
+		return;
+	}
+	const open =
+		pending.kind === "color"
+			? `<span style="color:${color}">`
+			: `<mark style="background:${tintBackground(color)}">`;
+	const close = pending.kind === "color" ? "</span>" : "</mark>";
+	const next = `${md.slice(0, hit.start)}${lead}${open}${core}${close}${trail}${md.slice(hit.end)}`;
+	pendingTint = null;
+	writeBack(next, core);
+	showHint(pending.kind === "color" ? "已加上文字颜色" : "已加上高亮底色");
 }
 
 /** 折叠块用 Obsidian 的 callout 语法，站点已有 rehype-callouts 渲染成 details */
@@ -934,7 +1005,13 @@ const TOOLBAR: Array<string | IMenuItem> = [
 		name: "color",
 		tip: "文字颜色",
 		icon: COLOR_ICON,
-		click: () => pickTextColor(),
+		click: (event: Event) => openColorPicker(event, "color"),
+	},
+	{
+		name: "mark-bg",
+		tip: "高亮底色",
+		icon: MARK_BG_ICON,
+		click: (event: Event) => openColorPicker(event, "background"),
 	},
 	{
 		name: "sup",
@@ -1694,16 +1771,31 @@ function applyNoteHighlights(): void {
 	}
 }
 
-/* ---------- 行内颜色的编辑器内显示 ---------- */
+/* ---------- 行内颜色 / 底色的编辑器内显示 ---------- */
 
 /**
- * 行内 `<span style="color:…">` 在 Vditor 里只是两个灰色标签，文字不上色。
- * 这里用 CSS Custom Highlight 给标签之间的文字补颜色，不往正文插节点——
- * 编辑器保存时读的是 DOM，插标签会被序列化进 Markdown。
+ * 行内 `<span style="color:…">` 和 `<mark style="background:…">` 在 Vditor 里
+ * 只是两个灰色标签，中间的文字既不变色也没有底色。
+ * 这里用 CSS Custom Highlight 补上，不往正文插节点——编辑器保存时读的是 DOM，
+ * 插标签会被序列化进 Markdown。
  */
 const COLOR_HIGHLIGHT_PREFIX = "yb-inline-color-";
 const colorHighlightKeys = new Set<string>();
 let colorStyleEl: HTMLStyleElement | null = null;
+
+/** 两种行内样式的开标签写法与要补的 CSS，顺序与标签成对 */
+const INLINE_TINTS = [
+	{
+		open: /^<span style="color:\s*(#[0-9a-f]{3,8})/i,
+		close: /^<\/span>/i,
+		css: (color: string) => `color: ${color};`,
+	},
+	{
+		open: /^<mark style="background:\s*(#[0-9a-f]{3,8})/i,
+		close: /^<\/mark>/i,
+		css: (color: string) => `background-color: ${color};`,
+	},
+];
 
 function applyInlineColors(): void {
 	const registry = highlightRegistry();
@@ -1715,20 +1807,24 @@ function applyInlineColors(): void {
 	const root = editorTextRoot();
 	if (!root) return;
 
-	const groups = new Map<string, Range[]>();
+	/** 键是「颜色 + 用途」，同一种底色的一批文字只注册一次 */
+	const groups = new Map<string, { css: string; ranges: Range[] }>();
 	const nodes = root.querySelectorAll<HTMLElement>(
 		'span[data-type="html-inline"]',
 	);
 	for (const node of nodes) {
 		const raw = (node.textContent ?? "").replace(/\u200b/g, "").trim();
-		const found = /^<span style="color:\s*(#[0-9a-f]{3,8})/i.exec(raw);
-		if (!found) continue;
-		const color = found[1];
+		const rule = INLINE_TINTS.map((item) => ({
+			item,
+			found: item.open.exec(raw),
+		})).find((hit) => hit.found);
+		if (!rule?.found) continue;
+		const color = rule.found[1];
 		const ranges: Range[] = [];
 		let next: Node | null = node.nextSibling;
 		while (next) {
 			const text = (next.textContent ?? "").replace(/\u200b/g, "").trim();
-			if (/^<\/span>/i.test(text)) break;
+			if (rule.item.close.test(text)) break;
 			if (next.nodeType === Node.TEXT_NODE && (next.textContent ?? "").trim()) {
 				const range = document.createRange();
 				range.selectNodeContents(next);
@@ -1737,18 +1833,19 @@ function applyInlineColors(): void {
 			next = next.nextSibling;
 		}
 		if (ranges.length === 0) continue;
-		const bucket = groups.get(color) ?? [];
-		bucket.push(...ranges);
-		groups.set(color, bucket);
+		const key = `${rule.item.css(color)}|${color}`;
+		const bucket = groups.get(key) ?? { css: rule.item.css(color), ranges: [] };
+		bucket.ranges.push(...ranges);
+		groups.set(key, bucket);
 	}
 
 	const rules: string[] = [];
 	let index = 0;
-	for (const [color, ranges] of groups) {
+	for (const bucket of groups.values()) {
 		const key = `${COLOR_HIGHLIGHT_PREFIX}${index}`;
 		index += 1;
-		rules.push(`::highlight(${key}) { color: ${color}; }`);
-		registry.set(key, new Ctor(...ranges));
+		rules.push(`::highlight(${key}) { ${bucket.css} }`);
+		registry.set(key, new Ctor(...bucket.ranges));
 		colorHighlightKeys.add(key);
 	}
 
@@ -2147,7 +2244,7 @@ watch(isDark, (dark) => {
 							</div>
 						</div>
 						<div ref="editorEl" class="editor" @click="onEditorClick" />
-						<!-- 工具栏「文字颜色」用它取色，不走自绘调色板 -->
+						<!-- 文字颜色 / 高亮底色共用它，位置每次打开前挪到按钮下面 -->
 						<input
 							ref="colorInput"
 							type="color"
@@ -2155,7 +2252,7 @@ watch(isDark, (dark) => {
 							value="#e11d48"
 							tabindex="-1"
 							aria-hidden="true"
-							@input="applyTextColor"
+							@input="applyTint"
 						/>
 					</section>
 				</div>
@@ -3396,9 +3493,12 @@ watch(isDark, (dark) => {
 }
 
 /* 取色用的原生 input：不能 display:none，否则 click() 打不开面板 */
+/* 取色器透明地贴在按钮下方：系统面板按它的位置弹出来，
+   藏到屏幕外时 Safari 会把面板也画到看不见的地方 */
 .color-input {
-	position: absolute;
-	left: -9999px;
+	position: fixed;
+	left: 0;
+	top: 0;
 	width: 1px;
 	height: 1px;
 	padding: 0;
