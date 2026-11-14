@@ -19,9 +19,13 @@ const props = defineProps<{
 	initial: MindNode | null;
 	/** 目标块的原始 mermaid 源码：画布读不出来时退到源码编辑，至少能改 */
 	initialSource?: string;
-	/** 正文里 mindmap 块的总数与当前块序号（从 0 起），多块时给切换入口 */
+	/** 正文里 mermaid 块的总数与当前块序号（从 0 起），多块时给切换入口 */
 	blockCount?: number;
 	blockIndex?: number;
+	/** 当前块类型：flowchart 这类画布画不了，只能改源码 */
+	kind?: "mindmap" | "other";
+	/** 当前块首行，让人一眼认出改的是哪一段 */
+	preview?: string;
 	/** true 表示正在画新的一幅，正文里已有的图不会被覆盖 */
 	newMode?: boolean;
 	dark: boolean;
@@ -45,25 +49,31 @@ type Mode = "canvas" | "source";
 const host = ref<HTMLElement | null>(null);
 const layout = ref<Layout>("side");
 const canvasKey = ref(0);
+/** 画布只画 mindmap；其他 mermaid 类型没有画布，直接改源码 */
+const canvasable = computed(() => (props.kind ?? "mindmap") === "mindmap");
 /** 只在「有目标块但画布读不出来」时退到源码；新画一张仍然是空白画布 */
 const mode = ref<Mode>(
-	props.initial || !props.initialSource ? "canvas" : "source",
+	canvasable.value && (props.initial || !props.initialSource)
+		? "canvas"
+		: "source",
 );
 const sourceText = ref(props.initialSource ?? "");
 const canvasError = ref("");
 const blockCount = computed(() => props.blockCount ?? 0);
 const blockIndex = computed(() => props.blockIndex ?? 0);
-/** 新增模式下读不到东西是正常状态，别把「用源码改」的警告挂到空白画布上 */
+/** 新增模式下读不到东西是正常状态，别把「用源码改」的警告挂到空白画布上；
+ *  flowchart 这类本来就只有源码，也不要误报「画布读不出来」 */
 const switchWarn = computed(
 	() =>
+		canvasable.value &&
 		!props.newMode &&
 		blockCount.value > 1 &&
 		props.initialSource !== undefined &&
 		!props.initial,
 );
-/** 新增模式下切回原来那幅的入口文案：只有一块时不必报序号 */
+/** 新增模式下切回原来那块的入口文案：只有一块时不必报序号 */
 const resumeLabel = computed(() =>
-	props.blockCount === 1 ? "↩ 改原来那幅" : `↩ 改第 ${blockIndex.value + 1} 幅`,
+	props.blockCount === 1 ? "↩ 改原来那段" : `↩ 改第 ${blockIndex.value + 1} 段`,
 );
 let mind: MindElixir | null = null;
 let seq = 0;
@@ -170,6 +180,8 @@ function onEscape(event: KeyboardEvent): void {
 /** 画布 / 源码互切：源码能读成树才允许回画布，读不出来就留在源码里改 */
 function switchMode(next: Mode): void {
 	if (next === mode.value) return;
+	// flowchart 这类块没有画布，切过去只会得到一张空图
+	if (next === "canvas" && !canvasable.value) return;
 	if (next === "source") {
 		// 画布上的改动先落回源码，别一换模式就丢
 		if (mind) sourceText.value = toMermaid(toMindNode(mind.getData().nodeData));
@@ -228,13 +240,23 @@ function submit(): void {
 
 <template>
 	<div class="mm-mask" @click.self="emit('close')">
-		<div class="mm-dialog" role="dialog" aria-modal="true" aria-label="思维导图">
+		<div
+			class="mm-dialog"
+			role="dialog"
+			aria-modal="true"
+			:aria-label="canvasable ? '思维导图' : 'mermaid 图表'"
+		>
 			<header class="mm-head">
 				<div class="mm-title-box">
-					<p class="mm-title">思维导图</p>
-					<p class="mm-tip">
+					<p class="mm-title">
+						{{ canvasable ? "思维导图" : "mermaid 图表" }}
+					</p>
+					<p v-if="canvasable" class="mm-tip">
 						Tab 加子节点 · Enter 加同级 · Shift+Enter 加到前面 ·
 						Ctrl+Enter 加父节点 · F2 改名 · Delete 删除 · 拖拽换层级
+					</p>
+					<p v-else class="mm-tip">
+						{{ preview || "这段 mermaid" }} · 画布只能画 mindmap，这里直接改源码
 					</p>
 				</div>
 				<div class="mm-tools">
@@ -247,7 +269,7 @@ function submit(): void {
 						<button
 							type="button"
 							:disabled="blockIndex === 0"
-							title="上一张"
+							title="上一段"
 							@click="emit('pick', blockIndex - 1)"
 						>
 							◀
@@ -256,7 +278,7 @@ function submit(): void {
 						<button
 							type="button"
 							:disabled="blockIndex >= blockCount - 1"
-							title="下一张"
+							title="下一段"
 							@click="emit('pick', blockIndex + 1)"
 						>
 							▶
@@ -278,7 +300,12 @@ function submit(): void {
 					>
 						{{ resumeLabel }}
 					</button>
-					<div class="mm-seg" role="group" aria-label="编辑方式">
+					<div
+						v-if="canvasable"
+						class="mm-seg"
+						role="group"
+						aria-label="编辑方式"
+					>
 						<button
 							v-for="item in [
 								{ key: 'canvas', label: '画布' },
@@ -339,7 +366,7 @@ function submit(): void {
 				</p>
 				<p v-else-if="newMode && blockCount > 0" class="mm-hint">
 					新导图会追加到正文末尾，已有的
-					{{ blockCount }} 幅不动。
+					{{ blockCount }} 段不动。
 				</p>
 				<p v-else class="mm-hint">
 					插入后是 <code>```mermaid</code> 代码块，站点构建时渲染成图，深浅色自动跟随。

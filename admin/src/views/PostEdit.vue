@@ -22,8 +22,8 @@ import { ApiError } from "../lib/api";
 import { isAdmin } from "../lib/auth";
 import { uploadImage } from "../lib/media";
 import {
-	findMindmapBlocks,
-	type MindBlock,
+	findMermaidBlocks,
+	type MermaidBlock,
 	parseMermaid,
 	replaceBlock,
 } from "../lib/mindmap";
@@ -368,16 +368,25 @@ const MindMapDialog = defineAsyncComponent(
 );
 
 const mmOpen = ref(false);
-/** 打开画布那一刻正文里的 mindmap 块；改的就是这一块 */
-const mmBlocks = ref<MindBlock[]>([]);
+/**
+ * 打开那一刻正文里的 mermaid 块，按出现顺序。
+ * 不只 mindmap：flowchart / sequence 这些画布画不了，但要能就地改源码，
+ * 否则「正文里一段 flowchart」在编辑器里就是死内容。
+ */
+const mmBlocks = ref<MermaidBlock[]>([]);
 const mmIndex = ref(0);
 /** true 表示这一轮在画新的一幅，提交时追加到文末，任何已有块都不动 */
 const mmNew = ref(false);
 /** 读不出来时的提示：宁可不覆盖，也不要拿空白画布把人家原来的图冲掉 */
 const mmNotice = ref("");
 
+/** 当前块的类型：只有 mindmap 能进画布 */
+const mmKind = computed<"mindmap" | "other">(() =>
+	mmNew.value ? "mindmap" : (mmBlocks.value[mmIndex.value]?.kind ?? "mindmap"),
+);
+
 const mmInitial = computed(() => {
-	if (mmNew.value) return null;
+	if (mmNew.value || mmKind.value !== "mindmap") return null;
 	const block = mmBlocks.value[mmIndex.value];
 	return block ? parseMermaid(block.source) : null;
 });
@@ -387,20 +396,57 @@ const mmInitialSource = computed(() =>
 	mmNew.value ? "" : (mmBlocks.value[mmIndex.value]?.source ?? ""),
 );
 
+/** 当前块的首行，够认出是哪一段（flowchart LR / sequenceDiagram / mindmap） */
+const mmPreview = computed(() => {
+	const line = mmInitialSource.value
+		.split("\n")
+		.find((item) => item.trim() && !item.trim().startsWith("%%"));
+	return (line ?? "").trim().slice(0, 48);
+});
+
 const mmTargetLabel = computed(() => {
 	if (mmNew.value) return "插入新导图";
 	return mmBlocks.value.length > 1
-		? `更新第 ${mmIndex.value + 1} 幅`
+		? `更新第 ${mmIndex.value + 1} 段`
 		: "更新正文";
 });
 
+/**
+ * 光标停在某段代码块里时返回那一段的序号，找不到就退回最后一段。
+ * Vditor 的 IR 模式把每段代码渲染成两个 <pre>：源码一个、渲染结果一个，
+ * 点到渲染结果那一个时要退回它的源码兄弟节点，否则拿到的是 SVG 的 id 文本；
+ * 再拿源码文本和正文里的块前缀对一下，就知道改的是哪一段。
+ */
+function mermaidIndexNearCursor(blocks: MermaidBlock[]): number {
+	const last = Math.max(0, blocks.length - 1);
+	const anchor = window.getSelection()?.anchorNode ?? null;
+	const node =
+		anchor instanceof HTMLElement ? anchor : (anchor?.parentElement ?? null);
+	const hit = node?.closest("pre") ?? null;
+	if (!hit) return last;
+	const pre =
+		hit.classList.contains("vditor-ir__preview") &&
+		hit.previousElementSibling instanceof HTMLElement
+			? hit.previousElementSibling
+			: hit;
+	const text = (pre.textContent ?? "").replace(/\s+/g, "");
+	if (!text) return last;
+	for (let i = 0; i < blocks.length; i += 1) {
+		const src = blocks[i].source.replace(/\s+/g, "");
+		if (!src) continue;
+		if (text.includes(src.slice(0, 40)) || src.includes(text.slice(0, 40))) {
+			return i;
+		}
+	}
+	return last;
+}
+
 function openMindMap(): void {
 	if (!editable.value) return;
-	const blocks = findMindmapBlocks(form.body);
+	const blocks = findMermaidBlocks(form.body);
 	mmBlocks.value = blocks;
-	// 一篇里有多幅时默认改最后画的；前面的用弹窗顶部的 ◀ ▶ 切过去
-	mmIndex.value = Math.max(0, blocks.length - 1);
-	// 正文里还没有导图，本来就只能新增
+	mmIndex.value = mermaidIndexNearCursor(blocks);
+	// 正文里一段 mermaid 都没有，本来就只能新增
 	mmNew.value = blocks.length === 0;
 	mmNotice.value = "";
 	mmOpen.value = true;
@@ -763,7 +809,7 @@ const TOOLBAR: Array<string | IMenuItem> = [
 	},
 	{
 		name: "mindmap",
-		tip: "思维导图",
+		tip: "导图 / 图表",
 		icon: MINDMAP_ICON,
 		click: () => openMindMap(),
 	},
@@ -2201,6 +2247,8 @@ watch(isDark, (dark) => {
 			:initial-source="mmInitialSource"
 			:block-count="mmBlocks.length"
 			:block-index="mmIndex"
+			:kind="mmKind"
+			:preview="mmPreview"
 			:new-mode="mmNew"
 			:dark="isDark"
 			:notice="mmNotice"

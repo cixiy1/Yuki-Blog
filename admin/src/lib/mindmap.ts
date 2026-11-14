@@ -16,6 +16,10 @@ export interface MindBlock {
 	end: number;
 	/** 围栏内的源码 */
 	source: string;
+	/** 围栏前的缩进：块放在列表、引用里时不能丢，否则改完就掉出层级 */
+	indent?: string;
+	/** 原围栏字符：三个以上反引号或波浪号，回写时照抄 */
+	fence?: string;
 }
 
 /** 这些字符会让 mermaid 把文本当成节点语法，得套一层带引号的形状 */
@@ -157,6 +161,8 @@ export function findMermaidBlocks(markdown: string): MermaidBlock[] {
 			start: match.index,
 			end: match.index + match[0].length,
 			source,
+			indent: match[1],
+			fence: match[2],
 			kind: /^\s*mindmap\s*$/m.test(source) ? "mindmap" : "other",
 		});
 		match = re.exec(markdown);
@@ -171,11 +177,20 @@ export function findMindmapBlocks(markdown: string): MindBlock[] {
 	);
 }
 
-/** 用新画好的导图替换掉某一块 */
+/**
+ * 用新内容替换掉某一块。围栏字符和缩进照原样写回，
+ * 否则放在列表里的块改一次就掉出列表。
+ */
 export function replaceBlock(
 	markdown: string,
 	block: MindBlock,
 	source: string,
 ): string {
-	return `${markdown.slice(0, block.start)}\`\`\`mermaid\n${source}\n\`\`\`${markdown.slice(block.end)}`;
+	const indent = block.indent ?? "";
+	const fence = block.fence ?? "```";
+	const body = source
+		.split("\n")
+		.map((line) => (line ? `${indent}${line}` : line))
+		.join("\n");
+	return `${markdown.slice(0, block.start)}${indent}${fence}mermaid\n${body}\n${indent}${fence}${markdown.slice(block.end)}`;
 }
