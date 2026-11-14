@@ -41,8 +41,10 @@ type Mode = "canvas" | "source";
 const host = ref<HTMLElement | null>(null);
 const layout = ref<Layout>("side");
 const canvasKey = ref(0);
-/** 画布读不出来时默认落到源码，绝不给一张空白画布让人覆盖原文 */
-const mode = ref<Mode>(props.initial ? "canvas" : "source");
+/** 只在「有目标块但画布读不出来」时退到源码；新画一张仍然是空白画布 */
+const mode = ref<Mode>(
+	props.initial || !props.initialSource ? "canvas" : "source",
+);
 const sourceText = ref(props.initialSource ?? "");
 const canvasError = ref("");
 const blockCount = computed(() => props.blockCount ?? 0);
