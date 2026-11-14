@@ -3,6 +3,14 @@
 .custom-md {
   overflow-wrap: break-word;
 
+  /* ==高亮== 与 <mark> 同一个观感：主题色的淡底，文字保持正文色 */
+  mark {
+    padding: 0.05em 0.2em;
+    border-radius: 0.25em;
+    background: color-mix(in srgb, transparent 52%, var(--primary));
+    color: inherit;
+  }
+
   body.sticky-navbar & {
     [id] {
       scroll-margin-top: 5.5rem;
