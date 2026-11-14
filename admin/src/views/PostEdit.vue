@@ -871,20 +871,60 @@ function applyMark(): void {
  *
  * 底色不写死 `background`：只交出 `--mark-color`，混合比例、圆角、内边距仍由
  * `src/styles/markdown.css` 的 mark 规则算，跟默认的 `==高亮==` 是同一套。
- * 取色交给系统面板，不自己画调色板。
  */
 type InlineTint = "color" | "background";
 
-const colorInput = ref<HTMLInputElement | null>(null);
-/** 系统面板弹出时选区已经没了，先把文字和用途存下来 */
+/** 预设色，两行摆开，够覆盖正文里的强调需求 */
+const TINT_PRESETS = [
+	"#e11d48",
+	"#f97316",
+	"#f59e0b",
+	"#fde68a",
+	"#22c55e",
+	"#14b8a6",
+	"#3b82f6",
+	"#a855f7",
+	"#64748b",
+	"#334155",
+];
+
+const tintPanel = ref<HTMLElement | null>(null);
+const tintMenu = reactive({
+	open: false,
+	kind: "background" as InlineTint,
+	left: 0,
+	top: 0,
+});
+/** 面板弹出时选区已经没了，先把文字和用途存下来 */
 let pendingTint: { text: string; kind: InlineTint } | null = null;
 
+function closeTintMenu(): void {
+	tintMenu.open = false;
+	pendingTint = null;
+}
+
 /**
- * 系统取色器的面板锚在 input 的位置上。
- * 以前把 input 藏在 left:-9999px，Safari 会把面板画到屏幕外，看着就是点了没反应；
- * 现在每次打开前把它挪到按钮下面。
+ * 面板尺寸渲染后才知道，先按按钮位置摆一次，再收进视口。
+ * 系统的 `input[type=color]` 面板位置由浏览器自己定，会跑到屏幕角落，
+ * 所以色板自己画，只有「自定义」这一格用系统面板。
  */
-function openColorPicker(anchor: Event | undefined, kind: InlineTint): void {
+function placeTintMenu(anchor: DOMRect | null): void {
+	const el = tintPanel.value;
+	if (!el) return;
+	const box = el.getBoundingClientRect();
+	const gap = 6;
+	const pad = 8;
+	let left = anchor ? anchor.left + anchor.width / 2 - box.width / 2 : pad;
+	let top = anchor ? anchor.bottom + gap : pad;
+	left = Math.min(Math.max(left, pad), window.innerWidth - box.width - pad);
+	if (anchor && top + box.height > window.innerHeight - pad) {
+		top = Math.max(anchor.top - box.height - gap, pad);
+	}
+	tintMenu.left = left;
+	tintMenu.top = top;
+}
+
+function openTintMenu(anchor: Event | undefined, kind: InlineTint): void {
 	const text = pickedText();
 	if (!text) {
 		showHint(
@@ -894,30 +934,15 @@ function openColorPicker(anchor: Event | undefined, kind: InlineTint): void {
 		);
 		return;
 	}
-	const input = colorInput.value;
-	if (!input) return;
+	pendingTint = { text, kind };
 	const node =
 		anchor?.currentTarget instanceof HTMLElement ? anchor.currentTarget : null;
-	if (node) {
-		const rect = node.getBoundingClientRect();
-		input.style.left = `${rect.left}px`;
-		input.style.top = `${rect.bottom + 4}px`;
-	}
-	pendingTint = { text, kind };
-	const picker = input as HTMLInputElement & { showPicker?: () => void };
-	if (typeof picker.showPicker === "function") {
-		try {
-			picker.showPicker();
-			return;
-		} catch {
-			// 老浏览器或者非用户手势下会抛，退回到 click
-		}
-	}
-	input.click();
+	tintMenu.kind = kind;
+	tintMenu.open = true;
+	void nextTick(() => placeTintMenu(node?.getBoundingClientRect() ?? null));
 }
 
-function applyTint(event: Event): void {
-	const color = (event.target as HTMLInputElement).value;
+function applyTintColor(color: string, kind: InlineTint): void {
 	const ed = vditor;
 	const pending = pendingTint;
 	if (!ed || !pending) return;
@@ -933,14 +958,20 @@ function applyTint(event: Event): void {
 		return;
 	}
 	const open =
-		pending.kind === "color"
+		kind === "color"
 			? `<span style="color:${color}">`
 			: `<mark style="--mark-color:${color}">`;
-	const close = pending.kind === "color" ? "</span>" : "</mark>";
+	const close = kind === "color" ? "</span>" : "</mark>";
 	const next = `${md.slice(0, hit.start)}${lead}${open}${core}${close}${trail}${md.slice(hit.end)}`;
 	pendingTint = null;
+	tintMenu.open = false;
 	writeBack(next, core);
-	showHint(pending.kind === "color" ? "已加上文字颜色" : "已加上高亮底色");
+	showHint(kind === "color" ? "已加上文字颜色" : "已加上高亮底色");
+}
+
+/** 自定义色仍走系统取色器，input 就在面板里，弹出位置跟着它，不会跑偏 */
+function applyTint(event: Event): void {
+	applyTintColor((event.target as HTMLInputElement).value, tintMenu.kind);
 }
 
 /** 折叠块用 Obsidian 的 callout 语法，站点已有 rehype-callouts 渲染成 details */
@@ -991,13 +1022,13 @@ const TOOLBAR: Array<string | IMenuItem> = [
 		name: "color",
 		tip: "文字颜色",
 		icon: COLOR_ICON,
-		click: (event: Event) => openColorPicker(event, "color"),
+		click: (event: Event) => openTintMenu(event, "color"),
 	},
 	{
 		name: "mark-bg",
 		tip: "高亮底色",
 		icon: MARK_BG_ICON,
-		click: (event: Event) => openColorPicker(event, "background"),
+		click: (event: Event) => openTintMenu(event, "background"),
 	},
 	{
 		name: "sup",
@@ -1956,10 +1987,14 @@ function closeNotePopover(): void {
 function onPopoverScroll(): void {
 	if (Date.now() < ignoreScrollUntil) return;
 	notePopover.value = null;
+	if (tintMenu.open) closeTintMenu();
 }
 
 function onPopoverKey(event: KeyboardEvent): void {
-	if (event.key === "Escape") notePopover.value = null;
+	if (event.key === "Escape") {
+		notePopover.value = null;
+		if (tintMenu.open) closeTintMenu();
+	}
 }
 
 function onDocumentClick(event: MouseEvent): void {
@@ -1967,6 +2002,17 @@ function onDocumentClick(event: MouseEvent): void {
 	const target = event.target as HTMLElement | null;
 	if (target?.closest(".note-pop") || target?.closest(".editor")) return;
 	notePopover.value = null;
+}
+
+/**
+ * 色板挂到 body 上，靠这里收：mousedown 在工具栏自己的 click 之前，
+ * 所以换按钮时旧面板先关、新的再开，不会闪一下又消失。
+ */
+function onTintOutside(event: MouseEvent): void {
+	if (!tintMenu.open) return;
+	const target = event.target as HTMLElement | null;
+	if (target?.closest(".tint-pop")) return;
+	closeTintMenu();
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -2038,6 +2084,7 @@ onMounted(async () => {
 	window.addEventListener("scroll", onPopoverScroll, true);
 	window.addEventListener("keydown", onPopoverKey);
 	document.addEventListener("click", onDocumentClick);
+	document.addEventListener("mousedown", onTintOutside);
 	// 选区随时可能被工具栏、取色器抢走，先记下来
 	document.addEventListener("selectionchange", rememberSelection);
 	// 捕获阶段先于 Vditor 自己的 drop/paste 处理，见 takeDroppedFiles
@@ -2051,6 +2098,7 @@ onBeforeUnmount(() => {
 	window.removeEventListener("scroll", onPopoverScroll, true);
 	window.removeEventListener("keydown", onPopoverKey);
 	document.removeEventListener("click", onDocumentClick);
+	document.removeEventListener("mousedown", onTintOutside);
 	document.removeEventListener("selectionchange", rememberSelection);
 	document.removeEventListener("drop", onEditorDrop, true);
 	document.removeEventListener("paste", onEditorPaste, true);
@@ -2235,16 +2283,41 @@ watch(isDark, (dark) => {
 							</div>
 						</div>
 						<div ref="editorEl" class="editor" @click="onEditorClick" />
-						<!-- 文字颜色 / 高亮底色共用它，位置每次打开前挪到按钮下面 -->
-						<input
-							ref="colorInput"
-							type="color"
-							class="color-input"
-							value="#e11d48"
-							tabindex="-1"
-							aria-hidden="true"
-							@input="applyTint"
-						/>
+						<!-- 文字颜色 / 高亮底色共用这个色板，位置贴着工具栏按钮 -->
+						<Teleport to="body">
+							<div
+								v-if="tintMenu.open"
+								ref="tintPanel"
+								class="tint-pop"
+								:style="{ left: `${tintMenu.left}px`, top: `${tintMenu.top}px` }"
+								@mousedown.stop
+							>
+								<p class="tint-pop__title">
+									{{ tintMenu.kind === "color" ? "文字颜色" : "高亮底色" }}
+								</p>
+								<div class="tint-pop__grid">
+									<button
+										v-for="preset in TINT_PRESETS"
+										:key="preset"
+										type="button"
+										class="tint-swatch"
+										:style="{ background: preset }"
+										:title="preset"
+										@click="applyTintColor(preset, tintMenu.kind)"
+									/>
+								</div>
+								<label class="tint-pop__custom">
+									<input
+										type="color"
+										class="tint-pop__picker"
+										value="#e11d48"
+										aria-label="自定义颜色"
+										@input="applyTint"
+									/>
+									<span>自定义</span>
+								</label>
+							</div>
+						</Teleport>
 					</section>
 				</div>
 
@@ -3486,16 +3559,80 @@ watch(isDark, (dark) => {
 /* 取色用的原生 input：不能 display:none，否则 click() 打不开面板 */
 /* 取色器透明地贴在按钮下方：系统面板按它的位置弹出来，
    藏到屏幕外时 Safari 会把面板也画到看不见的地方 */
-.color-input {
+/* 选色浮层：Teleport 到 body，不受编辑器容器的 overflow / transform 影响 */
+.tint-pop {
 	position: fixed;
-	left: 0;
-	top: 0;
-	width: 1px;
-	height: 1px;
+	z-index: 70;
+	width: 216px;
+	padding: 10px;
+	border: 1px solid var(--line-divider);
+	border-radius: 12px;
+	background: var(--card-bg);
+	box-shadow: 0 16px 40px rgb(0 0 0 / 18%);
+}
+
+.tint-pop__title {
+	margin: 0 0 8px;
+	font-size: 0.72rem;
+	font-weight: 500;
+	color: var(--fg-50);
+}
+
+.tint-pop__grid {
+	display: grid;
+	grid-template-columns: repeat(5, 1fr);
+	gap: 6px;
+}
+
+.tint-swatch {
+	height: 26px;
+	border: 1px solid var(--line-divider);
+	border-radius: 6px;
+	cursor: pointer;
+	transition:
+		transform 0.12s ease,
+		box-shadow 0.12s ease;
+}
+
+.tint-swatch:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+}
+
+.tint-pop__custom {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--line-divider);
+	font-size: 0.78rem;
+	color: var(--fg-75);
+	cursor: pointer;
+}
+
+.tint-pop__picker {
+	width: 26px;
+	height: 26px;
 	padding: 0;
+	border: 1px solid var(--line-divider);
+	border-radius: 6px;
+	background: none;
+	cursor: pointer;
+}
+
+.tint-pop__picker::-webkit-color-swatch-wrapper {
+	padding: 0;
+}
+
+.tint-pop__picker::-webkit-color-swatch {
 	border: 0;
-	opacity: 0;
-	pointer-events: none;
+	border-radius: 5px;
+}
+
+.tint-pop__picker::-moz-color-swatch {
+	border: 0;
+	border-radius: 5px;
 }
 
 /* Vditor 会把容器元素本身变成 .vditor（类名挂在同一个节点上），
