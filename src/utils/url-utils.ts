@@ -54,6 +54,13 @@ export function getCategoryUrl(category: string | null): string {
 	return url(`/archive/?category=${encodeURIComponent(category.trim())}`);
 }
 
+/** 组织页地址。slug 里不会出现斜杠（见 server/lib/orgs.ts 的 SLUG_RE） */
+export function getOrgUrl(slug: string): string {
+	const key = slug.trim();
+	if (!key) return url("/orgs/");
+	return url(`/orgs/${key}/`);
+}
+
 export function getDir(path: string): string {
 	// 移除文件扩展名
 	const pathWithoutExt = removeFileExtension(path);

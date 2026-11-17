@@ -25,11 +25,14 @@ export type AuditAction =
 	| "admin.user.password"
 	| "org.create"
 	| "org.update"
+	| "org.delete"
 	| "org.member.add"
 	| "org.member.remove"
+	| "org.member.role"
 	| "org.invite.create"
 	| "org.invite.revoke"
 	| "org.invite.accept"
+	| "org.invite.decline"
 	| "admin.org.review"
 	| "admin.settings.save"
 	| "admin.settings.apply"
@@ -74,6 +77,8 @@ const DETAIL_KEYS = new Set([
 	"role",
 	"note",
 	"slug",
+	// 组织邀请：撤回/接受时要能对上具体是哪一张票
+	"invite_id",
 	// 发信配置：改的是哪条通道、哪个主机、测试发给了谁
 	"host",
 	"security",

@@ -15,6 +15,7 @@ import CommentsAdmin from "../views/CommentsAdmin.vue";
 import MediaLibrary from "../views/MediaLibrary.vue";
 import MyComponents from "../views/MyComponents.vue";
 import MyPosts from "../views/MyPosts.vue";
+import OrgsAdmin from "../views/OrgsAdmin.vue";
 import Overview from "../views/OverviewPage.vue";
 import PageEdit from "../views/PageEdit.vue";
 import PagesAdmin from "../views/PagesAdmin.vue";
@@ -36,6 +37,7 @@ const VIEWS: Record<RouteName, unknown> = {
 	series: SeriesAdmin,
 	components: MyComponents,
 	media: MediaLibrary,
+	orgs: OrgsAdmin,
 	review: ReviewQueue,
 	comments: CommentsAdmin,
 	users: UsersAdmin,
@@ -81,6 +83,7 @@ const navGroups = computed<NavGroup[]>(() => {
 				{ key: "posts", label: "我的文章", icon: "posts", path: "/posts" },
 				{ key: "pages", label: "页面", icon: "page", path: "/pages" },
 				{ key: "series", label: "系列管理", icon: "layers", path: "/series" },
+				{ key: "orgs", label: "组织", icon: "users", path: "/orgs" },
 				{ key: "media", label: "媒体库", icon: "image", path: "/media" },
 				{
 					key: "components",

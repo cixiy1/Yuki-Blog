@@ -14,6 +14,7 @@ export type RouteName =
 	| "series"
 	| "components"
 	| "media"
+	| "orgs"
 	| "review"
 	| "comments"
 	| "users"
@@ -30,6 +31,8 @@ export interface Route {
 	pageFile?: string;
 	/** settings 用：页内分组，如 /settings/comments 直接落到「评论」 */
 	tab?: string;
+	/** orgs 用：邀请落地页 /orgs/invite/<token> */
+	inviteToken?: string;
 }
 
 const ROUTES: RouteName[] = [
@@ -41,6 +44,7 @@ const ROUTES: RouteName[] = [
 	"series",
 	"components",
 	"media",
+	"orgs",
 	"review",
 	"comments",
 	"users",
@@ -77,6 +81,10 @@ function parse(hash: string): Route {
 	if (name === "post-edit") {
 		const id = Number(parts[1]);
 		return Number.isInteger(id) && id > 0 ? { name, id } : { name: "posts" };
+	}
+	// /orgs/invite/<token>：邮件里的落地页，与组织列表共用 orgs 这一段前缀
+	if (name === "orgs" && parts[1] === "invite" && parts[2]) {
+		return { name: "orgs", inviteToken: decodeURIComponent(parts[2]) };
 	}
 	// /settings/comments：从别处点「评论设置」直接落到那一组
 	if (name === "settings" && parts.length > 1 && parts[1]) {

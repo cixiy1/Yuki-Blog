@@ -2,6 +2,7 @@ import { type CollectionEntry, getCollection } from "astro:content";
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
 import { getCategoryUrl } from "@utils/url-utils";
+import { orgList } from "@/config/orgConfig";
 import { type SeriesMeta, seriesMetaFor } from "@/config/seriesConfig";
 
 /**
@@ -384,4 +385,48 @@ export async function getRelatedPosts(
 	}
 
 	return result;
+}
+
+/** 一个组织 + 它名下的公开文章 */
+export type OrgGroup = {
+	slug: string;
+	name: string;
+	description: string;
+	cover: string;
+	count: number;
+	posts: PostForList[];
+};
+
+/**
+ * 按组织分组，供 `/orgs/` 与 `/orgs/<slug>/` 使用。
+ *
+ * 名单以 `config/orgs.json` 为准，不以文章反推：刚建好还没写文章的组织也要
+ * 出现在索引里（否则管理端建完看不见），而文章里写了不存在的组织就当作
+ * 没有归属——那种情况多半是把 slug 打错了，静默挂一个空组织比报错更糟。
+ *
+ * 只统计公开文章：这里走的是 `getSortedPostsList`，受限文章在构建期就被摘掉了，
+ * 统计进去会让所有人看见「某组织有 3 篇」却只点得开 1 篇。
+ */
+export async function getOrgGroups(): Promise<OrgGroup[]> {
+	const allPosts = await getSortedPostsList();
+
+	const bySlug = new Map<string, PostForList[]>();
+	for (const post of allPosts) {
+		const slug = (post.data.org ?? "").trim();
+		if (!slug) continue;
+		if (!bySlug.has(slug)) bySlug.set(slug, []);
+		bySlug.get(slug)?.push(post);
+	}
+
+	return orgList.map((org) => {
+		const posts = bySlug.get(org.slug) ?? [];
+		return {
+			slug: org.slug,
+			name: org.name,
+			description: org.description,
+			cover: org.cover,
+			count: posts.length,
+			posts,
+		};
+	});
 }

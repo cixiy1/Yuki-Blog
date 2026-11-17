@@ -14,6 +14,8 @@ export interface ProtectedPost {
 	visibility: "login" | "users";
 	accounts: string[];
 	uids: number[];
+	/** 允许的组织 slug；成员关系在 D1，判定时再查一次 */
+	orgs?: string[];
 }
 
 interface Payload {
@@ -75,4 +77,35 @@ export function canReadPost(
 	if (guard.uids.includes(user.uid)) return true;
 	const account = user.account.toLowerCase();
 	return guard.accounts.some((item) => item.toLowerCase() === account);
+}
+
+/**
+ * 组织成员能不能读。
+ *
+ * 单独一个函数、按需调用：绝大多数受限文章只写账号，`guard.orgs` 是空的，
+ * 这条路径一次 D1 都不打。写成 `canReadPost` 里的 await 会让每次读受限文章
+ * 都多一次查询，而组织名单其实是少数情况。
+ *
+ * 一次查全（IN 多个 slug），不是逐组判断：一篇文章可能同时共享给几个组。
+ */
+export async function isMemberOfAnyOrg(
+	db: D1Database,
+	user: Reader | null,
+	orgs: string[] | undefined,
+): Promise<boolean> {
+	if (!user || !orgs || orgs.length === 0) return false;
+	if (user.status !== "active") return false;
+
+	const holes = orgs.map((_, index) => `?${index + 2}`).join(", ");
+	const row = await db
+		.prepare(
+			`SELECT 1 AS ok
+			   FROM org_members m
+			   JOIN orgs o ON o.id = m.org_id
+			  WHERE m.uid = ?1 AND o.status = 'active' AND o.slug IN (${holes})
+			  LIMIT 1`,
+		)
+		.bind(user.uid, ...orgs)
+		.first<{ ok: number }>();
+	return row !== null;
 }

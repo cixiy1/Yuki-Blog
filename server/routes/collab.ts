@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { writeAudit } from "../lib/audit";
 import {
 	addCollaborator,
+	addCollaboratorUid,
 	COLLAB_LIMIT,
 	canEditPost,
 	canManageCollaborators,
@@ -9,6 +10,7 @@ import {
 	removeCollaborator,
 } from "../lib/collab";
 import { notifyCollabInvite, notifyCollabRevoked } from "../lib/collab-notify";
+import { memberRole, orgById, orgMemberUids } from "../lib/orgs";
 import { publicOrigin } from "../lib/origin";
 import { readRepoPosts } from "../lib/post-index";
 import { requireAuth } from "../middleware/auth";
@@ -113,7 +115,12 @@ collab.get("/", requireAuth, async (c) => {
 	const user = c.get("user");
 	if (!user) return c.json({ error: "unauthorized", message: "请先登录" }, 401);
 
-	const info = await postInfo(c.env.DB, c.env.ASSETS, publicOrigin(c.req.raw, c.env.SITE_ORIGIN), slug);
+	const info = await postInfo(
+		c.env.DB,
+		c.env.ASSETS,
+		publicOrigin(c.req.raw, c.env.SITE_ORIGIN),
+		slug,
+	);
 	if (!info.exists)
 		return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
@@ -155,7 +162,12 @@ collab.post(
 			);
 		}
 
-		const info = await postInfo(c.env.DB, c.env.ASSETS, publicOrigin(c.req.raw, c.env.SITE_ORIGIN), slug);
+		const info = await postInfo(
+			c.env.DB,
+			c.env.ASSETS,
+			publicOrigin(c.req.raw, c.env.SITE_ORIGIN),
+			slug,
+		);
 		if (!info.exists)
 			return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
@@ -225,7 +237,12 @@ collab.post(
 			return c.json({ error: "bad_request", message: "uid 非法" }, 400);
 		}
 
-		const info = await postInfo(c.env.DB, c.env.ASSETS, publicOrigin(c.req.raw, c.env.SITE_ORIGIN), slug);
+		const info = await postInfo(
+			c.env.DB,
+			c.env.ASSETS,
+			publicOrigin(c.req.raw, c.env.SITE_ORIGIN),
+			slug,
+		);
 		if (!info.exists)
 			return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
@@ -257,6 +274,113 @@ collab.post(
 		return c.json({
 			ok: true,
 			mail,
+			members: await listCollaborators(c.env.DB, slug),
+		});
+	},
+);
+
+/**
+ * 按组织整组邀请。
+ *
+ * 与一个一个加人的区别只在「一次加一批」：权限、上限、邮件都还是同一套。
+ * 邀请人必须是这个组织的成员——否则作者能把自己没参与过的组整批拉进稿子，
+ * 组里的人和作者都不认识对方。
+ */
+collab.post(
+	"/invite-org",
+	requireAuth,
+	requireJsonBody,
+	sameOriginGuard,
+	async (c) => {
+		const user = c.get("user");
+		if (!user)
+			return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+
+		const payload = (await c.req.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		const slug = typeof payload.slug === "string" ? payload.slug.trim() : "";
+		const orgId = Number(payload.orgId);
+		if (!slug) return c.json(BAD_SLUG, 400);
+		if (!Number.isInteger(orgId) || orgId <= 0) {
+			return c.json({ error: "bad_request", message: "选一个组织" }, 400);
+		}
+
+		const info = await postInfo(
+			c.env.DB,
+			c.env.ASSETS,
+			publicOrigin(c.req.raw, c.env.SITE_ORIGIN),
+			slug,
+		);
+		if (!info.exists)
+			return c.json({ error: "not_found", message: "文章不存在" }, 404);
+
+		const post = { slug, ownerUid: info.ownerUid };
+		if (!canManageCollaborators(user, post)) return c.json(FORBIDDEN, 403);
+
+		const org = await orgById(c.env.DB, orgId);
+		if (org?.status !== "active") {
+			return c.json({ error: "not_found", message: "组织不存在" }, 404);
+		}
+
+		const myOrgRole = await memberRole(c.env.DB, org.id, user.uid);
+		if (!myOrgRole && user.role !== "admin") {
+			return c.json(
+				{ error: "forbidden", message: "你不在这个组织里，不能把整组拉进来" },
+				403,
+			);
+		}
+
+		const uids = await orgMemberUids(c.env.DB, org.id);
+		let added = 0;
+		let skipped = 0;
+		let hitLimit = false;
+		const mails: string[] = [];
+
+		for (const uid of uids) {
+			const result = await addCollaboratorUid(c.env.DB, slug, uid, user.uid);
+			if (!result.ok) {
+				// 自己（作者）与已经在名单里的人不算失败，跳过就好
+				if (result.code === "limit") {
+					hitLimit = true;
+					break;
+				}
+				skipped += 1;
+				continue;
+			}
+			added += 1;
+
+			// 一人一封：信里是同一个地址，但每个人都要知道「自己被拉进来了」
+			const mail = await notifyCollabInvite(c.env, {
+				uid,
+				title: info.title,
+				inviter: user.display_name || user.account,
+				link: info.link,
+				published: info.published,
+			});
+			mails.push(mail);
+		}
+
+		await writeAudit(c.env.DB, {
+			actorUid: user.uid,
+			action: "post.collab.invite",
+			target: `post:${slug}`,
+			detail: { slug, org_id: org.id, count: added },
+		});
+
+		return c.json({
+			ok: true,
+			added,
+			skipped,
+			limit: hitLimit,
+			// 汇总：多少人拿到了信、多少人没邮箱、多少人没发出去
+			mails: {
+				sent: mails.filter((item) => item === "sent").length,
+				no_email: mails.filter((item) => item === "no_email").length,
+				no_mailer: mails.filter((item) => item === "no_mailer").length,
+				failed: mails.filter((item) => item === "failed").length,
+			},
 			members: await listCollaborators(c.env.DB, slug),
 		});
 	},

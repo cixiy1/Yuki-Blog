@@ -1,0 +1,83 @@
+---
+import { Icon } from "astro-icon/components";
+import { orgList } from "@/config/orgConfig";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { getOrgGroups } from "@/utils/content-utils";
+import { getOrgUrl } from "@/utils/url-utils";
+
+const groups = await getOrgGroups();
+const totalPosts = groups.reduce((sum, group) => sum + group.count, 0);
+
+/**
+ * 组织索引页。
+ *
+ * 名单来自 `config/orgs.json`（管理端保存组织时同步进来的那份），
+ * 篇数来自构建期的文章分组——受限文章不算在内，见 getOrgGroups 的注释。
+ */
+---
+
+<MainGridLayout title="组织" description="按组织归档的文章">
+    <div class="card-base px-8 py-6 mb-4">
+        <div class="text-2xl font-bold text-(--primary) mb-2">组织</div>
+        <p class="text-30 text-sm">
+            按归属分组的文章 · {orgList.length} 个组织 · {totalPosts} 篇文章
+        </p>
+    </div>
+
+    <!-- 主内容列在桌面端只有 500 多像素，固定两列会把组名挤成「具身…」；
+         用 auto-fit + 18rem 下限，窄屏就是一列，宽屏自己变两列 -->
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] gap-4 mb-4">
+        {
+            groups.map((group, index) => (
+                <a
+                    href={getOrgUrl(group.slug)}
+                    class="card-base p-6 flex flex-col gap-3 group onload-animation"
+                    style={`animation-delay: calc(var(--content-delay) + ${index * 50}ms);`}
+                >
+                    <div class="flex items-center gap-3">
+                        <div class="shrink-0 w-12 h-12 rounded-full bg-(--primary)/10 group-hover:bg-(--primary)/20 flex items-center justify-center transition-colors overflow-hidden">
+                            {group.cover ? (
+                                <img
+                                    src={group.cover}
+                                    alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                    class="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <Icon
+                                    name="material-symbols:groups-rounded"
+                                    class="text-2xl text-(--primary)"
+                                />
+                            )}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h2
+                                class="text-lg font-bold text-90 truncate group-hover:text-(--primary) transition-colors"
+                                title={group.name}
+                            >
+                                {group.name}
+                            </h2>
+                            <p class="text-sm text-30">{group.count} 篇文章</p>
+                        </div>
+                    </div>
+                    {group.description && (
+                        <p class="text-sm text-50 line-clamp-2">{group.description}</p>
+                    )}
+                </a>
+            ))
+        }
+    </div>
+
+    {
+        groups.length === 0 && (
+            <div class="card-base px-8 py-12 text-center">
+                <Icon
+                    name="material-symbols:groups-outline"
+                    class="text-5xl text-30 mx-auto mb-4"
+                />
+                <p class="text-30">还没有建立组织</p>
+            </div>
+        )
+    }
+</MainGridLayout>

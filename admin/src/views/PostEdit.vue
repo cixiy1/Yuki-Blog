@@ -29,6 +29,7 @@ import {
 	parseMermaid,
 	replaceBlock,
 } from "../lib/mindmap";
+import { listOrgs, type OrgSummary } from "../lib/orgs";
 import {
 	bodyToPreview,
 	bodyToStorage,
@@ -103,7 +104,8 @@ type Kind =
 	| "image"
 	| "series"
 	| "provenance"
-	| "visibility";
+	| "visibility"
+	| "org";
 
 interface Def {
 	key: string;
@@ -234,6 +236,12 @@ const GROUPS: Group[] = [
 		title: "访问控制",
 		note: "可见范围决定谁能打开这篇；密码是另一层，知道地址还要再输一次",
 		defs: [
+			{
+				key: "org",
+				label: "所属组织",
+				kind: "org",
+				hint: "出现在 /orgs/ 里；老文章没有归属也正常",
+			},
 			{ key: "visibility", label: "可见范围", kind: "visibility" },
 			{ key: "password", label: "访问密码", kind: "password" },
 			{
@@ -256,6 +264,8 @@ const KNOWN = new Set([
 	...ALL_DEFS.map((def) => def.key),
 	"title",
 	"slug",
+	// 单独用下拉渲染，不进自定义字段
+	"org",
 	// 跟 visibility 一起写，不单独占一行
 	"visibleTo",
 	// 站内自动算出来的上下篇，改了也会被覆盖
@@ -303,6 +313,14 @@ const guard = reactive<{
 	visibility: "public",
 	users: [],
 });
+/**
+ * 所属组织：草稿存在 `posts.org_id`，仓库文章写成 frontmatter 的 `org`，
+ * 两种形态在这里统一成一个 slug 值，保存时再各自落地。
+ */
+const orgOptions = ref<OrgSummary[]>([]);
+const orgSlug = ref("");
+const orgsLoading = ref(false);
+
 /** 可选用户：只有管理员拿得到，普通作者打开时是空列表 */
 const members = ref<AdminUser[]>([]);
 const membersLoading = ref(false);
@@ -1145,6 +1163,37 @@ async function ensureMembers(): Promise<void> {
 	}
 }
 
+/**
+ * 拉可选的组。
+ *
+ * 跟成员名单不同，这个接口对普通账号也开放（只回自己参加的组织），
+ * 所以协作者、普通作者都能给自己那篇选归属。
+ */
+async function ensureOrgs(): Promise<void> {
+	if (orgOptions.value.length > 0 || orgsLoading.value) return;
+	orgsLoading.value = true;
+	try {
+		const data = await listOrgs();
+		orgOptions.value = data.orgs;
+	} catch {
+		// 读不到就只显示「不归属」：组织不是必填项，不该因此挡住保存
+	} finally {
+		orgsLoading.value = false;
+	}
+}
+
+/** 草稿上记的是 org_id，换成 slug 才能在下拉里选中 */
+function applyOrgId(orgId: number | null | undefined): void {
+	const hit = orgOptions.value.find((org) => org.id === orgId);
+	orgSlug.value = hit?.slug ?? "";
+}
+
+function onOrgChange(event: Event): void {
+	const target = event.target as HTMLSelectElement | null;
+	orgSlug.value = target?.value ?? "";
+	onFieldInput();
+}
+
 function onVisibilityChange(next: string): void {
 	guard.visibility = next === "login" || next === "users" ? next : "public";
 	if (guard.visibility === "users") void ensureMembers();
@@ -1158,6 +1207,14 @@ const guardChoices = computed(() => {
 		label: user.display_name || user.account,
 		sub: `@${user.account} · uid ${user.uid}`,
 	}));
+	// 组织也当成名单里的一项：值写 `org:<slug>`，服务端按成员身份判定
+	for (const org of orgOptions.value) {
+		rows.push({
+			value: `org:${org.slug}`,
+			label: `组织：${org.name}`,
+			sub: `组内 ${org.members} 人都能看`,
+		});
+	}
 	const known = new Set(rows.map((row) => row.value.toLowerCase()));
 	for (const item of guard.users) {
 		if (known.has(item.toLowerCase())) continue;
@@ -1246,6 +1303,11 @@ function loadFields(fields: Record<string, FieldValue>): void {
 		if (def.key === "slug") continue;
 		// 可见范围与名单是「一个控件两个键」，下面单独铺
 		if (def.kind === "visibility") continue;
+		// 组织是下拉，值存到 orgSlug
+		if (def.kind === "org") {
+			orgSlug.value = typeof fields.org === "string" ? fields.org : "";
+			continue;
+		}
 		const raw = fields[def.key];
 		if (def.kind === "bool") {
 			flags[def.key] = raw === true || raw === "true";
@@ -1325,6 +1387,8 @@ function fill(post: PostDetail): void {
 	form.title = post.title;
 	vals.description = post.summary ?? "";
 	vals.tags = (post.tags ?? []).join(", ");
+	// 草稿只存 org_id，下拉要的是 slug：等组织列表回来再回填
+	void ensureOrgs().then(() => applyOrgId(post.org_id));
 }
 
 function fillRepo(post: RepoPostDetail): void {
@@ -1339,6 +1403,7 @@ function fillRepo(post: RepoPostDetail): void {
 	isMdx.value = post.repoPath.toLowerCase().endsWith(".mdx");
 	form.body = bodyToPreview(post.body, post.rawBase);
 	loadFields(post.fields);
+	void ensureOrgs();
 }
 
 /** 值 -> frontmatter：空值送 null，服务端据此删掉这个键 */
@@ -1365,6 +1430,10 @@ function buildFields(): Record<string, FieldValue | null> {
 
 	for (const def of ALL_DEFS) {
 		if (def.key === "slug") continue;
+		if (def.kind === "org") {
+			put("org", orgSlug.value, !orgSlug.value);
+			continue;
+		}
 		if (def.kind === "visibility") {
 			// public 是默认值，不写进 frontmatter：否则每篇都会多一行没意义的配置
 			put("visibility", guard.visibility, guard.visibility === "public");
@@ -1474,6 +1543,8 @@ async function save(): Promise<boolean> {
 		delete meta.title;
 		delete meta.description;
 		delete meta.tags;
+		// 草稿的组织关系在 posts.org_id 这一列上，meta 里再写一份会和它打架
+		delete meta.org;
 		const post = await savePost(postId.value, {
 			title: form.title.trim(),
 			slug: form.slug.trim(),
@@ -1481,6 +1552,8 @@ async function save(): Promise<boolean> {
 			tags: splitTags(),
 			body: form.body,
 			meta,
+			org_id:
+				orgOptions.value.find((org) => org.slug === orgSlug.value)?.id ?? null,
 			base_rev: baseRev.value,
 		});
 		if (post) {
@@ -2433,6 +2506,28 @@ watch(isDark, (dark) => {
 										/>
 									</div>
 								</div>
+							</template>
+
+							<template v-else-if="def.kind === 'org'">
+								<select
+									class="field"
+									:value="orgSlug"
+									:disabled="!editable || orgsLoading"
+									@change="onOrgChange"
+								>
+									<option value="">不归属任何组织</option>
+									<option
+										v-for="org in orgOptions"
+										:key="org.id"
+										:value="org.slug"
+									>
+										{{ org.name }}
+									</option>
+								</select>
+								<p v-if="orgsLoading" class="field-hint">读取组织…</p>
+								<p v-else-if="orgOptions.length === 0" class="field-hint">
+									你还没有参加任何组织，去「组织」页建一个或等对方邀请。
+								</p>
 							</template>
 
 							<template v-else-if="def.kind === 'visibility'">

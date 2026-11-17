@@ -1,0 +1,4 @@
+{
+	"_comment": "管理端「组织」页保存时自动整份重写本文件，手改会被覆盖。key 是组织 slug，必须与文章 frontmatter 的 org 字段一致；visibleTo 里写 org:<slug> 表示「这个组织的成员可读」。cover 用站内路径（/assets/…）或 http(s) 地址。",
+	"orgs": {}
+}

@@ -5,9 +5,11 @@ import {
 	type CollabMember,
 	getCollab,
 	inviteCollab,
+	inviteCollabOrg,
 	type MailOutcome,
 	revokeCollab,
 } from "../lib/collab";
+import { listOrgs, type OrgSummary } from "../lib/orgs";
 import AppIcon from "./AppIcon.vue";
 
 /**
@@ -28,6 +30,10 @@ const account = ref("");
 /** 上一次邀请的通知信结果，直接在输入框下面说一句 */
 const notice = ref("");
 const inputEl = ref<HTMLInputElement | null>(null);
+/** 按组织整组邀请：只有我参加的组织能选，选完一次把全组拉进来 */
+const orgs = ref<OrgSummary[]>([]);
+const orgId = ref("");
+const orgBusy = ref(false);
 
 const canInvite = computed(
 	() => props.canManage && members.value.length < limit.value && !busy.value,
@@ -82,6 +88,38 @@ async function onRevoke(member: CollabMember): Promise<void> {
 	}
 }
 
+/**
+ * 整组邀请。
+ *
+ * 与一个一个加人的区别只有「一次一批」：名额上限、邮件、权限都走同一套。
+ * 结果按人汇总报一句，不然 8 个人发出去 3 封信谁也不知道差在哪。
+ */
+async function onInviteOrg(): Promise<void> {
+	const id = Number(orgId.value);
+	if (!Number.isInteger(id) || id <= 0 || busy.value || orgBusy.value) return;
+	orgBusy.value = true;
+	errorText.value = "";
+	try {
+		const result = await inviteCollabOrg(props.slug, id);
+		members.value = result.members;
+		const mail = result.mails;
+		const parts = [`整组加了 ${result.added} 人`];
+		if (result.skipped > 0)
+			parts.push(`跳过 ${result.skipped} 人（自己或已在名单里）`);
+		if (mail.sent > 0) parts.push(`${mail.sent} 封通知已发出`);
+		if (mail.no_email > 0) parts.push(`${mail.no_email} 人没填邮箱`);
+		if (mail.no_mailer > 0) parts.push("站点没配发信通道，邮件没发");
+		if (mail.failed > 0) parts.push(`${mail.failed} 封发送失败`);
+		notice.value = `${parts.join("，")}。${result.limit ? "名额到顶了，后面的人没加进去。" : ""}`;
+		orgId.value = "";
+		emit("changed", result.members.length);
+	} catch (err) {
+		errorText.value = err instanceof ApiError ? err.message : "整组邀请失败";
+	} finally {
+		orgBusy.value = false;
+	}
+}
+
 function onKeydown(event: KeyboardEvent): void {
 	if (event.key === "Escape") emit("close");
 }
@@ -89,6 +127,14 @@ function onKeydown(event: KeyboardEvent): void {
 onMounted(async () => {
 	window.addEventListener("keydown", onKeydown);
 	await load();
+	// 组织列表只有能管名单的人才用得上，读失败也不影响单人邀请
+	if (props.canManage) {
+		try {
+			orgs.value = (await listOrgs()).orgs;
+		} catch {
+			orgs.value = [];
+		}
+	}
 	await nextTick();
 	inputEl.value?.focus();
 });
@@ -146,6 +192,23 @@ function who(member: CollabMember): string {
 					@click="onInvite"
 				>
 					邀请
+				</button>
+			</div>
+
+			<div v-if="canManage && orgs.length > 0" class="cl-invite cl-invite-org">
+				<select v-model="orgId" class="cl-input" :disabled="!canInvite || orgBusy">
+					<option value="">按组织整组加入…</option>
+					<option v-for="org in orgs" :key="org.id" :value="String(org.id)">
+						{{ org.name }}（{{ org.members }} 人）
+					</option>
+				</select>
+				<button
+					type="button"
+					class="btn-ghost"
+					:disabled="!canInvite || !orgId || orgBusy"
+					@click="onInviteOrg"
+				>
+					{{ orgBusy ? "处理中…" : "整组加入" }}
 				</button>
 			</div>
 
@@ -265,6 +328,12 @@ function who(member: CollabMember): string {
 	gap: 0.4rem;
 	padding: 0.7rem 1rem;
 	border-bottom: 1px solid var(--line-divider);
+}
+
+/* 第二行（按组织整组加入）不需要再画一条分隔线，跟上一行连成一块 */
+.cl-invite-org {
+	border-bottom: 1px solid var(--line-divider);
+	background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .cl-input {

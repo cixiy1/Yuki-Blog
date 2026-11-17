@@ -39,6 +39,8 @@ type PostData = {
 	visibleTo: string[];
 	series: string;
 	seriesOrder?: number;
+	/** 所属组织的 slug；空串表示没有归属（老文章就是这种） */
+	org: string;
 	provenance: string | ProvenanceDetail;
 	prevTitle: string;
 	prevSlug: string;
@@ -137,6 +139,8 @@ const postsCollection: ContentCollection<PostData> = defineCollection({
 		visibleTo: z.array(z.string()).optional().default([]),
 		series: z.string().optional().default(""),
 		seriesOrder: z.number().optional(),
+		// 组织 slug，与 config/orgs.json 的 key 对应；写了不存在的 slug 就是没有归属
+		org: z.string().optional().default(""),
 		provenance: provenanceSchema,
 
 		/* For internal use */

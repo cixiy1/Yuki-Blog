@@ -1,0 +1,104 @@
+---
+import { Icon } from "astro-icon/components";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import type { OrgGroup } from "@/utils/content-utils";
+import { getOrgGroups } from "@/utils/content-utils";
+import { formatDateToYYYYMMDD } from "@/utils/date-utils";
+import { getOrgUrl, getPostUrlBySlug } from "@/utils/url-utils";
+
+/**
+ * 单个组织页。
+ *
+ * 只收录公开文章（见 getOrgGroups）：这里和列表页一样是构建期固化的静态内容，
+ * 放不进需要按人判定的稿子，否则等于把标题摆在所有人面前。
+ */
+export async function getStaticPaths(): Promise<
+	Array<{ params: { slug: string }; props: { group: OrgGroup } }>
+> {
+	const groups = await getOrgGroups();
+	return groups.map((group) => ({
+		params: { slug: group.slug },
+		props: { group },
+	}));
+}
+
+const { group } = Astro.props;
+---
+
+<MainGridLayout title={group.name} description={group.description || `${group.name} 的文章`}>
+    <div class="card-base px-8 py-6 mb-4">
+        <div class="flex items-center gap-4">
+            <div class="shrink-0 w-14 h-14 rounded-full bg-(--primary)/10 flex items-center justify-center overflow-hidden">
+                {group.cover ? (
+                    <img
+                        src={group.cover}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        class="w-full h-full object-cover"
+                    />
+                ) : (
+                    <Icon
+                        name="material-symbols:groups-rounded"
+                        class="text-3xl text-(--primary)"
+                    />
+                )}
+            </div>
+            <div class="min-w-0">
+                <a
+                    href={getOrgUrl("")}
+                    class="text-sm text-50 hover:text-(--primary) transition-colors"
+                >
+                    组织
+                </a>
+                <h1 class="text-2xl font-bold text-(--primary) truncate">{group.name}</h1>
+                <p class="text-30 text-sm">{group.count} 篇文章</p>
+            </div>
+        </div>
+        {group.description && (
+            <p class="text-50 text-sm mt-4 leading-relaxed">{group.description}</p>
+        )}
+    </div>
+
+    {
+        group.posts.length > 0 ? (
+            <div class="card-base overflow-hidden">
+                <ol class="flex flex-col px-5 md:px-6 py-3">
+                    {group.posts.map((post, idx) => (
+                        <li>
+                            <a
+                                href={getPostUrlBySlug(post.id)}
+                                class:list={[
+                                    "group flex items-center gap-3 px-2 py-3 rounded-lg transition-all",
+                                    "hover:bg-black/5 dark:hover:bg-white/5",
+                                    idx < group.posts.length - 1 &&
+                                        "border-b border-dashed border-(--line-divider)",
+                                ]}
+                            >
+                                <span class="shrink-0 text-xs text-50 tabular-nums">
+                                    {formatDateToYYYYMMDD(post.data.published)}
+                                </span>
+                                <span class="flex-1 min-w-0 font-bold text-sm text-black/75 dark:text-white/75 truncate transition group-hover:text-(--primary)">
+                                    {post.data.title}
+                                </span>
+                                <Icon
+                                    name="material-symbols:chevron-right-rounded"
+                                    aria-hidden="true"
+                                    class="shrink-0 text-xl text-black/15 dark:text-white/15 transition group-hover:text-(--primary)"
+                                />
+                            </a>
+                        </li>
+                    ))}
+                </ol>
+            </div>
+        ) : (
+            <div class="card-base px-8 py-12 text-center">
+                <Icon
+                    name="material-symbols:article-outline"
+                    class="text-5xl text-30 mx-auto mb-4"
+                />
+                <p class="text-30">这个组织还没有公开文章</p>
+            </div>
+        )
+    }
+</MainGridLayout>

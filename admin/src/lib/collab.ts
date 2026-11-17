@@ -50,3 +50,21 @@ export function revokeCollab(
 ): Promise<CollabMutation> {
 	return api.post<CollabMutation>("/api/collab/revoke", { slug, uid });
 }
+
+/** 按组织整组邀请的结果：加了几个人、信发出几封 */
+export interface CollabOrgInvite {
+	ok: boolean;
+	added: number;
+	skipped: number;
+	/** 名额上限撞到了，后面的人没加进去 */
+	limit: boolean;
+	mails: { sent: number; no_email: number; no_mailer: number; failed: number };
+	members: CollabMember[];
+}
+
+export function inviteCollabOrg(
+	slug: string,
+	orgId: number,
+): Promise<CollabOrgInvite> {
+	return api.post<CollabOrgInvite>("/api/collab/invite-org", { slug, orgId });
+}

@@ -10,6 +10,7 @@ import {
 	setField,
 	splitMarkdown,
 } from "../lib/frontmatter";
+import { memberRole, orgById } from "../lib/orgs";
 import { publicOrigin } from "../lib/origin";
 import { type RepoPost, readRepoPostsFor } from "../lib/post-index";
 import {
@@ -186,6 +187,8 @@ me.patch(
 export interface PostRow {
 	id: number;
 	uid: number;
+	/** 所属组织；null 表示没有归属（老文章与个人随笔都是这种） */
+	org_id: number | null;
 	slug: string;
 	title: string;
 	summary: string | null;
@@ -314,6 +317,7 @@ function toSummary(row: PostRow): Record<string, unknown> {
 		tags: parseTags(row.tags),
 		status: row.status,
 		repo_path: row.repo_path,
+		org_id: row.org_id ?? null,
 		source_link: typeof meta.sourceLink === "string" ? meta.sourceLink : "",
 		author: typeof meta.author === "string" ? meta.author : "",
 		submitted_at: row.submitted_at,
@@ -911,6 +915,42 @@ me.put(
 		}
 
 		/*
+		 * 所属组织：只能选自己参加的组织（管理员不受限）。
+		 * 组织不是一个标签——它决定了整组人能不能看到这篇，随手填别人的组
+		 * 等于把稿子塞进一个自己没有发言权的地方。
+		 */
+		let orgId: number | null = row.org_id ?? null;
+		if ("org_id" in payload) {
+			const raw = payload.org_id;
+			if (raw === null || raw === "" || raw === 0) {
+				orgId = null;
+			} else {
+				const next = Number(raw);
+				if (!Number.isInteger(next) || next <= 0) {
+					return c.json({ error: "bad_request", message: "组织非法" }, 400);
+				}
+				const user = c.get("user");
+				if (!user) {
+					return c.json({ error: "unauthorized", message: "请先登录" }, 401);
+				}
+				const org = await orgById(c.env.DB, next);
+				if (!org || org.status !== "active") {
+					return c.json({ error: "not_found", message: "组织不存在" }, 404);
+				}
+				if (
+					user.role !== "admin" &&
+					!(await memberRole(c.env.DB, org.id, user.uid))
+				) {
+					return c.json(
+						{ error: "forbidden", message: "你不在这个组织里" },
+						403,
+					);
+				}
+				orgId = next;
+			}
+		}
+
+		/*
 		 * 协作者能改内容，但两件事不归他：改地址（协作关系是按 slug 记的，改了等于
 		 * 把自己锁在外面，作者那边的名单也失联）、改可见范围（否则他可以把稿子再
 		 * 共享给第三个人，一句话绕开「只有作者能邀请」）。
@@ -918,10 +958,7 @@ me.put(
 		const actor = c.get("user");
 		if (actor && row.uid !== actor.uid) {
 			if (slug !== row.slug) {
-				return c.json(
-					{ error: "forbidden", message: "地址只有作者能改" },
-					403,
-				);
+				return c.json({ error: "forbidden", message: "地址只有作者能改" }, 403);
 			}
 			const prevMeta = parseMeta(row.meta_json);
 			const nextMeta = parseMeta(metaJson);
@@ -940,7 +977,7 @@ me.put(
 			`UPDATE posts
 		    SET slug = ?1, repo_path = ?2, title = ?3, summary = ?4, cover = ?5,
 		        tags = ?6, body = ?7, meta_json = ?8, updated_at = datetime('now'),
-		        rev = rev + 1
+		        rev = rev + 1, org_id = ?11
 		  WHERE id = ?9 AND uid = ?10
 		 RETURNING *`,
 		)
@@ -955,6 +992,7 @@ me.put(
 				metaJson,
 				row.id,
 				row.uid,
+				orgId,
 			)
 			.first<PostRow>();
 
@@ -1382,8 +1420,23 @@ me.delete("/repo-posts", requireAuth, sameOriginGuard, async (c) => {
 	return c.json({ ok: true, building: true });
 });
 
-/** 把 D1 草稿拼成仓库里的 markdown：frontmatter 按站内约定顺序排 */
-export function buildPostFrontmatter(row: PostRow): string {
+/** 草稿上记的是 org_id，写进 frontmatter 要换成 slug；组织被删了就当作没有归属 */
+async function orgSlugOf(
+	db: D1Database,
+	orgId: number | null | undefined,
+): Promise<string> {
+	if (!orgId) return "";
+	const org = await orgById(db, orgId);
+	return org?.slug ?? "";
+}
+
+/**
+ * 把 D1 草稿拼成仓库里的 markdown：frontmatter 按站内约定顺序排。
+ *
+ * `org` 只写 slug：站点页面的组织名来自 `config/orgs.json`，同一份 frontmatter
+ * 在不同组织改名后不该跟着变，也不该出现「名字改了文章还得重发」。
+ */
+export function buildPostFrontmatter(row: PostRow, orgSlug = ""): string {
 	let fm = "";
 	fm = setField(fm, "title", row.title.trim());
 	// Worker 跑在 UTC：凌晨 0–8 点（东八区）发布用 toISOString 会写成前一天。
@@ -1394,6 +1447,7 @@ export function buildPostFrontmatter(row: PostRow): string {
 	const tags = parseTags(row.tags);
 	if (tags.length > 0) fm = setField(fm, "tags", tags);
 	if (row.cover) fm = setField(fm, "image", row.cover);
+	if (orgSlug) fm = setField(fm, "org", orgSlug);
 
 	const meta = parseMeta(row.meta_json);
 	for (const [key, value] of Object.entries(meta)) {
@@ -1410,8 +1464,7 @@ export function buildPostFrontmatter(row: PostRow): string {
 
 /**
  * 把一篇 D1 稿子写进仓库。管理员直接发布和审核通过走同一条路。
- * 失败时返回要回给前端的 status + body，调用方原样吐出去。
- */
+ * 失败时返回要回给前端的 status + body，调用方原样吐出去。 */
 export async function publishRowToRepo(
 	c: Context<AppEnv>,
 	row: PostRow,
@@ -1446,7 +1499,10 @@ export async function publishRowToRepo(
 		};
 	}
 
-	const content = joinMarkdown(buildPostFrontmatter(row), row.body ?? "");
+	const content = joinMarkdown(
+		buildPostFrontmatter(row, await orgSlugOf(c.env.DB, row.org_id)),
+		row.body ?? "",
+	);
 	const written = await writeRepoFile(
 		path,
 		content,

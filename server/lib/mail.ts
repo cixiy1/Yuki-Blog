@@ -724,6 +724,76 @@ export async function sendCollabRevokedMail(
 	});
 }
 
+export interface OrgInviteMail {
+	to: string;
+	/** 组织名 */
+	org: string;
+	/** 组织简介，没配就是空串 */
+	description: string;
+	/** 邀请人（昵称） */
+	inviter: string;
+	/** 站内的接受/拒绝落地页 */
+	link: string;
+	/** 过期日期，YYYY-MM-DD */
+	expiresAt: string;
+}
+
+/**
+ * 邀请加入组织的信。
+ *
+ * 比共创那封多一层「要对方点同意」：加入组织等于长期拿到一组文章的读权限，
+ * 不该由邀请人单方面决定。
+ */
+export async function sendOrgInviteMail(
+	env: Env,
+	payload: OrgInviteMail,
+): Promise<MailResult> {
+	const org = payload.org.trim() || "一个组织";
+	const inviter = payload.inviter.trim() || "管理员";
+	const { brand, theme } = await mailStyle(env, payload.link);
+	const description = payload.description.trim();
+
+	const text = [
+		`${inviter}邀请你加入「${org}」。`,
+		...(description ? ["", description] : []),
+		"",
+		"同意之后：这个组织的私密文章你能读；如果作者把整组拉进来一起改稿，你也会在里面。",
+		"",
+		`去处理：${payload.link}`,
+		"",
+		`邀请 ${payload.expiresAt} 前有效，过期请对方重新发一次。`,
+	].join("\n");
+
+	const html = renderMail(brand, theme, {
+		preheader: `${inviter}邀请你加入「${org}」`,
+		heading: org,
+		badge: { text: "邀请你加入", tone: "accent" },
+		body: [
+			paragraph(theme, `${inviter}邀请你加入这个组织。`),
+			...(description ? [quoteBlock(theme, description)] : []),
+			sectionLabel(theme, "同意之后"),
+			quoteBlock(
+				theme,
+				"这个组织的私密文章你能读；如果作者把整组拉进来一起改稿，你也会在里面。",
+			),
+			primaryButton(theme, payload.link, "看看并决定"),
+			linkLine(theme, payload.link),
+			hintText(
+				theme,
+				`邀请 ${payload.expiresAt} 前有效。不想加入就点拒绝，不会有任何影响。`,
+			),
+		].join("\n"),
+		footNote: "收到这封是因为有人把你的账号加进了这个组织的邀请名单。",
+	});
+
+	return await sendMail(env, {
+		to: payload.to,
+		subject: `${inviter}邀请你加入「${org}」 · Yuki Blog`,
+		text,
+		html,
+	});
+}
+
 export interface ReviewNotifyMail {
 	to: string[];
 	title: string;

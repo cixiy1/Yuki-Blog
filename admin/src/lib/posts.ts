@@ -35,6 +35,8 @@ export interface PostSummary {
 	visibility?: "public" | "login" | "users";
 	/** 1 = 别人共享给我的，不是我自己写的 */
 	shared?: number;
+	/** 所属组织的 id；null 表示没有归属 */
+	org_id?: number | null;
 	/** 共享来源：原作者昵称 */
 	owner?: string;
 }
@@ -118,6 +120,8 @@ export async function savePost(
 			"title" | "slug" | "summary" | "cover" | "body" | "tags" | "meta"
 		>
 	> & {
+		/** 所属组织；null 表示取消归属 */
+		org_id?: number | null;
 		/** 开始编辑时的 rev，服务端拿它做乐观锁 */
 		base_rev?: number;
 	},

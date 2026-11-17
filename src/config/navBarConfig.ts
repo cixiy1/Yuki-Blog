@@ -34,6 +34,9 @@ const getDynamicNavBarConfig = (): NavBarConfig => {
 
 			// 系列
 			LinkPresets.Series,
+
+			// 组织：按归属分组的文章，另开一个维度
+			LinkPresets.Orgs,
 		],
 	});
 
@@ -156,6 +159,11 @@ export const LinkPresets: Record<string, NavBarLink> = {
 		name: "系列",
 		url: "/series/",
 		icon: "material-symbols:layers",
+	},
+	Orgs: {
+		name: "组织",
+		url: "/orgs/",
+		icon: "material-symbols:groups-rounded",
 	},
 	Friends: {
 		name: "友链",

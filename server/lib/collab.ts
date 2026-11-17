@@ -107,6 +107,29 @@ export interface AddResult {
 }
 
 /**
+ * 加一个协作者（已知 uid）。
+ *
+ * 按组织整组邀请时走这条：那一批 uid 已经在手上了，没必要再按账号名查一遍。
+ */
+export async function addCollaboratorUid(
+	db: D1Database,
+	slug: string,
+	uid: number,
+	invitedBy: number,
+): Promise<AddResult> {
+	const target = await db
+		.prepare(
+			"SELECT uid, status FROM users WHERE uid = ?1 AND status <> 'deleted'",
+		)
+		.bind(uid)
+		.first<{ uid: number; status: string }>();
+	if (!target) return { ok: false, code: "not_found" };
+	if (target.uid === invitedBy) return { ok: false, code: "self" };
+	if (target.status !== "active") return { ok: false, code: "inactive" };
+	return await attach(db, slug, target.uid, invitedBy);
+}
+
+/**
  * 加一个协作者。按账号名精确匹配（登录名，不是昵称）。
  *
  * 撤销过的记录直接复活：同一篇文章里同一个人只该有一条，否则名单会出现
@@ -127,12 +150,21 @@ export async function addCollaborator(
 	if (!target) return { ok: false, code: "not_found" };
 	if (target.uid === invitedBy) return { ok: false, code: "self" };
 	if (target.status !== "active") return { ok: false, code: "inactive" };
+	return await attach(db, slug, target.uid, invitedBy);
+}
 
+/** 写名单：没有就插入，撤销过的复活，已在名单里返回 exists */
+async function attach(
+	db: D1Database,
+	slug: string,
+	uid: number,
+	invitedBy: number,
+): Promise<AddResult> {
 	const existing = await db
 		.prepare(
 			"SELECT status FROM post_collaborators WHERE slug = ?1 AND uid = ?2",
 		)
-		.bind(slug, target.uid)
+		.bind(slug, uid)
 		.first<{ status: string }>();
 	if (existing?.status === "active") return { ok: false, code: "exists" };
 
@@ -150,9 +182,9 @@ export async function addCollaborator(
 			.prepare(
 				"INSERT INTO post_collaborators (slug, uid, invited_by) VALUES (?1, ?2, ?3)",
 			)
-			.bind(slug, target.uid, invitedBy)
+			.bind(slug, uid, invitedBy)
 			.run();
-		return { ok: true, uid: target.uid };
+		return { ok: true, uid };
 	}
 
 	await db
@@ -161,9 +193,9 @@ export async function addCollaborator(
 			    SET status = 'active', invited_by = ?3, updated_at = datetime('now')
 			  WHERE slug = ?1 AND uid = ?2`,
 		)
-		.bind(slug, target.uid, invitedBy)
+		.bind(slug, uid, invitedBy)
 		.run();
-	return { ok: true, uid: target.uid };
+	return { ok: true, uid };
 }
 
 /** 撤销：留痕而不是删行，将来要查「谁曾经在这篇上有过权限」还有据可依 */

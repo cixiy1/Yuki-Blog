@@ -17,6 +17,8 @@ export interface ProtectedPost {
 	accounts: string[];
 	/** 允许的 uid */
 	uids: number[];
+	/** 允许的组织 slug：成员身份在 D1 里，Worker 拿到用户后再查一次 */
+	orgs: string[];
 }
 
 export interface ProtectedPostsPayload {
@@ -33,9 +35,17 @@ export async function GET(): Promise<Response> {
 
 		const accounts: string[] = [];
 		const uids: number[] = [];
+		const orgs: string[] = [];
 		for (const raw of post.data.visibleTo) {
 			const text = raw.trim();
 			if (!text) continue;
+			// `org:<slug>`：这个组织的成员可读。成员关系在 D1，构建期只留 slug，
+			// Worker 拿到会话用户后再查一次 membership
+			if (text.toLowerCase().startsWith("org:")) {
+				const slug = text.slice(4).trim().toLowerCase();
+				if (slug) orgs.push(slug);
+				continue;
+			}
 			// 写成 `uid:945642` 或纯数字都当 uid，其余当账号名
 			const uidText = text.startsWith("uid:") ? text.slice(4) : text;
 			if (/^\d+$/.test(uidText)) {
@@ -51,6 +61,7 @@ export async function GET(): Promise<Response> {
 			visibility: post.data.visibility === "login" ? "login" : "users",
 			accounts,
 			uids,
+			orgs,
 		};
 	}
 

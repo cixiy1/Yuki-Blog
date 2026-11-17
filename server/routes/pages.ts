@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
 	canReadPost,
+	isMemberOfAnyOrg,
 	readProtectedPosts,
 } from "../lib/protected-posts";
 import { resolveSessionUser } from "../middleware/auth";
@@ -81,7 +82,12 @@ pages.on(["GET", "HEAD"], "/posts/*", async (c) => {
 	if (!guard) return c.env.ASSETS.fetch(c.req.raw);
 
 	const user = await resolveSessionUser(c);
-	if (!canReadPost(user, guard)) return notFoundPage(c.env);
+	let allowed = canReadPost(user, guard);
+	// 名单里写了 `org:<slug>` 才查组织：这一条要走 D1，绝大多数文章用不到
+	if (!allowed && (guard.orgs?.length ?? 0) > 0) {
+		allowed = await isMemberOfAnyOrg(c.env.DB, user, guard.orgs);
+	}
+	if (!allowed) return notFoundPage(c.env);
 
 	const served = await c.env.ASSETS.fetch(c.req.raw);
 	const headers = new Headers(served.headers);

@@ -8,6 +8,7 @@ import { comments, commentsAdmin } from "./routes/comments";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
 import { media } from "./routes/media";
+import { orgs } from "./routes/orgs";
 import { pages } from "./routes/pages";
 import { seriesAdmin } from "./routes/series";
 import { siteConfig } from "./routes/site-config";
@@ -27,6 +28,8 @@ app.route("/api/media", media);
 app.route("/api/comments", comments);
 // 文章共创：邀请别人一起改这一篇
 app.route("/api/collab", collab);
+// 组织：建组、拉人、接受邀请（同时供文章的可见范围与共创引用）
+app.route("/api/orgs", orgs);
 // 站点配置：公开的热字段 + 管理端草稿/发布/密钥，路径自己带 /admin 前缀
 app.route("/api", siteConfig);
 app.route("/api/admin", admin);
