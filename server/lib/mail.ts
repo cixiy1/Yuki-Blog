@@ -596,6 +596,134 @@ async function sendToEach(
 	return last;
 }
 
+export interface CollabInviteMail {
+	to: string;
+	/** 被邀请一起写的文章 */
+	title: string;
+	/** 发起邀请的人（昵称） */
+	inviter: string;
+	/** 管理端编辑页 */
+	link: string;
+	/** 已发布文章：保存就是一次提交 + 一次构建，得先说清楚 */
+	published: boolean;
+}
+
+function collabInviteHtml(
+	brand: MailBrand,
+	theme: MailTheme,
+	info: { title: string; inviter: string; link: string; published: boolean },
+): string {
+	return renderMail(brand, theme, {
+		preheader: `${info.inviter}邀请你一起写《${info.title}》`,
+		heading: `《${info.title}》`,
+		badge: { text: "邀请你共创", tone: "accent" },
+		body: [
+			paragraph(theme, `${info.inviter}把这篇的编辑权共享给了你。`),
+			sectionLabel(theme, "你能做什么"),
+			quoteBlock(
+				theme,
+				"能改正文、标题、摘要、标签与系列，也能传图。".concat(
+					info.published
+						? "这是一篇已发布的文章：保存会直接写进仓库，约 1 分钟后线上生效。"
+						: "稿子还没发布，提交审核与发布由作者来做。",
+				),
+			),
+			primaryButton(theme, info.link, "打开这篇"),
+			linkLine(theme, info.link),
+			hintText(
+				theme,
+				"改地址、改可见范围、删除文章不归你——那些只有作者和管理员能操作。",
+			),
+		].join("\n"),
+		footNote: "收到这封是因为对方把你的账号加进了这篇文章的协作名单。",
+	});
+}
+
+/**
+ * 邀请别人共创时通知对方。
+ *
+ * 只发给个人：这是「有人把稿子交给你」的私人通知，不走管理员邮箱那一套。
+ */
+export async function sendCollabInviteMail(
+	env: Env,
+	payload: CollabInviteMail,
+): Promise<MailResult> {
+	const title = payload.title.trim() || "（未命名）";
+	const inviter = payload.inviter.trim() || "作者";
+	const { brand, theme } = await mailStyle(env, payload.link);
+
+	const text = [
+		`${inviter}邀请你一起写《${title}》。`,
+		"",
+		"你能改正文、标题、摘要、标签与系列，也能传图。",
+		payload.published
+			? "这是一篇已发布的文章：保存会直接写进仓库，约 1 分钟后线上生效。"
+			: "稿子还没发布，提交审核与发布由作者来做。",
+		"",
+		`打开：${payload.link}`,
+		"",
+		"改地址、改可见范围、删除文章不归你——那些只有作者和管理员能操作。",
+	].join("\n");
+
+	const html = collabInviteHtml(brand, theme, {
+		title,
+		inviter,
+		link: payload.link,
+		published: payload.published,
+	});
+
+	return await sendMail(env, {
+		to: payload.to,
+		subject: `${inviter}邀请你一起写《${title}》 · Yuki Blog`,
+		text,
+		html,
+	});
+}
+
+export interface CollabRevokedMail {
+	to: string;
+	title: string;
+	/** 发起收回的人（昵称） */
+	operator: string;
+	link: string;
+}
+
+/** 协作被收回时告知一声，免得对方下次打开发现进不去还以为是坏了 */
+export async function sendCollabRevokedMail(
+	env: Env,
+	payload: CollabRevokedMail,
+): Promise<MailResult> {
+	const title = payload.title.trim() || "（未命名）";
+	const operator = payload.operator.trim() || "作者";
+	const { brand, theme } = await mailStyle(env, payload.link);
+
+	const text = [
+		`《${title}》的协作权限已经被${operator}收回。`,
+		"",
+		"之后你对这篇只有普通访客的权限；之前提的改动都已经保存过的内容不受影响。",
+		"",
+		`站内地址：${payload.link}`,
+	].join("\n");
+
+	const html = renderMail(brand, theme, {
+		preheader: `《${title}》的协作权限已收回`,
+		heading: `《${title}》`,
+		badge: { text: "协作已结束", tone: "muted" },
+		body: [
+			paragraph(theme, `${operator}收回了你在这篇上的编辑权。`),
+			hintText(theme, "已经保存过的改动不受影响，之后打开只有普通访客的权限。"),
+		].join("\n"),
+		footNote: "这封只是知会一句，不需要做任何操作。",
+	});
+
+	return await sendMail(env, {
+		to: payload.to,
+		subject: `协作已结束：《${title}》 · Yuki Blog`,
+		text,
+		html,
+	});
+}
+
 export interface ReviewNotifyMail {
 	to: string[];
 	title: string;

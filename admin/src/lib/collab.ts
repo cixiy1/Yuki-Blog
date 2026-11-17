@@ -28,22 +28,25 @@ export function getCollab(slug: string): Promise<CollabState> {
 	return api.get<CollabState>(`/api/collab?slug=${encodeURIComponent(slug)}`);
 }
 
+/** 通知信的结果：sent 已发出 / no_email 对方没邮箱 / no_mailer 站点没配发信 / failed 发送失败 */
+export type MailOutcome = "sent" | "no_email" | "no_mailer" | "failed";
+
+export interface CollabMutation {
+	ok: boolean;
+	mail: MailOutcome;
+	members: CollabMember[];
+}
+
 export function inviteCollab(
 	slug: string,
 	account: string,
-): Promise<{ ok: boolean; members: CollabMember[] }> {
-	return api.post<{ ok: boolean; members: CollabMember[] }>(
-		"/api/collab/invite",
-		{ slug, account },
-	);
+): Promise<CollabMutation> {
+	return api.post<CollabMutation>("/api/collab/invite", { slug, account });
 }
 
 export function revokeCollab(
 	slug: string,
 	uid: number,
-): Promise<{ ok: boolean; members: CollabMember[] }> {
-	return api.post<{ ok: boolean; members: CollabMember[] }>(
-		"/api/collab/revoke",
-		{ slug, uid },
-	);
+): Promise<CollabMutation> {
+	return api.post<CollabMutation>("/api/collab/revoke", { slug, uid });
 }

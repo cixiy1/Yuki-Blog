@@ -8,6 +8,8 @@ import {
 	listCollaborators,
 	removeCollaborator,
 } from "../lib/collab";
+import { notifyCollabInvite, notifyCollabRevoked } from "../lib/collab-notify";
+import { publicOrigin } from "../lib/origin";
 import { readRepoPosts } from "../lib/post-index";
 import { requireAuth } from "../middleware/auth";
 import { requireJsonBody, sameOriginGuard } from "../middleware/guard";
@@ -21,26 +23,77 @@ import type { AppEnv } from "../types";
  */
 export const collab: Hono<AppEnv> = new Hono<AppEnv>();
 
-interface OwnerRow {
+interface PostInfoRow {
+	id: number;
 	uid: number;
+	title: string;
+	repo_path: string | null;
 }
 
-/** 文章作者：D1 里有行就以那一行为准，仓库里的老文章视为站主所有（null） */
-async function ownerOf(
+export interface PostInfo {
+	ownerUid: number | null;
+	exists: boolean;
+	title: string;
+	/** 已发布到仓库：编辑它会直接提交文件、触发构建 */
+	published: boolean;
+	/** 管理端编辑页地址；没有 id 的仓库文章走 slug 路由 */
+	link: string;
+}
+
+/**
+ * 这篇文章是谁的、叫什么、在管理端哪个地址。
+ *
+ * D1 里有行就以那一行为准；仓库里的老文章没有作者这一栏（视为站主所有，ownerUid 为 null），
+ * 标题从构建快照里取。
+ */
+async function postInfo(
 	db: D1Database,
-	slug: string,
 	assets: AssetsFetcher,
-): Promise<{ ownerUid: number | null; exists: boolean }> {
-	if (!slug) return { ownerUid: null, exists: false };
+	origin: string,
+	slug: string,
+): Promise<PostInfo> {
+	if (!slug) {
+		return {
+			ownerUid: null,
+			exists: false,
+			title: "",
+			published: false,
+			link: origin,
+		};
+	}
 
 	const row = await db
-		.prepare("SELECT uid FROM posts WHERE slug = ?1 LIMIT 1")
+		.prepare(
+			"SELECT id, uid, title, repo_path FROM posts WHERE slug = ?1 LIMIT 1",
+		)
 		.bind(slug)
-		.first<OwnerRow>();
-	if (row) return { ownerUid: row.uid, exists: true };
+		.first<PostInfoRow>();
+
+	// 已经落到仓库的 D1 行改的是文件，不是草稿
+	if (row) {
+		const published =
+			Boolean(row.repo_path) &&
+			row.repo_path?.startsWith("src/content/posts/") === true;
+		return {
+			ownerUid: row.uid,
+			exists: true,
+			title: row.title ?? "",
+			published,
+			link: published
+				? `${origin}/admin/#/posts/repo/${encodeURIComponent(slug)}`
+				: `${origin}/admin/#/posts/${row.id}`,
+		};
+	}
 
 	const posts = await readRepoPosts(assets);
-	return { ownerUid: null, exists: posts.some((post) => post.slug === slug) };
+	const hit = posts.find((post) => post.slug === slug);
+	return {
+		ownerUid: null,
+		exists: Boolean(hit),
+		title: hit?.title ?? "",
+		published: true,
+		link: `${origin}/admin/#/posts/repo/${encodeURIComponent(slug)}`,
+	};
 }
 
 const BAD_SLUG = {
@@ -60,11 +113,11 @@ collab.get("/", requireAuth, async (c) => {
 	const user = c.get("user");
 	if (!user) return c.json({ error: "unauthorized", message: "请先登录" }, 401);
 
-	const { ownerUid, exists } = await ownerOf(c.env.DB, slug, c.env.ASSETS);
-	if (!exists)
+	const info = await postInfo(c.env.DB, c.env.ASSETS, publicOrigin(c.req.raw, c.env.SITE_ORIGIN), slug);
+	if (!info.exists)
 		return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
-	const post = { slug, ownerUid };
+	const post = { slug, ownerUid: info.ownerUid };
 	if (!(await canEditPost(c.env.DB, user, post))) {
 		return c.json({ error: "forbidden", message: "这篇没有共享给你" }, 403);
 	}
@@ -102,11 +155,11 @@ collab.post(
 			);
 		}
 
-		const { ownerUid, exists } = await ownerOf(c.env.DB, slug, c.env.ASSETS);
-		if (!exists)
+		const info = await postInfo(c.env.DB, c.env.ASSETS, publicOrigin(c.req.raw, c.env.SITE_ORIGIN), slug);
+		if (!info.exists)
 			return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
-		const post = { slug, ownerUid };
+		const post = { slug, ownerUid: info.ownerUid };
 		if (!canManageCollaborators(user, post)) {
 			return c.json(FORBIDDEN, 403);
 		}
@@ -134,8 +187,18 @@ collab.post(
 			detail: { slug, uid: result.uid ?? null },
 		});
 
+		// 已进名单了，信发不出去也不能把邀请吞回去：把结果带给前端，让它提示一句
+		const mail = await notifyCollabInvite(c.env, {
+			uid: result.uid ?? 0,
+			title: info.title,
+			inviter: user.display_name || user.account,
+			link: info.link,
+			published: info.published,
+		});
+
 		return c.json({
 			ok: true,
+			mail,
 			members: await listCollaborators(c.env.DB, slug),
 		});
 	},
@@ -162,11 +225,11 @@ collab.post(
 			return c.json({ error: "bad_request", message: "uid 非法" }, 400);
 		}
 
-		const { ownerUid, exists } = await ownerOf(c.env.DB, slug, c.env.ASSETS);
-		if (!exists)
+		const info = await postInfo(c.env.DB, c.env.ASSETS, publicOrigin(c.req.raw, c.env.SITE_ORIGIN), slug);
+		if (!info.exists)
 			return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
-		const post = { slug, ownerUid };
+		const post = { slug, ownerUid: info.ownerUid };
 		if (!canManageCollaborators(user, post)) {
 			return c.json(FORBIDDEN, 403);
 		}
@@ -183,8 +246,17 @@ collab.post(
 			detail: { slug, uid },
 		});
 
+		// 收回也要说一声：对方下次点进去发现 404，不该靠猜
+		const mail = await notifyCollabRevoked(c.env, {
+			uid,
+			title: info.title,
+			operator: user.display_name || user.account,
+			link: info.link,
+		});
+
 		return c.json({
 			ok: true,
+			mail,
 			members: await listCollaborators(c.env.DB, slug),
 		});
 	},

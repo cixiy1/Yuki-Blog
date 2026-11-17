@@ -5,6 +5,7 @@ import {
 	type CollabMember,
 	getCollab,
 	inviteCollab,
+	type MailOutcome,
 	revokeCollab,
 } from "../lib/collab";
 import AppIcon from "./AppIcon.vue";
@@ -24,6 +25,8 @@ const loading = ref(true);
 const busy = ref(false);
 const errorText = ref("");
 const account = ref("");
+/** 上一次邀请的通知信结果，直接在输入框下面说一句 */
+const notice = ref("");
 const inputEl = ref<HTMLInputElement | null>(null);
 
 const canInvite = computed(
@@ -53,6 +56,8 @@ async function onInvite(): Promise<void> {
 		const result = await inviteCollab(props.slug, name);
 		members.value = result.members;
 		account.value = "";
+		notice.value = mailNote(result.mail, "邀请");
+
 		emit("changed", result.members.length);
 	} catch (err) {
 		errorText.value = err instanceof ApiError ? err.message : "邀请失败";
@@ -68,6 +73,7 @@ async function onRevoke(member: CollabMember): Promise<void> {
 	try {
 		const result = await revokeCollab(props.slug, member.uid);
 		members.value = result.members;
+		notice.value = mailNote(result.mail, "收回");
 		emit("changed", result.members.length);
 	} catch (err) {
 		errorText.value = err instanceof ApiError ? err.message : "移除失败";
@@ -88,6 +94,20 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
+
+/** 通知信的结果翻成人话：动作做成了，但「信到底发没发」得说清楚 */
+function mailNote(outcome: MailOutcome, action: string): string {
+	if (outcome === "sent") {
+		return `已${action}，通知邮件也发出去了。`;
+	}
+	if (outcome === "no_email") {
+		return `已${action}。对方账号没填邮箱，这封信发不出去。`;
+	}
+	if (outcome === "no_mailer") {
+		return `已${action}。站点还没配置发信通道，邮件没发（本地开发就是这样）。`;
+	}
+	return `已${action}，但通知邮件没发出去，最好自己再跟对方说一声。`;
+}
 
 function who(member: CollabMember): string {
 	return member.display_name || member.account;
@@ -130,6 +150,7 @@ function who(member: CollabMember): string {
 			</div>
 
 			<p v-if="errorText" class="cl-error">{{ errorText }}</p>
+			<p v-else-if="notice" class="cl-notice">{{ notice }}</p>
 
 			<div class="cl-body">
 				<p v-if="loading" class="cl-empty">读取中…</p>
@@ -260,6 +281,13 @@ function who(member: CollabMember): string {
 .cl-input:focus {
 	outline: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);
 	outline-offset: 1px;
+}
+
+.cl-notice {
+	margin: 0.55rem 1rem 0;
+	font-size: 0.73rem;
+	line-height: 1.6;
+	color: var(--fg-50);
 }
 
 .cl-error {
