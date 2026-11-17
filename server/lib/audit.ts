@@ -47,6 +47,8 @@ export type AuditAction =
 	| "media.upload"
 	| "media.delete"
 	| "media.replace"
+	| "post.collab.invite"
+	| "post.collab.revoke"
 	| "series.update"
 	| "page.update"
 	| "comment.create"

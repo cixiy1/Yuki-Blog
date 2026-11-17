@@ -12,6 +12,7 @@ import {
 	watch,
 } from "vue";
 import AppIcon from "../components/AppIcon.vue";
+import CollabDialog from "../components/CollabDialog.vue";
 import LoadingState from "../components/LoadingState.vue";
 import MediaPickerDialog from "../components/MediaPickerDialog.vue";
 import PageHeader from "../components/PageHeader.vue";
@@ -20,6 +21,7 @@ import SegTabs from "../components/SegTabs.vue";
 import SeriesPickerDialog from "../components/SeriesPickerDialog.vue";
 import { ApiError } from "../lib/api";
 import { isAdmin } from "../lib/auth";
+import { getCollab } from "../lib/collab";
 import { uploadImage } from "../lib/media";
 import {
 	findMermaidBlocks,
@@ -61,6 +63,18 @@ const repoSlug = computed(() => route.value.repoSlug ?? "");
 const isRepo = computed(() => repoSlug.value.length > 0);
 /** 原始 slug：表单里可能被改，接口定位要用原来的 */
 const loadedSlug = ref("");
+/**
+ * 共享给我的稿子：能改正文，但提交审核、撤回、删除都归作者。
+ * 服务端也拦着，这里只负责别摆出点了会报错的按钮。
+ */
+const isShared = ref(false);
+/** 开始编辑时的 rev，保存时带回去做乐观锁，别人先存过就 409 */
+const baseRev = ref(0);
+/** 协作名单弹窗 */
+const collabOpen = ref(false);
+const collabCount = ref(0);
+/** 别人先保存过：自动保存停下来，等作者自己刷新 */
+const stale = ref(false);
 /** 仓库文章所在目录的 raw 前缀，正文里的相对图片要靠它才能在编辑器里预览 */
 const rawBase = ref("");
 /** 仓库文章的路径，用来算相对图片路径要退几层 */
@@ -547,6 +561,33 @@ const canSuggestOrder = computed(() => {
 	if (!textOf("series").trim()) return false;
 	return textOf("seriesOrder").trim() !== String(nextFreeOrder.value);
 });
+
+/**
+ * 协作：谁能改这一篇。
+ *
+ * 邀请与移除只有作者与管理员能做；协作者点开也能看到名单（知道自己在和谁一起写），
+ * 但按钮是灰的，服务端也拦着。
+ */
+const collabSlug = computed(() => loadedSlug.value);
+const canManageCollab = computed(
+	() => isAdmin.value || (!isRepo.value && !isShared.value),
+);
+
+async function loadCollabCount(): Promise<void> {
+	if (!collabSlug.value) return;
+	try {
+		const state = await getCollab(collabSlug.value);
+		collabCount.value = state.members.length;
+	} catch {
+		// 名单读不到不影响改稿，按钮上不显示人数就是
+	}
+}
+
+function openCollab(): void {
+	// 没有 slug 说明还没加载完，此时点开也查不到东西
+	if (!collabSlug.value) return;
+	collabOpen.value = true;
+}
 
 async function loadSeries(): Promise<void> {
 	if (seriesList.value.length > 0) return;
@@ -1275,6 +1316,8 @@ function fill(post: PostDetail): void {
 	repoPath.value = "";
 	status.value = post.status;
 	lastSaved.value = formatTime(post.updated_at);
+	baseRev.value = post.rev ?? 0;
+	isShared.value = post.shared_mine === true;
 	form.slug = post.slug;
 	form.body = post.body;
 	loadFields((post.meta ?? {}) as Record<string, FieldValue>);
@@ -1289,6 +1332,8 @@ function fillRepo(post: RepoPostDetail): void {
 	repoPath.value = post.repoPath;
 	status.value = "published";
 	lastSaved.value = "";
+	// 仓库文章没有「作者」这一栏，非管理员进得来只可能是被共享
+	isShared.value = !isAdmin;
 	form.slug = post.slug;
 	rawBase.value = post.rawBase;
 	isMdx.value = post.repoPath.toLowerCase().endsWith(".mdx");
@@ -1436,15 +1481,29 @@ async function save(): Promise<boolean> {
 			tags: splitTags(),
 			body: form.body,
 			meta,
+			base_rev: baseRev.value,
 		});
 		if (post) {
 			status.value = post.status;
 			lastSaved.value = formatTime(post.updated_at);
+			baseRev.value = post.rev ?? baseRev.value + 1;
+			// 作者可能刚把稿子共享出去，保存后顺手同步一下按钮状态
+			isShared.value = post.shared_mine === true;
 		}
 		saveState.value = "saved";
 		removedKeys.value = [];
 		return true;
 	} catch (error) {
+		/*
+		 * 409 stale：另一个人先存过了。这里不能继续自动保存——每隔 1.5 秒撞一次
+		 * 只会把服务端的版本顶得更远，人还以为在正常保存。
+		 */
+		if (error instanceof ApiError && error.code === "stale") {
+			errorText.value = `${error.message}（未保存，先别继续改）`;
+			saveState.value = "error";
+			stale.value = true;
+			return false;
+		}
 		errorText.value =
 			error instanceof Error ? error.message : "保存失败，请重试";
 		saveState.value = "error";
@@ -1454,6 +1513,8 @@ async function save(): Promise<boolean> {
 
 function scheduleSave(): void {
 	if (!editable.value) return;
+	// 别人先保存过：此时再自动保存只会把冲突反复撞一遍，等作者刷新
+	if (stale.value) return;
 	saveState.value = "dirty";
 	// 仓库文章每次保存都是一次 git 提交 + 一次构建，不做自动保存
 	if (isRepo.value) return;
@@ -2058,6 +2119,8 @@ onMounted(async () => {
 	if (local || remote) createEditor();
 	// 系列列表只用来算序号提示，晚一步没关系，失败也不挡编辑
 	if (local || remote) void loadSeries();
+	// 协作人数同理：读不到就不显示，不影响改稿
+	if (local || remote) void loadCollabCount();
 
 	window.addEventListener("keydown", onKeydown);
 	window.addEventListener("beforeunload", beforeUnload);
@@ -2137,6 +2200,17 @@ watch(isDark, (dark) => {
 					预览页面
 				</button>
 				<button
+					v-if="loadedSlug"
+					type="button"
+					class="btn-ghost"
+					title="邀请别人一起改这一篇"
+					@click="openCollab"
+				>
+					<AppIcon name="users" :size="15" />
+					协作
+					<span v-if="collabCount > 0" class="collab-count">{{ collabCount }}</span>
+				</button>
+				<button
 					v-if="status === 'pending'"
 					type="button"
 					class="btn-regular"
@@ -2155,7 +2229,7 @@ watch(isDark, (dark) => {
 					保存
 				</button>
 				<button
-					v-if="editable && !isRepo"
+					v-if="editable && !isRepo && !isShared"
 					type="button"
 					class="btn-primary"
 					@click="isAdmin ? onPublish() : onSubmit()"
@@ -2163,7 +2237,7 @@ watch(isDark, (dark) => {
 					{{ isAdmin ? "发布" : "提交审核" }}
 				</button>
 				<button
-					v-if="isRepo"
+					v-if="isRepo && isAdmin"
 					type="button"
 					class="btn-ghost danger"
 					@click="onDeleteRepo"
@@ -2172,6 +2246,10 @@ watch(isDark, (dark) => {
 				</button>
 			</template>
 		</PageHeader>
+
+		<p v-if="isShared" class="shared-note">
+			这篇是别人共享给你的：正文与属性都能改，提交审核、撤回与删除由作者来做。
+		</p>
 
 		<p v-if="errorText" class="error">{{ errorText }}</p>
 		<LoadingState v-if="loading" variant="doc" :rows="5" />
@@ -2612,6 +2690,14 @@ watch(isDark, (dark) => {
 			:post-dir="postDir"
 			@close="bodyPicker = false"
 			@select="insertLibraryImage"
+		/>
+
+		<CollabDialog
+			v-if="collabOpen"
+			:slug="collabSlug"
+			:can-manage="canManageCollab"
+			@close="collabOpen = false"
+			@changed="collabCount = $event"
 		/>
 
 		<SeriesPickerDialog
@@ -3649,6 +3735,34 @@ watch(isDark, (dark) => {
 	background: color-mix(in oklab, var(--admonitions-color-caution) 14%, transparent);
 	color: var(--admonitions-color-caution);
 	font-size: 0.78rem;
+}
+
+/* 页头「协作」按钮上的人数：徽标不能把按钮撑高 */
+.collab-count {
+	display: inline-grid;
+	min-width: 1.05rem;
+	height: 1.05rem;
+	margin-left: 0.1rem;
+	padding: 0 0.28rem;
+	place-items: center;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--primary) 18%, transparent);
+	color: var(--primary);
+	font-size: 0.62rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+/* 共享来的稿子：一行说明就够了，别做成告警条 */
+.shared-note {
+	margin: 0 0 0.8rem;
+	padding: 0.45rem 0.75rem;
+	border-left: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);
+	border-radius: 0 var(--radius-md) var(--radius-md) 0;
+	background: color-mix(in oklab, var(--primary) 6%, transparent);
+	font-size: 0.75rem;
+	line-height: 1.7;
+	color: var(--fg-75);
 }
 
 .state {

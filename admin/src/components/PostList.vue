@@ -392,6 +392,7 @@ const rows = computed<Row[]>(() =>
 						v-if="
 							statusShown(row.post) ||
 							row.post.source_link ||
+							row.post.shared ||
 							limitedLabel(row.post)
 						"
 						class="badges"
@@ -405,6 +406,13 @@ const rows = computed<Row[]>(() =>
 						</span>
 						<span v-if="limitedLabel(row.post)" class="badge limited">
 							{{ limitedLabel(row.post) }}
+						</span>
+						<span
+							v-if="row.post.shared"
+							class="badge shared"
+							:title="row.post.owner ? `由 ${row.post.owner} 共享` : '别人共享给你的文章'"
+						>
+							共享给我
 						</span>
 						<span v-if="row.post.source_link" class="badge repost">转载</span>
 					</div>
@@ -941,6 +949,13 @@ const rows = computed<Row[]>(() =>
 	border: 1px solid color-mix(in oklab, var(--primary) 42%, transparent);
 	background: color-mix(in oklab, var(--primary) 12%, var(--card-bg));
 	color: color-mix(in oklab, var(--primary) 70%, var(--fg-90));
+}
+
+/* 共享标记用虚线描边：它标的是「这不是我写的」，不是状态也不是来源 */
+.badge.shared {
+	border: 1px dashed color-mix(in oklab, var(--fg-75) 45%, transparent);
+	color: var(--fg-75);
+	background: transparent;
 }
 
 .badge.repost {

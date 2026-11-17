@@ -1,5 +1,6 @@
 import { type Context, Hono } from "hono";
 import { writeAudit } from "../lib/audit";
+import { canEditPost, collaboratorSlugs, isCollaborator } from "../lib/collab";
 import {
 	type FieldValue,
 	joinMarkdown,
@@ -198,6 +199,8 @@ export interface PostRow {
 	published_at: string | null;
 	reviewed_at: string | null;
 	review_note: string | null;
+	/** 乐观锁版本号：每次保存 +1，多人同改时用来发现「别人先存过了」 */
+	rev: number;
 	/** 审核员改过的正文，只给作者参考，不参与发布 */
 	review_body?: string | null;
 	review_body_at?: string | null;
@@ -319,6 +322,7 @@ function toSummary(row: PostRow): Record<string, unknown> {
 		review_note: row.review_note,
 		created_at: row.created_at,
 		updated_at: row.updated_at,
+		rev: row.rev ?? 0,
 	};
 }
 
@@ -397,6 +401,26 @@ const POST_NOT_FOUND = {
 	message: "文章不存在",
 } as const;
 
+/**
+ * 能编辑的稿子 = 自己的 + 共享给自己的。
+ *
+ * 与 findOwned 分开是有意的：删除、提交审核、撤回这些动作只属于作者本人，
+ * 协作者能改正文，但不能替别人把稿子送进审核队列。
+ */
+async function findEditable(
+	c: Context<AppEnv>,
+	id: number,
+): Promise<PostRow | null> {
+	const user = c.get("user");
+	if (!user) return null;
+	const row = await c.env.DB.prepare("SELECT * FROM posts WHERE id = ?1")
+		.bind(id)
+		.first<PostRow>();
+	if (!row) return null;
+	if (row.uid === user.uid || user.role === "admin") return row;
+	return (await isCollaborator(c.env.DB, row.slug, user.uid)) ? row : null;
+}
+
 function lockedBody(status: string): Record<string, unknown> {
 	return {
 		error: "post_locked",
@@ -432,10 +456,14 @@ me.get("/posts", requireAuth, async (c) => {
 
 	// 仓库里的文章都算站主的。不能拿 frontmatter 的 author 过滤：那栏在转载
 	// 文章里写的是原文出处（比如「腾讯云开发者社区」），不是站内作者。
+	// 协作者按 slug 拿到被共享的那几篇——不列出来他就只能靠别人给地址，等于没共享。
 	const isAdmin = user.role === "admin";
+	const sharedSlugs = await collaboratorSlugs(c.env.DB, user.uid);
 	const repoPosts = isAdmin
 		? await readRepoPostsFor(c.env.ASSETS, c.get("user"))
-		: [];
+		: (await readRepoPostsFor(c.env.ASSETS, c.get("user"))).filter((post) =>
+				sharedSlugs.has(post.slug),
+			);
 	const repoBySlug = new Map(repoPosts.map((post) => [post.slug, post]));
 	const counts = await commentCounts(c.env.DB);
 
@@ -462,10 +490,36 @@ me.get("/posts", requireAuth, async (c) => {
 	}
 
 	const known = new Set(mine.map((post) => String(post.slug)));
+
+	// 共享给自己的草稿：要标出原作者，否则列表里分不清哪篇是自己的
+	if (sharedSlugs.size > 0) {
+		const sharedRows = await c.env.DB.prepare(
+			`SELECT p.*, u.display_name, u.account
+			   FROM post_collaborators c
+			   JOIN posts p ON p.slug = c.slug
+			   LEFT JOIN users u ON u.uid = p.uid
+			  WHERE c.uid = ?1 AND c.status = 'active'
+			  ORDER BY p.updated_at DESC
+			  LIMIT 100`,
+		)
+			.bind(user.uid)
+			.all<PostRow & { display_name: string | null; account: string | null }>();
+		for (const row of sharedRows.results ?? []) {
+			if (known.has(row.slug)) continue;
+			mine.push({
+				...toSummary(row),
+				shared: 1,
+				owner: row.display_name || row.account || "",
+				comments: counts.get(row.slug) ?? 0,
+			});
+		}
+	}
+
 	const owned: Record<string, unknown>[] = repoPosts
 		.filter((post) => !known.has(post.slug))
 		.map((post) => ({
 			...repoToSummary(post),
+			shared: isAdmin ? 0 : 1,
 			comments: counts.get(post.slug) ?? 0,
 		}));
 
@@ -692,9 +746,12 @@ me.get("/posts/:id", requireAuth, async (c) => {
 	if (id === null) {
 		return c.json({ error: "bad_request", message: "id 非法" }, 400);
 	}
-	const row = await findOwned(c, id);
+	const row = await findEditable(c, id);
 	if (!row) return c.json(POST_NOT_FOUND, 404);
-	return c.json({ post: toDetail(row) });
+	// 共享来的稿子：前端据此隐藏「提交审核 / 删除」这些只有作者能做的动作
+	return c.json({
+		post: { ...toDetail(row), shared_mine: row.uid !== c.get("user")?.uid },
+	});
 });
 
 /**
@@ -707,7 +764,7 @@ me.get("/posts/:id/notes", requireAuth, async (c) => {
 	if (id === null) {
 		return c.json({ error: "bad_request", message: "id 非法" }, 400);
 	}
-	const row = await findOwned(c, id);
+	const row = await findEditable(c, id);
 	if (!row) return c.json(POST_NOT_FOUND, 404);
 
 	const rows = await c.env.DB.prepare(
@@ -748,7 +805,7 @@ me.put(
 		if (id === null) {
 			return c.json({ error: "bad_request", message: "id 非法" }, 400);
 		}
-		const row = await findOwned(c, id);
+		const row = await findEditable(c, id);
 		if (!row) return c.json(POST_NOT_FOUND, 404);
 		if (!EDITABLE.has(row.status)) return c.json(lockedBody(row.status), 409);
 
@@ -756,6 +813,26 @@ me.put(
 			string,
 			unknown
 		>;
+
+		/*
+		 * 乐观锁：草稿每 1.5 秒自动保存一次，两个人同时开着一篇就会互相覆盖，
+		 * 后保存的那个把前一个的改动整段吞掉。客户端带上开始编辑时的 rev，
+		 * 与服务端当前值不一致就拒绝写入，让它刷新后再继续。
+		 * 用 rev 而不是 updated_at：后者只到秒，同一秒内的两次保存比不出来。
+		 */
+		if ("base_rev" in payload) {
+			const base = Number(payload.base_rev);
+			if (!Number.isInteger(base) || base !== (row.rev ?? 0)) {
+				return c.json(
+					{
+						error: "stale",
+						message: "这篇刚被别人改过，刷新页面再继续",
+						server_rev: row.rev ?? 0,
+					},
+					409,
+				);
+			}
+		}
 
 		let slug = row.slug;
 		if ("slug" in payload) {
@@ -833,10 +910,37 @@ me.put(
 			return c.json({ error: "invalid_title", message: "标题不能为空" }, 400);
 		}
 
+		/*
+		 * 协作者能改内容，但两件事不归他：改地址（协作关系是按 slug 记的，改了等于
+		 * 把自己锁在外面，作者那边的名单也失联）、改可见范围（否则他可以把稿子再
+		 * 共享给第三个人，一句话绕开「只有作者能邀请」）。
+		 */
+		const actor = c.get("user");
+		if (actor && row.uid !== actor.uid) {
+			if (slug !== row.slug) {
+				return c.json(
+					{ error: "forbidden", message: "地址只有作者能改" },
+					403,
+				);
+			}
+			const prevMeta = parseMeta(row.meta_json);
+			const nextMeta = parseMeta(metaJson);
+			const same = (key: string) =>
+				JSON.stringify(prevMeta[key] ?? null) ===
+				JSON.stringify(nextMeta[key] ?? null);
+			if (!same("visibility") || !same("visibleTo")) {
+				return c.json(
+					{ error: "forbidden", message: "可见范围只有作者能改" },
+					403,
+				);
+			}
+		}
+
 		const updated = await c.env.DB.prepare(
 			`UPDATE posts
 		    SET slug = ?1, repo_path = ?2, title = ?3, summary = ?4, cover = ?5,
-		        tags = ?6, body = ?7, meta_json = ?8, updated_at = datetime('now')
+		        tags = ?6, body = ?7, meta_json = ?8, updated_at = datetime('now'),
+		        rev = rev + 1
 		  WHERE id = ?9 AND uid = ?10
 		 RETURNING *`,
 		)
@@ -1032,13 +1136,11 @@ const TOKEN_MISSING = {
 };
 
 me.get("/repo-posts", requireAuth, async (c) => {
-	if (!isOwner(c)) {
-		return c.json(
-			{ error: "forbidden", message: "只有站主能编辑仓库文章" },
-			403,
-		);
-	}
 	const slug = c.req.query("slug") ?? "";
+	// 仓库里的文章没有「作者」这一栏，ownerUid 传 null：管理员与这篇的协作者进得来
+	if (!(await canEditPost(c.env.DB, c.get("user"), { slug, ownerUid: null }))) {
+		return c.json({ error: "forbidden", message: "这篇没有共享给你" }, 403);
+	}
 	const path = await resolveRepoPath(c, slug);
 	if (!path) return c.json({ error: "not_found", message: "文章不存在" }, 404);
 
@@ -1116,17 +1218,16 @@ me.put(
 	requireJsonBody,
 	sameOriginGuard,
 	async (c) => {
-		if (!isOwner(c)) {
-			return c.json(
-				{ error: "forbidden", message: "只有站主能编辑仓库文章" },
-				403,
-			);
-		}
 		const payload = (await c.req.json().catch(() => ({}))) as Record<
 			string,
 			unknown
 		>;
 		const slug = readField(payload, "slug");
+		if (
+			!(await canEditPost(c.env.DB, c.get("user"), { slug, ownerUid: null }))
+		) {
+			return c.json({ error: "forbidden", message: "这篇没有共享给你" }, 403);
+		}
 		const path = await resolveRepoPath(c, slug);
 		if (!path)
 			return c.json({ error: "not_found", message: "文章不存在" }, 404);

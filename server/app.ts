@@ -3,6 +3,7 @@ import { loadSession } from "./middleware/auth";
 import { noStore } from "./middleware/guard";
 import { admin } from "./routes/admin";
 import { auth } from "./routes/auth";
+import { collab } from "./routes/collab";
 import { comments, commentsAdmin } from "./routes/comments";
 import { health } from "./routes/health";
 import { me } from "./routes/me";
@@ -24,6 +25,8 @@ app.route("/api/auth", auth);
 app.route("/api/me", me);
 app.route("/api/media", media);
 app.route("/api/comments", comments);
+// 文章共创：邀请别人一起改这一篇
+app.route("/api/collab", collab);
 // 站点配置：公开的热字段 + 管理端草稿/发布/密钥，路径自己带 /admin 前缀
 app.route("/api", siteConfig);
 app.route("/api/admin", admin);

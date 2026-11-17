@@ -27,15 +27,23 @@ export interface PostSummary {
 	review_note: string | null;
 	created_at: string;
 	updated_at: string;
+	/** 乐观锁版本号：保存时带回去，服务端据此判断有没有人先存过 */
+	rev?: number;
 	/** 已通过审核的评论数；接口没给（老接口）时按 0 处理 */
 	comments?: number;
 	/** 可见范围：接口没给时按公开处理 */
 	visibility?: "public" | "login" | "users";
+	/** 1 = 别人共享给我的，不是我自己写的 */
+	shared?: number;
+	/** 共享来源：原作者昵称 */
+	owner?: string;
 }
 
 export interface PostDetail extends PostSummary {
 	body: string;
 	meta: Record<string, unknown>;
+	/** 共享给我的稿子：提交审核、撤回、删除这些动作不归我 */
+	shared_mine?: boolean;
 	/** 审核员改过的一版正文，作者点「采用」才覆盖自己的稿子 */
 	review_body?: string | null;
 }
@@ -109,7 +117,10 @@ export async function savePost(
 			PostDetail,
 			"title" | "slug" | "summary" | "cover" | "body" | "tags" | "meta"
 		>
-	>,
+	> & {
+		/** 开始编辑时的 rev，服务端拿它做乐观锁 */
+		base_rev?: number;
+	},
 ): Promise<PostDetail | null> {
 	const data = await api.put<{ post: PostDetail | null }>(
 		`/api/me/posts/${id}`,
